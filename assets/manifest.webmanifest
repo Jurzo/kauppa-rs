@@ -1,0 +1,11 @@
+{
+  "name": "kauppa",
+  "short_name": "kauppa",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#1f6feb",
+  "icons": []
+}

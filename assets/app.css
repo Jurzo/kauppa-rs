@@ -1,0 +1,86 @@
+:root {
+  --bg: #ffffff;
+  --fg: #111418;
+  --muted: #5c6773;
+  --border: #e5e7eb;
+  --primary: #1f6feb;
+  --primary-fg: #ffffff;
+  --error: #b42318;
+  --radius: 10px;
+  --maxw: 960px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0f14;
+    --fg: #e6edf3;
+    --muted: #9ba3af;
+    --border: #22272e;
+    --primary: #4c8dff;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--bg); z-index: 10;
+}
+.brand { font-weight: 700; font-size: 1.1rem; color: var(--fg); }
+.topbar nav { display: flex; gap: 1rem; align-items: center; }
+.topbar nav form.inline { display: inline; margin: 0; }
+.link { background: none; border: 0; color: var(--primary); cursor: pointer; padding: 0; font: inherit; }
+
+main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
+
+.hero { padding: 2rem 0; text-align: center; }
+.hero h1 { font-size: 2.25rem; margin: 0 0 0.5rem; }
+
+.button {
+  display: inline-block; padding: 0.5rem 1rem; border-radius: var(--radius);
+  border: 1px solid var(--border); background: transparent; color: var(--fg);
+  cursor: pointer; font: inherit;
+}
+.button.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+.button + .button { margin-left: 0.5rem; }
+
+.form-card {
+  max-width: 420px; margin: 2rem auto; padding: 1.5rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.form-card label { display: block; margin: 0.75rem 0; }
+.form-card input {
+  display: block; width: 100%; margin-top: 0.25rem; padding: 0.5rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--fg); font: inherit;
+}
+.form-card .button { width: 100%; margin-top: 0.5rem; }
+
+.error { color: var(--error); }
+.muted { color: var(--muted); }
+.empty { color: var(--muted); font-style: italic; }
+
+.section-header { display: flex; justify-content: space-between; align-items: baseline; }
+.grid {
+  display: grid; gap: 1rem; margin-top: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.card {
+  padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius);
+}
+.card h2 { margin: 0 0 0.25rem; font-size: 1.1rem; }
+
+@media (max-width: 480px) {
+  main { padding: 0.75rem; }
+  .topbar nav { gap: 0.5rem; }
+}

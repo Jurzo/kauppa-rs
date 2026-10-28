@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kauppa-rs.local/schemas/resolution-record.schema.json",
+  "title": "Resolution Record front matter",
+  "type": "object",
+  "required": ["id", "closes", "mission", "decided_by", "role", "risk_tier", "decided_at", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^RR-\\d{4,}$" },
+    "closes": { "type": "string", "pattern": "^CRP-\\d{4,}$" },
+    "mission": { "type": "string", "pattern": "^MB-\\d{4,}$" },
+    "decided_by": { "type": "string", "pattern": "^@[a-zA-Z0-9][a-zA-Z0-9._-]*$" },
+    "role": {
+      "type": "string",
+      "enum": ["data-owner", "security", "api-owner", "platform", "product"]
+    },
+    "risk_tier": { "type": "string", "enum": ["low", "medium", "high"] },
+    "decided_at": { "type": "string", "format": "date-time" },
+    "status": { "type": "string", "enum": ["approved", "rejected", "superseded"] },
+    "superseded_by": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^RR-\\d{4,}$" }
+      ]
+    },
+    "rolls_back_into": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

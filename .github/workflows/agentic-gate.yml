@@ -1,0 +1,70 @@
+name: agentic-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  validate-artifacts:
+    name: validate .agentic/ artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install validator deps
+        run: pip install jsonschema pyyaml
+
+      - name: Validate Mission Briefs / Consults / Resolutions
+        run: python scripts/agentic/validate_artifacts.py
+
+  evidence-check:
+    name: Merge-Readiness evidence
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-authored')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install pyyaml
+
+      - name: Check Merge-Readiness Pack
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: python scripts/agentic/check_ready.py
+
+  trigger-path-check:
+    name: Escalation trigger paths
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install pyyaml
+
+      - name: Check trigger paths against RRs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+        run: python scripts/agentic/check_triggers.py

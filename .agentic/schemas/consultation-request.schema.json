@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kauppa-rs.local/schemas/consultation-request.schema.json",
+  "title": "Consultation Request Pack front matter",
+  "type": "object",
+  "required": ["id", "mission", "owner", "target_role", "risk_tier", "state", "runbook_trigger"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^CRP-\\d{4,}$" },
+    "mission": { "type": "string", "pattern": "^MB-\\d{4,}$" },
+    "owner": { "type": "string", "pattern": "^@[a-zA-Z0-9][a-zA-Z0-9._-]*$" },
+    "target_role": {
+      "type": "string",
+      "enum": ["data-owner", "security", "api-owner", "platform", "product"]
+    },
+    "risk_tier": { "type": "string", "enum": ["low", "medium", "high"] },
+    "urgency": { "type": "string", "enum": ["low", "medium", "high"] },
+    "state": { "type": "string", "enum": ["open", "answered", "superseded"] },
+    "runbook_trigger": { "type": "string", "minLength": 3 }
+  }
+}

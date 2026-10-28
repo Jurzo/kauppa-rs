@@ -1,0 +1,23 @@
+{{#> layout title="Recipes" signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>Recipes</h1>
+    <button class="button primary"
+            hx-post="/recipes"
+            hx-swap="afterbegin"
+            hx-target="#recipe-grid">New recipe</button>
+  </header>
+  <div id="recipe-grid" class="grid">
+    {{#if recipes}}
+      {{#each recipes}}
+        <article class="card">
+          <h2>{{this.title}}</h2>
+          {{#if this.servings}}<p class="muted">Serves {{this.servings}}</p>{{/if}}
+        </article>
+      {{/each}}
+    {{else}}
+      <p class="empty">No recipes yet.</p>
+    {{/if}}
+  </div>
+</section>
+{{/layout}}

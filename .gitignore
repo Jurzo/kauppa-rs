@@ -1,0 +1,29 @@
+/target
+/dist
+**/*.rs.bk
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Local DB
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+/data
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Coverage
+/coverage
+*.profraw
+lcov.info
+
+# sqlx offline cache artifacts outside .sqlx/ metadata
+/.sqlx/.tmp

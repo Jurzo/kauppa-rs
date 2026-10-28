@@ -1,0 +1,14 @@
+{{#> layout title="Sign in"}}
+<section class="form-card">
+  <h1>Sign in</h1>
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  <form method="post" action="/auth/login">
+    <label>Email<input type="email" name="email" required autocomplete="email" /></label>
+    <label>Password<input type="password" name="password" required autocomplete="current-password" /></label>
+    <button type="submit" class="button primary">Sign in</button>
+  </form>
+  <p>No account? <a href="/auth/register">Register</a>.</p>
+</section>
+{{/layout}}

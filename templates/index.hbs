@@ -1,0 +1,17 @@
+{{#> layout title="Home"}}
+<section class="hero">
+  <h1>kauppa</h1>
+  <p>Shopping lists and recipes, built with Rust and htmx.</p>
+  {{#unless signed_in}}
+    <p>
+      <a class="button primary" href="/auth/register">Create an account</a>
+      <a class="button" href="/auth/login">Sign in</a>
+    </p>
+  {{else}}
+    <p>
+      <a class="button primary" href="/lists">Your lists</a>
+      <a class="button" href="/recipes">Your recipes</a>
+    </p>
+  {{/unless}}
+</section>
+{{/layout}}

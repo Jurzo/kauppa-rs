@@ -1,0 +1,26 @@
+# CODEOWNERS enforces human approval on the governance surface and on
+# escalation-trigger paths. Keep in sync with .agentic/runbooks/feature.md.
+
+# Governance artifacts: humans only.
+/AGENTS.md                     @juuso-kalliomaki
+/.agentic/mentorship/          @juuso-kalliomaki
+/.agentic/runbooks/            @juuso-kalliomaki
+/.agentic/resolutions/         @juuso-kalliomaki
+/.agentic/schemas/             @juuso-kalliomaki
+
+# Data: schema is append-only, every change via the migration runbook.
+/migrations/                   @juuso-kalliomaki
+
+# Security: auth, sessions, password hashing.
+/crates/kauppa-core/src/password.rs           @juuso-kalliomaki
+/crates/kauppa-web/src/routes/auth.rs         @juuso-kalliomaki
+/crates/kauppa-web/src/main.rs                @juuso-kalliomaki
+
+# Platform: build, deps, lint config, CI, scripts.
+/Cargo.toml                    @juuso-kalliomaki
+/crates/*/Cargo.toml           @juuso-kalliomaki
+/rust-toolchain.toml           @juuso-kalliomaki
+/rustfmt.toml                  @juuso-kalliomaki
+/deny.toml                     @juuso-kalliomaki
+/.github/                      @juuso-kalliomaki
+/scripts/agentic/              @juuso-kalliomaki

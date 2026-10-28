@@ -1,0 +1,47 @@
+[package]
+name = "kauppa-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "actix-web + handlebars + htmx front end for kauppa-rs"
+default-run = "kauppa-web"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "kauppa-web"
+path = "src/main.rs"
+
+[dependencies]
+kauppa-core = { path = "../kauppa-core" }
+
+tokio = { workspace = true }
+actix-web = { workspace = true }
+actix-files = { workspace = true }
+actix-session = { workspace = true }
+actix-identity = { workspace = true }
+tracing-actix-web = { workspace = true }
+
+sqlx = { workspace = true }
+handlebars = { workspace = true }
+
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+config = { workspace = true }
+dotenvy = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

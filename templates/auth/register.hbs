@@ -1,0 +1,15 @@
+{{#> layout title="Register"}}
+<section class="form-card">
+  <h1>Create an account</h1>
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  <form method="post" action="/auth/register">
+    <label>Display name<input type="text" name="display_name" required /></label>
+    <label>Email<input type="email" name="email" required autocomplete="email" /></label>
+    <label>Password<input type="password" name="password" required minlength="12" autocomplete="new-password" /></label>
+    <button type="submit" class="button primary">Create account</button>
+  </form>
+  <p>Already have one? <a href="/auth/login">Sign in</a>.</p>
+</section>
+{{/layout}}
