@@ -8,6 +8,8 @@ ignore = []
 
 [licenses]
 version = 2
+# Only licenses actually encountered in the current dep tree are listed; add
+# new entries as they appear. Keeps `license-not-encountered` warnings clean.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -15,17 +17,55 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
     "Zlib",
-    "MPL-2.0",
-    "CC0-1.0",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.9
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# allow path deps inside the workspace to omit a version field
+workspace-default-features = "allow"
+
+# Transitive duplicates we cannot resolve without patching upstream crates.
+# Review and prune every quarter; new entries require a Resolution Record
+# citing why the duplicate cannot be collapsed.
+skip = [
+    # Windows cross-platform shims — unavoidable while handlebars/walkdir pull
+    # windows-sys 0.48 and ring/rustls pull 0.52+. We don't ship Windows binaries.
+    { crate = "windows-sys" },
+    { crate = "windows-targets" },
+    { crate = "windows_x86_64_msvc" },
+    { crate = "windows_x86_64_gnu" },
+    { crate = "windows_x86_64_gnullvm" },
+    { crate = "windows_i686_msvc" },
+    { crate = "windows_i686_gnu" },
+    { crate = "windows_aarch64_msvc" },
+    { crate = "windows_aarch64_gnullvm" },
+
+    # proc-macro ecosystem split: syn 1.x still pulled by older proc-macro
+    # crates; syn 2.x is dominant. Collapsing requires upstream bumps.
+    { crate = "syn" },
+
+    # cookie 0.16 (via actix-web) uses base64 0.20; sqlx uses 0.22.
+    { crate = "base64" },
+
+    # actix-identity/session depend on derive_more 1.0; actix-web 4.18 on 2.1.
+    { crate = "derive_more" },
+    { crate = "derive_more-impl" },
+
+    # sqlx-core/hashlink use hashbrown 0.15 (foldhash 0.1); actix-web 4.18 uses
+    # a newer hashbrown with foldhash 0.2.
+    { crate = "hashbrown" },
+    { crate = "foldhash" },
+
+    # getrandom 0.2 (via older crypto crates) coexists with 0.3 (via newer);
+    # same story for rand_core 0.6 vs 0.10 (proptest's chacha20 pulls both).
+    { crate = "getrandom" },
+    { crate = "rand_core" },
+]
 
 [sources]
 unknown-registry = "deny"

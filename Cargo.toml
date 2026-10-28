@@ -5,7 +5,7 @@ members = ["crates/kauppa-core", "crates/kauppa-web"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.89"
 license = "MIT"
 repository = "https://github.com/juuso-kalliomaki/kauppa-rs"
 
@@ -31,7 +31,18 @@ missing_panics_doc = "allow"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 
 # Web
-actix-web = "4"
+# Default features minus `compress-zstd` (RUSTSEC-2026-0391/0398/0403 via zstd)
+# and `http2` (actix-http pins to h2 0.3 which has RUSTSEC-2026-0258;
+# h2 0.4 is a breaking migration for actix). Deploy behind a reverse proxy
+# that terminates HTTP/2 if you need it. `ws` dropped — not using websockets.
+actix-web = { version = "4", default-features = false, features = [
+    "macros",
+    "cookies",
+    "unicode",
+    "compat",
+    "compress-brotli",
+    "compress-gzip",
+] }
 actix-files = "0.6"
 actix-session = { version = "0.10", features = ["cookie-session"] }
 actix-identity = "0.8"
@@ -67,7 +78,6 @@ async-trait = "0.1"
 
 # Crypto / IDs
 argon2 = "0.5"
-rand = "0.9"
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Time

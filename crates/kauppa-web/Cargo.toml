@@ -16,7 +16,8 @@ name = "kauppa-web"
 path = "src/main.rs"
 
 [dependencies]
-kauppa-core = { path = "../kauppa-core" }
+# Version pin alongside path so cargo-deny doesn't flag it as a wildcard dep.
+kauppa-core = { path = "../kauppa-core", version = "0.1" }
 
 tokio = { workspace = true }
 actix-web = { workspace = true }
