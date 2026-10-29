@@ -13,9 +13,11 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::CoreResult;
-use crate::domain::{Category, Recipe, ShoppingList, User};
+use crate::domain::{
+    Category, Direction, Product, ProductGroup, Recipe, ShoppingList, User, ordering,
+};
 use crate::error::CoreError;
-use crate::repo::{CategoryRepo, RecipeRepo, ShoppingListRepo, UserRepo};
+use crate::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo, UserRepo};
 
 #[derive(Clone, Debug)]
 pub struct SqlitePool {
@@ -62,15 +64,42 @@ fn row_to_category(row: &SqliteRow) -> CoreResult<Category> {
     })
 }
 
-/// Trim a user-supplied name and reject it if empty.
-fn clean_name(name: &str) -> CoreResult<&str> {
+fn row_to_product(row: &SqliteRow) -> CoreResult<Product> {
+    let id: String = row.try_get("id")?;
+    let owner_id: String = row.try_get("owner_id")?;
+    let category_id: Option<String> = row.try_get("category_id")?;
+    Ok(Product {
+        id: parse_uuid(&id)?,
+        owner_id: parse_uuid(&owner_id)?,
+        name: row.try_get("name")?,
+        category_id: category_id.as_deref().map(parse_uuid).transpose()?,
+        position: row.try_get("position")?,
+        is_favorite: row.try_get("is_favorite")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+/// Trim a user-supplied name and reject it if empty. `what` names the entity
+/// in the error message.
+fn clean_name<'a>(what: &str, name: &'a str) -> CoreResult<&'a str> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err(CoreError::Invalid(
-            "category name must not be empty".to_owned(),
-        ));
+        return Err(CoreError::Invalid(format!("{what} name must not be empty")));
     }
     Ok(trimmed)
+}
+
+/// Map a unique-constraint violation to `Conflict`; pass other errors through.
+fn conflict_on_unique(e: sqlx::Error, message: impl FnOnce() -> String) -> CoreError {
+    match &e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => CoreError::Conflict(message()),
+        _ => CoreError::Database(e),
+    }
+}
+
+fn unknown_category() -> CoreError {
+    CoreError::Invalid("unknown category".to_owned())
 }
 
 #[async_trait]
@@ -144,7 +173,7 @@ impl UserRepo for SqlitePool {
 #[async_trait]
 impl CategoryRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<Category> {
-        let name = clean_name(name)?;
+        let name = clean_name("category", name)?;
         let id = Uuid::new_v4();
         let id_str = id.to_string();
         let owner = owner_id.to_string();
@@ -204,7 +233,7 @@ impl CategoryRepo for SqlitePool {
     }
 
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Category> {
-        let name = clean_name(name)?;
+        let name = clean_name("category", name)?;
         let owner = owner_id.to_string();
         let id_str = id.to_string();
 
@@ -263,6 +292,250 @@ impl CategoryRepo for SqlitePool {
         let result = sqlx::query(r"DELETE FROM categories WHERE id = ?1 AND owner_id = ?2")
             .bind(id.to_string())
             .bind(&owner)
+            .execute(&self.inner)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ProductRepo for SqlitePool {
+    async fn create(&self, owner_id: Uuid, name: &str, category_id: Uuid) -> CoreResult<Product> {
+        let name = clean_name("product", name)?;
+        let now = Utc::now();
+
+        // One statement: nothing is inserted unless the category is the
+        // owner's, and the product is appended at the end of that category.
+        let row = sqlx::query(
+            r"INSERT INTO products
+                  (id, owner_id, name, category_id, position, is_favorite, created_at, updated_at)
+              SELECT ?1, ?2, ?3, c.id,
+                     (SELECT COALESCE(MAX(p.position), -1) + 1
+                        FROM products p
+                        WHERE p.owner_id = ?2 AND p.category_id = c.id),
+                     1, ?4, ?4
+                FROM categories c
+                WHERE c.id = ?5 AND c.owner_id = ?2
+              RETURNING id, owner_id, name, category_id, position, is_favorite,
+                        created_at, updated_at",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(owner_id.to_string())
+        .bind(name)
+        .bind(now)
+        .bind(category_id.to_string())
+        .fetch_optional(&self.inner)
+        .await
+        .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
+
+        row.as_ref()
+            .map(row_to_product)
+            .transpose()?
+            .ok_or_else(unknown_category)
+    }
+
+    async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ProductGroup>> {
+        // The join also checks the category's owner, so a product can never be
+        // shown under someone else's category; it would fall to uncategorized.
+        let rows = sqlx::query(
+            r"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite,
+                     p.created_at, p.updated_at,
+                     c.id AS group_id, c.name AS group_name,
+                     c.position AS group_position, c.created_at AS group_created_at
+                FROM products p
+                LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
+                WHERE p.owner_id = ?1
+                ORDER BY c.id IS NULL, c.position, c.name, p.position, p.name",
+        )
+        .bind(owner_id.to_string())
+        .fetch_all(&self.inner)
+        .await?;
+
+        let mut groups: Vec<ProductGroup> = Vec::new();
+        for row in &rows {
+            let product = row_to_product(row)?;
+            let group_id: Option<String> = row.try_get("group_id")?;
+            let group_id = group_id.as_deref().map(parse_uuid).transpose()?;
+
+            match groups.last_mut() {
+                Some(group) if group.category.as_ref().map(|c| c.id) == group_id => {
+                    group.products.push(product);
+                }
+                _ => {
+                    let category = group_id
+                        .map(|id| -> CoreResult<Category> {
+                            Ok(Category {
+                                id,
+                                owner_id,
+                                name: row.try_get("group_name")?,
+                                position: row.try_get("group_position")?,
+                                created_at: row.try_get("group_created_at")?,
+                            })
+                        })
+                        .transpose()?;
+                    groups.push(ProductGroup {
+                        category,
+                        products: vec![product],
+                    });
+                }
+            }
+        }
+        Ok(groups)
+    }
+
+    async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product> {
+        let name = clean_name("product", name)?;
+
+        let row = sqlx::query(
+            r"UPDATE products SET name = ?1, updated_at = ?2
+                WHERE id = ?3 AND owner_id = ?4
+              RETURNING id, owner_id, name, category_id, position, is_favorite,
+                        created_at, updated_at",
+        )
+        .bind(name)
+        .bind(Utc::now())
+        .bind(id.to_string())
+        .bind(owner_id.to_string())
+        .fetch_optional(&self.inner)
+        .await
+        .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
+
+        row.as_ref()
+            .map(row_to_product)
+            .transpose()?
+            .ok_or(CoreError::NotFound)
+    }
+
+    async fn recategorize(
+        &self,
+        owner_id: Uuid,
+        id: Uuid,
+        category_id: Uuid,
+    ) -> CoreResult<Product> {
+        let owner = owner_id.to_string();
+        let id_str = id.to_string();
+        let category = category_id.to_string();
+        // IMMEDIATE takes the write lock up front, so the reads below can't be
+        // invalidated by another writer before the update.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+
+        let row = sqlx::query(
+            r"SELECT id, owner_id, name, category_id, position, is_favorite,
+                     created_at, updated_at
+                FROM products
+                WHERE id = ?1 AND owner_id = ?2",
+        )
+        .bind(&id_str)
+        .bind(&owner)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+        let product = row_to_product(&row)?;
+        if product.category_id == Some(category_id) {
+            // Already there: keep its position rather than moving it to the end.
+            return Ok(product);
+        }
+
+        let category_owned =
+            sqlx::query(r"SELECT 1 FROM categories WHERE id = ?1 AND owner_id = ?2")
+                .bind(&category)
+                .bind(&owner)
+                .fetch_optional(&mut *tx)
+                .await?
+                .is_some();
+        if !category_owned {
+            return Err(unknown_category());
+        }
+
+        let row = sqlx::query(
+            r"UPDATE products
+                SET category_id = ?1,
+                    position = (SELECT COALESCE(MAX(p.position), -1) + 1
+                                  FROM products p
+                                  WHERE p.owner_id = ?2 AND p.category_id = ?1),
+                    updated_at = ?3
+                WHERE id = ?4 AND owner_id = ?2
+              RETURNING id, owner_id, name, category_id, position, is_favorite,
+                        created_at, updated_at",
+        )
+        .bind(&category)
+        .bind(&owner)
+        .bind(Utc::now())
+        .bind(&id_str)
+        .fetch_one(&mut *tx)
+        .await?;
+        let product = row_to_product(&row)?;
+
+        tx.commit().await?;
+        Ok(product)
+    }
+
+    async fn move_within_category(
+        &self,
+        owner_id: Uuid,
+        id: Uuid,
+        direction: Direction,
+    ) -> CoreResult<()> {
+        let owner = owner_id.to_string();
+        let id_str = id.to_string();
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+
+        let category_id: Option<String> =
+            sqlx::query(r"SELECT category_id FROM products WHERE id = ?1 AND owner_id = ?2")
+                .bind(&id_str)
+                .bind(&owner)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(CoreError::NotFound)?
+                .try_get("category_id")?;
+
+        // `IS` so the uncategorized (NULL) group can be ordered too.
+        let siblings = sqlx::query(
+            r"SELECT id FROM products
+                WHERE owner_id = ?1 AND category_id IS ?2
+                ORDER BY position ASC, name ASC",
+        )
+        .bind(&owner)
+        .bind(category_id.as_deref())
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut ids = siblings
+            .iter()
+            .map(|row| row.try_get::<String, _>("id"))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let index = ids
+            .iter()
+            .position(|p| *p == id_str)
+            .ok_or(CoreError::NotFound)?;
+        if !ordering::step(&mut ids, index, direction) {
+            return Ok(());
+        }
+
+        // Rewrite the whole group densely, which also heals any ties or gaps.
+        for (index, product_id) in ids.iter().enumerate() {
+            let position = i64::try_from(index)
+                .map_err(|_| CoreError::Invalid("too many products".to_owned()))?;
+            sqlx::query(r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3")
+                .bind(position)
+                .bind(product_id)
+                .bind(&owner)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
+        let result = sqlx::query(r"DELETE FROM products WHERE id = ?1 AND owner_id = ?2")
+            .bind(id.to_string())
+            .bind(owner_id.to_string())
             .execute(&self.inner)
             .await?;
 
