@@ -6,8 +6,10 @@
 
 pub mod sqlite;
 
-// MB-0002 acceptance tests for `ProductRepo`; the module path matches the
-// brief's `cargo test -p kauppa-core repo::product::*` checks.
+// Mission Brief acceptance tests for the repo traits; the module paths match
+// the briefs' `cargo test -p kauppa-core repo::<name>::*` checks.
+#[cfg(test)]
+mod category;
 #[cfg(test)]
 mod product;
 

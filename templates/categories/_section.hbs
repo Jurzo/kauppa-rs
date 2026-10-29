@@ -1,0 +1,41 @@
+<div id="categories" class="categories">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+
+  <form class="add-category" method="post" action="/categories"
+        hx-post="/categories" hx-target="#categories" hx-swap="outerHTML">
+    <label>New category
+      <input id="new-category" name="name" type="text" required
+             autocomplete="off" placeholder="e.g. Hevi" value="{{draft_name}}" />
+    </label>
+    <button type="submit" class="button primary">Add</button>
+  </form>
+
+  <ul class="category-list">
+    {{#each categories}}
+      <li class="category-row">
+        <form class="category-rename" method="post" action="/categories/{{this.id}}/rename"
+              hx-post="/categories/{{this.id}}/rename" hx-target="#categories" hx-swap="outerHTML">
+          <label class="visually-hidden" for="cat-{{this.id}}">Name of {{this.name}}</label>
+          <input id="cat-{{this.id}}" name="name" type="text" required value="{{this.name}}" />
+          <button type="submit" class="link">Rename</button>
+        </form>
+        <form class="row-actions" method="post" action="/categories/{{this.id}}/move"
+              hx-post="/categories/{{this.id}}/move" hx-target="#categories" hx-swap="outerHTML">
+          <button id="category-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
+                  aria-label="Move {{this.name}} up"{{#if @first}} disabled{{/if}}>↑</button>
+          <button id="category-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
+                  aria-label="Move {{this.name}} down"{{#if @last}} disabled{{/if}}>↓</button>
+        </form>
+        <form class="row-actions" method="post" action="/categories/{{this.id}}/delete"
+              hx-post="/categories/{{this.id}}/delete" hx-target="#categories" hx-swap="outerHTML"
+              hx-confirm="Delete “{{this.name}}”?">
+          <button type="submit" class="link danger" aria-label="Delete {{this.name}}">Delete</button>
+        </form>
+      </li>
+    {{else}}
+      <li class="empty">No categories yet. Add your first above.</li>
+    {{/each}}
+  </ul>
+</div>

@@ -5,17 +5,6 @@
     <p class="muted">Group your products — produce, cold, baking, frozen, spices…</p>
   </header>
 
-  <form class="inline-form"
-        hx-post="/categories"
-        hx-target="#category-list"
-        hx-swap="outerHTML"
-        hx-on::after-request="if(event.detail.successful) this.reset()">
-    <label for="new-category">New category</label>
-    <input id="new-category" name="name" type="text" required
-           autocomplete="off" placeholder="e.g. Hevi" />
-    <button type="submit" class="button primary">Add</button>
-  </form>
-
-  {{> categories/_list }}
+  {{> categories/_section }}
 </section>
 {{/layout}}
