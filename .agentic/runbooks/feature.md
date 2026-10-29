@@ -82,6 +82,7 @@ first.
 | `crates/kauppa-core/src/password.rs` | @juuso-kalliomaki (security) |
 | `crates/kauppa-web/src/routes/auth.rs` | @juuso-kalliomaki (security) |
 | Session middleware in `crates/kauppa-web/src/main.rs` | @juuso-kalliomaki (security) |
+| Shared-list authorization in `crates/kauppa-web/src/routes/lists.rs` | @juuso-kalliomaki (security) |
 | `Cargo.toml`, `crates/*/Cargo.toml` dependency changes | @juuso-kalliomaki (platform) |
 | `rust-toolchain.toml`, `rustfmt.toml`, `deny.toml` | @juuso-kalliomaki (platform) |
 | `.agentic/{mentorship,runbooks,resolutions}/**` | @juuso-kalliomaki |

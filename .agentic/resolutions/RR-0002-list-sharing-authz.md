@@ -78,8 +78,6 @@ These carry over from CRP-0002 regardless of wording and bind MB-0008:
 
 ## Roll-back into the system (Hardened)
 
-On approval, update:
-
 - `.agentic/mentorship/security.md` — amend the Authorization rule to the
   "owner OR grantee" predicate and record the centralized-helper requirement.
 - `.agentic/runbooks/feature.md` — add shared-list authorization in

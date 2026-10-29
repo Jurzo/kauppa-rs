@@ -20,8 +20,13 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
 - **Session store.** `actix-session` with `CookieSessionStore`, keyed by a
   >=64-byte secret from `KAUPPA_SESSION_SECRET`. Cookies: `HttpOnly`,
   `SameSite=Lax`, `Secure` behind TLS (`KAUPPA_COOKIE_SECURE=true`).
-- **Authorization.** Every per-user resource query filters on
-  `owner_id = $current_user`. Never trust a client-supplied `owner_id`.
+- **Authorization.** Every per-user resource query authorizes the acting user
+  against the resource. For owner-only resources that means `owner_id =
+  $current_user`. For shared shopping lists (RR-0002) the predicate is "owner
+  OR a `list_shares` grantee with sufficient role (`view` < `edit`)", computed
+  by a single centralized helper that every list / list-item read and write
+  goes through — a query that filters on `owner_id` alone is a review failure.
+  Never trust a client-supplied `owner_id` or role.
 - **Input.** Deserialize into typed structs; reject on invalid. For HTML
   rendering, handlebars escapes by default — never use `{{{raw}}}` on
   user-provided content.
