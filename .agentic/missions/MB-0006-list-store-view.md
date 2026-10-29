@@ -66,7 +66,7 @@ unneeded items (already at home) can be removed from view. It consumes the
 item model from MB-0004 and the category positions from MB-0001/MB-0002.
 
 No schema change is needed — `list_items` already has `checked` and `position`
-(from `0001`) and `category_id` + `removed_at` (from MB-0004's `0005`), so this
+(from `0001`) and `category_id` + `removed_at` (from MB-0004's `0006`), so this
 brief carries no Resolution Record. The soft-delete mechanism is MB-0004's; this
 brief surfaces it in the store view alongside check-off.
 

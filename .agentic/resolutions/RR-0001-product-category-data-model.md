@@ -39,11 +39,14 @@ Approved by @juuso.kalliomaki
   - `.agentic/missions/MB-0004-assemble-list.md`
 - Migrations under this decision (one append-only file per Mission Brief, as
   the briefs split it; CRP-0001 had sketched a single
-  `0002_products_categories.sql`):
+  `0002_products_categories.sql`), as amended by RR-0003:
   - `migrations/0002_categories.sql` — MB-0001 (merged)
   - `migrations/0003_products.sql` — MB-0002 (merged)
-  - `migrations/0004_ingredient_product.sql` — MB-0003 (planned)
-  - `migrations/0005_list_item_products.sql` — MB-0004 (planned)
+  - `migrations/0004_name_keys.sql` — MB-0010 (planned; added by RR-0003)
+  - `migrations/0005_ingredient_product.sql` — MB-0003 (planned; was `0004`)
+  - `migrations/0006_list_item_products.sql` — MB-0004 (planned; was `0005`)
+- Amended by: `.agentic/resolutions/RR-0003-case-insensitive-names-amendment.md`
+  (closes CRP-0003; MB-0010)
 - Evidence links:
   - MB-0001: PR #2 (merged into `agentic/scaffold-mission-briefs`; reached
     `main` via PR #4)
@@ -75,7 +78,9 @@ Approved by @juuso.kalliomaki
 8. **Schema history.** `0001_init.sql` is never edited. Each brief adds exactly
    the migration listed under *Linked artifacts*. A brief that needs a
    migration not listed there amends this RR through a new consult first.
-   *(Proposed: the migration runbook plus the per-brief split.)*
+   *(Proposed: the migration runbook plus the per-brief split.)* The list was
+   amended by RR-0003: `0004_name_keys.sql` added, and the later files
+   renumbered.
 9. **Same-owner references are an application invariant.** The foreign keys
    only check that the referenced row exists, not that it belongs to the same
    user — `products.category_id` would accept another user's category. Every
@@ -131,3 +136,6 @@ Status: active
 - 2026-10-29: Constraints and Roll-back sections added; roll-back applied to
   `.agentic/mentorship/persistence.md` and `.agentic/runbooks/migration.md`
   (PR #5).
+- 2026-10-29: amended by RR-0003 (closes CRP-0003). `0004_name_keys.sql` added
+  for MB-0010; the planned MB-0003 and MB-0004 migrations renumbered to `0005`
+  and `0006` (PR #7).

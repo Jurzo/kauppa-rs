@@ -67,7 +67,7 @@ quantities." The nice-to-have "the recipe's ingredient list can be multiplied"
 is included as the multiplier (P3).
 
 No schema change is needed — `list_items` already carries `product_id`,
-`category_id`, `quantity`, and `removed_at` from MB-0004's `0005` migration, so
+`category_id`, `quantity`, and `removed_at` from MB-0004's `0006` migration, so
 this brief carries no Resolution Record. Adding a recipe is a read of the
 recipe's ingredients followed by a batch insert of snapshotted list items.
 

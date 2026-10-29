@@ -103,7 +103,7 @@ the favorite "maito".
 3. **Numbering: this brief takes `0004`, and the planned files move up one.**
    This lands before MB-0003.
 
-   | Brief | Planned file today | After renumbering |
+   | Brief | Planned file before RR-0003 | After renumbering |
    | --- | --- | --- |
    | MB-0010 | — | `0004_name_keys.sql` |
    | MB-0003 | `0004_ingredient_product.sql` | `0005_ingredient_product.sql` |
@@ -113,8 +113,8 @@ the favorite "maito".
    RR-0001 lists the MB-0003/MB-0004 files, so applying this is the RR-0001
    amendment step (constraint 8: consult first). That amendment must also
    explicitly authorize the two backfill `UPDATE … SET` statements, which the
-   migration runbook otherwise forbids in a migration. The renumbering is not
-   applied yet.
+   migration runbook otherwise forbids in a migration. Done: CRP-0003 → RR-0003
+   (approved); the renumbering was applied in PR #7.
 
 ## Conceptual plan
 
