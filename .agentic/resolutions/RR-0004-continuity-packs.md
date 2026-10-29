@@ -49,7 +49,7 @@ Approved by platform, @juuso.kalliomaki
 
 - Consult: `.agentic/consults/CRP-0004-continuity-packs.md`
 - Mission Brief: `.agentic/missions/MB-0011-continuity-packs.md`
-- Evidence links: branch `agentic/continuity-packs` (PR to follow).
+- Evidence links: PR #8 (branch `agentic/continuity-packs`).
 
 ## Constraints and follow-on rules (Hardened)
 
