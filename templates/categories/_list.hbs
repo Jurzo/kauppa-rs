@@ -1,0 +1,35 @@
+<ul id="category-list" class="category-list">
+  {{#if categories}}
+    {{#each categories}}
+      <li class="category-row">
+        <form class="inline"
+              hx-post="/categories/{{this.id}}/rename"
+              hx-target="#category-list"
+              hx-swap="outerHTML">
+          <label class="visually-hidden" for="cat-{{this.id}}">Category name</label>
+          <input id="cat-{{this.id}}" name="name" value="{{this.name}}" required />
+          <button type="submit" class="link">Rename</button>
+        </form>
+        <div class="row-actions">
+          <button class="link" aria-label="Move {{this.name}} up"
+                  hx-post="/categories/{{this.id}}/move"
+                  hx-vals='{"dir":"up"}'
+                  hx-target="#category-list"
+                  hx-swap="outerHTML">↑</button>
+          <button class="link" aria-label="Move {{this.name}} down"
+                  hx-post="/categories/{{this.id}}/move"
+                  hx-vals='{"dir":"down"}'
+                  hx-target="#category-list"
+                  hx-swap="outerHTML">↓</button>
+          <button class="link danger" aria-label="Delete {{this.name}}"
+                  hx-post="/categories/{{this.id}}/delete"
+                  hx-confirm="Delete “{{this.name}}”?"
+                  hx-target="#category-list"
+                  hx-swap="outerHTML">Delete</button>
+        </div>
+      </li>
+    {{/each}}
+  {{else}}
+    <li class="empty">No categories yet. Add your first above.</li>
+  {{/if}}
+</ul>

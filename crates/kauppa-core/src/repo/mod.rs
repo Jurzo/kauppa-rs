@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::CoreResult;
-use crate::domain::{Recipe, ShoppingList, User};
+use crate::domain::{Category, Recipe, ShoppingList, User};
 
 #[async_trait]
 pub trait UserRepo: Send + Sync {
@@ -23,6 +23,26 @@ pub trait UserRepo: Send + Sync {
         display_name: &str,
         password_hash: &str,
     ) -> CoreResult<User>;
+}
+
+#[async_trait]
+pub trait CategoryRepo: Send + Sync {
+    /// Create a category for `owner_id`, appended at the end of their ordering.
+    /// Rejects empty names (`Invalid`) and owner-duplicate names (`Conflict`).
+    async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<Category>;
+
+    /// The owner's categories, ordered by `position` ascending (name as tiebreak).
+    async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<Category>>;
+
+    /// Rename a category the caller owns. `NotFound` if it isn't theirs.
+    async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Category>;
+
+    /// Persist a new ordering for the owner's categories atomically. Ids not
+    /// owned by `owner_id` are ignored.
+    async fn reorder(&self, owner_id: Uuid, ordered_ids: &[Uuid]) -> CoreResult<()>;
+
+    /// Delete a category the caller owns. `NotFound` if it isn't theirs.
+    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
 }
 
 #[async_trait]
