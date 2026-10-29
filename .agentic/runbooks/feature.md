@@ -16,11 +16,18 @@ Before any file is edited:
    exist at the referenced revision.
 3. The baseline compiles: `cargo check --workspace --all-targets` is green on
    the branch head.
+4. The brief's Continuity Pack exists at `.agentic/continuity/MB-<id>.md`
+   (`AGENTS.md` → Continuity Packs). If it is missing, create it from
+   `.agentic/continuity/TEMPLATE.md` first; it is the one file you may add
+   before the gate passes.
 
 **Stop rule:** if the entry gate fails, do not edit code. Open a
 Consultation Request Pack describing the missing input.
 
 ## Stages
+
+At every checkpoint below, update the Continuity Pack (state, next step,
+decisions, evidence) before moving on.
 
 ### S1 — Clarify
 
@@ -92,6 +99,8 @@ first.
 A merged feature PR must have:
 
 - A Mission Brief in `.agentic/missions/`.
+- An up-to-date Continuity Pack in `.agentic/continuity/`. The mission's
+  final PR records its end state there.
 - A Merge-Readiness Pack in the PR body (fills the scope-to-proof map).
 - A Resolution Record in `.agentic/resolutions/` **only if** an escalation
   trigger fired or a consult was raised.

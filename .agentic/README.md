@@ -8,7 +8,7 @@ per the [baseline](../../Agentic%20SE%20Implementation%20Baseline.md).
 | `mentorship/` | Task-class Mentorship Packs that refine `AGENTS.md`. | Human |
 | `runbooks/` | Workflow Runbooks with enforced gates. | Human |
 | `missions/` | Mission Briefs (`MB-<id>-<slug>.md`). | Agent drafts, human accepts |
-| `continuity/` | Continuity Packs, one per active mission. | Agent |
+| `continuity/` | Continuity Packs (`MB-<id>.md`), one per Mission Brief, kept current (see `AGENTS.md` → Continuity Packs). | Agent |
 | `consults/` | Consultation Request Packs (`CRP-<id>-<slug>.md`). | Agent |
 | `resolutions/` | Resolution Records (`RR-<id>-<slug>.md`). | Human (risk-tier dependent) |
 | `schemas/` | JSON Schemas validated by the `agentic-gate` CI job. | Human |

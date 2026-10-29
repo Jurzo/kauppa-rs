@@ -1,7 +1,10 @@
 # Continuity Pack — <MB-id>
 
-Copy to `<MB-id>.md` (one Continuity Pack per active mission). Update it at
-handoffs, context compaction, agent swaps, and end of day.
+Copy to `<MB-id>.md`. Every Mission Brief has one, created in the same commit
+as the brief. Keep it current: at each runbook checkpoint, when a consult or
+RR changes state, when a PR opens or merges, and at handoffs, context
+compaction, agent swaps, and the end of a session. See `AGENTS.md` →
+Continuity Packs.
 
 ```yaml
 ---
