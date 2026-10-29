@@ -1,0 +1,68 @@
+<div id="favorites" class="favorites">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+
+  {{#if has_categories}}
+    <form class="add-product" method="post" action="/favorites"
+          hx-post="/favorites" hx-target="#favorites" hx-swap="outerHTML">
+      <label>Product
+        <input id="new-product-name" name="name" type="text" required
+               autocomplete="off" placeholder="e.g. Kahvi" value="{{add.name}}" />
+      </label>
+      <label>Category
+        {{> products/_category_picker add.picker }}
+      </label>
+      <button type="submit" class="button primary">Add</button>
+    </form>
+  {{else}}
+    <p class="empty">Favorites are grouped by category —
+      <a href="/categories">create a category</a> first.</p>
+  {{/if}}
+
+  {{#each groups}}
+    <section class="product-group">
+      <h2>{{#if this.name}}{{this.name}}{{else}}Uncategorized{{/if}}</h2>
+      <ul class="product-list">
+        {{#each this.products}}
+          <li class="product-row">
+            <span class="product-name">{{this.name}}</span>
+            <form class="row-actions" method="post" action="/favorites/{{this.id}}/move"
+                  hx-post="/favorites/{{this.id}}/move" hx-target="#favorites" hx-swap="outerHTML">
+              <button id="product-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
+                      aria-label="Move {{this.name}} up"{{#if @first}} disabled{{/if}}>↑</button>
+              <button id="product-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
+                      aria-label="Move {{this.name}} down"{{#if @last}} disabled{{/if}}>↓</button>
+            </form>
+            <details class="product-edit">
+              <summary>Edit<span class="visually-hidden"> {{this.name}}</span></summary>
+              <form method="post" action="/favorites/{{this.id}}/rename"
+                    hx-post="/favorites/{{this.id}}/rename" hx-target="#favorites" hx-swap="outerHTML">
+                <label>Name
+                  <input name="name" type="text" required value="{{this.name}}" />
+                </label>
+                <button type="submit" class="button">Rename</button>
+              </form>
+              <form method="post" action="/favorites/{{this.id}}/category"
+                    hx-post="/favorites/{{this.id}}/category" hx-target="#favorites" hx-swap="outerHTML">
+                <label>Category
+                  {{> products/_category_picker this.picker }}
+                </label>
+                <button type="submit" class="button">Change</button>
+              </form>
+              <form method="post" action="/favorites/{{this.id}}/delete"
+                    hx-post="/favorites/{{this.id}}/delete" hx-target="#favorites" hx-swap="outerHTML"
+                    hx-confirm="Delete “{{this.name}}”?">
+                <button type="submit" class="link danger">Delete</button>
+              </form>
+            </details>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+  {{else}}
+    {{#if has_categories}}
+      <p class="empty">No favorites yet. Add your first above.</p>
+    {{/if}}
+  {{/each}}
+</div>
