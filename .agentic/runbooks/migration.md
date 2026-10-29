@@ -10,7 +10,10 @@ Schema changes are a trigger path. All migrations run through this runbook.
 2. A Consultation Request Pack (`CRP-*`) is open **before** any file in
    `migrations/` is created, with options and trade-offs for the schema shape.
 3. A Resolution Record (`RR-*`) is approved before the PR is opened. The RR
-   references the exact migration filename to be created.
+   references the exact migration filename to be created. When one RR covers
+   several Mission Briefs, it lists each brief's migration filename; creating
+   a migration that isn't listed needs an RR amendment through a new consult
+   first (RR-0001).
 
 ## Stages
 
@@ -25,6 +28,8 @@ compatibility window, rollback plan.
 - `STRICT` on all new tables.
 - UUIDs as `TEXT`, timestamps as `TEXT` (RFC3339), booleans as `INTEGER NOT NULL`.
 - Include a comment header: migration ID, RR link, intent.
+- A foreign key that diverges from `ON DELETE CASCADE` names the RR that
+  allows it in that header (e.g. `0003_products.sql` → RR-0001).
 
 ### S3 — Verify
 

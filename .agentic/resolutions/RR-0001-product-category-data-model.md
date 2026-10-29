@@ -128,3 +128,6 @@ Status: active
 - 2026-10-29: clerical update. Linked-artifact paths corrected, migration
   filenames listed (migration runbook entry gate, item 3), evidence links
   added. Decision unchanged.
+- 2026-10-29: Constraints and Roll-back sections added; roll-back applied to
+  `.agentic/mentorship/persistence.md` and `.agentic/runbooks/migration.md`
+  (PR #5).
