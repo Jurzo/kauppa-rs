@@ -79,6 +79,29 @@ The fast gate (`scripts/agentic/fast-gate.sh`) runs fmt + clippy + unit tests in
   `.agentic/{mentorship,runbooks,resolutions}` require CODEOWNERS approval and
   a linked Resolution Record (see `.agentic/runbooks/*` escalation sections).
 
+### Continuity Packs
+
+Every Mission Brief has a Continuity Pack at `.agentic/continuity/MB-<id>.md`,
+copied from `.agentic/continuity/TEMPLATE.md`. It is the handoff record: the
+next agent or human resumes a mission from it, not from chat history.
+
+- **Create it with the brief.** The commit that adds a Mission Brief also adds
+  its pack, recording the state as "not started". If you pick up a brief that
+  has no pack, create it before editing anything else; the runbook entry gates
+  check for it.
+- **Keep it current.** Update it, and bump `updated_at`, in the same commit or
+  PR as the work it describes, and at least:
+  - at each runbook stage checkpoint;
+  - when a consult is opened or answered, or a Resolution Record is approved;
+  - when a PR is opened or merged;
+  - before a session ends, at context compaction, and at any handoff to
+    another agent or a human.
+- **Close it out, don't delete it.** The mission's final PR records the end
+  state: what was delivered, PR links, follow-ups. The file stays as history.
+
+Agents own Continuity Packs (`.agentic/README.md`), so updating one needs no
+consult.
+
 ### Conventions
 
 - **Errors.** Core returns `CoreResult<T>` (`CoreError`). Web returns

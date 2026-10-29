@@ -14,6 +14,8 @@ Schema changes are a trigger path. All migrations run through this runbook.
    several Mission Briefs, it lists each brief's migration filename; creating
    a migration that isn't listed needs an RR amendment through a new consult
    first (RR-0001).
+4. The brief's Continuity Pack exists and is kept current
+   (`AGENTS.md` → Continuity Packs; feature runbook entry gate, item 4).
 
 ## Stages
 

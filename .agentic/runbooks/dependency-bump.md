@@ -26,6 +26,8 @@ record it in the Merge-Readiness Pack and move on.
    - Supply-chain check: crates.io owner, download count, open advisories,
      license.
 3. A Resolution Record is approved before the PR is opened.
+4. The brief's Continuity Pack exists and is kept current
+   (`AGENTS.md` → Continuity Packs; feature runbook entry gate, item 4).
 
 ## Gates
 
