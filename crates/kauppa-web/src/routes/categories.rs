@@ -1,17 +1,19 @@
 //! Category management endpoints (MB-0001).
 //!
-//! Thin handlers: parse → call `CategoryRepo` → render. htmx-triggered requests
-//! get an HTML fragment of the list; plain requests get the full page or a
-//! 303-redirect back to it (PRG). All endpoints require an authenticated user.
+//! Thin handlers: parse → call `CategoryRepo` → render. htmx requests get the
+//! re-rendered `#categories` fragment; plain requests get a 303 back to the
+//! page (PRG), or the full page when the input was rejected. All endpoints
+//! require an authenticated user.
 
 use actix_identity::Identity;
-use actix_web::{HttpRequest, HttpResponse, get, http::header, post, web};
-use serde::Deserialize;
-use serde_json::json;
+use actix_web::http::{StatusCode, header};
+use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use kauppa_core::CoreError;
+use kauppa_core::domain::{Category, Direction, ordering};
 use kauppa_core::repo::CategoryRepo;
+use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::{WebError, WebResult};
 use crate::state::AppState;
@@ -23,7 +25,7 @@ struct NameForm {
 
 #[derive(Debug, Deserialize)]
 struct MoveForm {
-    dir: String,
+    dir: Direction,
 }
 
 fn current_user(id: &Identity) -> WebResult<Uuid> {
@@ -37,33 +39,76 @@ fn is_hx(req: &HttpRequest) -> bool {
     req.headers().get("HX-Request").is_some_and(|v| v == "true")
 }
 
-/// htmx → the re-rendered list fragment; otherwise a 303 back to the page.
-async fn list_fragment_or_redirect(
-    state: &web::Data<AppState>,
+#[derive(Debug, Serialize)]
+struct CategoriesView {
+    categories: Vec<Category>,
+    /// Pre-fills the "new category" field after a rejected add.
+    draft_name: String,
+    error: Option<String>,
+}
+
+/// Render the page or, for htmx, the `#categories` fragment.
+async fn render(
+    state: &AppState,
+    user: Uuid,
+    fragment: bool,
+    status: StatusCode,
+    draft_name: String,
+    error: Option<String>,
+) -> WebResult<HttpResponse> {
+    let categories = state.pool.list_for_owner(user).await?;
+    let view = CategoriesView {
+        categories,
+        draft_name,
+        error,
+    };
+    let template = if fragment {
+        "categories/_section"
+    } else {
+        "categories/index"
+    };
+    let body = state.templates.render(template, &view)?;
+    Ok(HttpResponse::build(status)
+        .content_type("text/html")
+        .body(body))
+}
+
+/// Answer a mutation. Rejected input (`Invalid` / `Conflict`) is shown to the
+/// user: in the fragment for htmx — with 200, since htmx doesn't swap 4xx
+/// responses by default — or on the full page with the 4xx status. Success is
+/// the fragment for htmx, else a 303 back to the page.
+async fn respond<T>(
+    state: &AppState,
     req: &HttpRequest,
     user: Uuid,
+    outcome: CoreResult<T>,
+    draft_name: String,
 ) -> WebResult<HttpResponse> {
+    let (status, error) = match outcome {
+        Ok(_) => (StatusCode::OK, None),
+        Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, Some(m)),
+        Err(CoreError::Conflict(m)) => (StatusCode::CONFLICT, Some(m)),
+        Err(e) => return Err(e.into()),
+    };
+    if let Some(reason) = &error {
+        tracing::debug!(user_id = %user, %reason, "categories input rejected");
+    }
+
     if is_hx(req) {
-        let categories = state.pool.list_for_owner(user).await?;
-        let body = state
-            .templates
-            .render("categories/_list", &json!({ "categories": categories }))?;
-        Ok(HttpResponse::Ok().content_type("text/html").body(body))
-    } else {
+        render(state, user, true, StatusCode::OK, draft_name, error).await
+    } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, "/categories"))
             .finish())
+    } else {
+        render(state, user, false, status, draft_name, error).await
     }
 }
 
 #[get("")]
 pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let categories = state.pool.list_for_owner(user).await?;
-    let body = state
-        .templates
-        .render("categories/index", &json!({ "categories": categories }))?;
-    Ok(HttpResponse::Ok().content_type("text/html").body(body))
+    render(&state, user, false, StatusCode::OK, String::new(), None).await
 }
 
 #[post("")]
@@ -74,8 +119,13 @@ pub async fn create(
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    state.pool.create(user, &form.name).await?;
-    list_fragment_or_redirect(&state, &req, user).await
+    let outcome = state.pool.create(user, &form.name).await;
+    let draft_name = if outcome.is_ok() {
+        String::new()
+    } else {
+        form.name.clone()
+    };
+    respond(&state, &req, user, outcome, draft_name).await
 }
 
 #[post("/{id}/rename")]
@@ -87,11 +137,8 @@ pub async fn rename(
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    state
-        .pool
-        .rename(user, path.into_inner(), &form.name)
-        .await?;
-    list_fragment_or_redirect(&state, &req, user).await
+    let outcome = state.pool.rename(user, path.into_inner(), &form.name).await;
+    respond(&state, &req, user, outcome, String::new()).await
 }
 
 #[post("/{id}/delete")]
@@ -102,8 +149,8 @@ pub async fn delete(
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    state.pool.delete(user, path.into_inner()).await?;
-    list_fragment_or_redirect(&state, &req, user).await
+    let outcome = state.pool.delete(user, path.into_inner()).await;
+    respond(&state, &req, user, outcome, String::new()).await
 }
 
 /// Move a category one step up or down, then persist the new ordering.
@@ -118,245 +165,205 @@ pub async fn move_category(
     let user = current_user(&id)?;
     let target = path.into_inner();
 
-    let mut categories = state.pool.list_for_owner(user).await?;
-    let idx = categories
+    let mut ids: Vec<Uuid> = state
+        .pool
+        .list_for_owner(user)
+        .await?
         .iter()
-        .position(|c| c.id == target)
+        .map(|c| c.id)
+        .collect();
+    let at = ids
+        .iter()
+        .position(|&c| c == target)
         .ok_or(CoreError::NotFound)?;
-
-    let swap_with = match form.dir.as_str() {
-        "up" if idx > 0 => Some(idx - 1),
-        "down" if idx + 1 < categories.len() => Some(idx + 1),
-        _ => None,
-    };
-    if let Some(j) = swap_with {
-        categories.swap(idx, j);
-        let ordered: Vec<Uuid> = categories.iter().map(|c| c.id).collect();
-        state.pool.reorder(user, &ordered).await?;
+    if ordering::step(&mut ids, at, form.dir) {
+        state.pool.reorder(user, &ids).await?;
     }
 
-    list_fragment_or_redirect(&state, &req, user).await
+    respond(&state, &req, user, Ok(()), String::new()).await
+}
+
+// MB-0001 acceptance test (P6). It sits at module level rather than in a
+// `tests` submodule so the brief's `cargo test -p kauppa-web
+// routes::categories::crud_and_auth` check selects it.
+
+/// The user's category names, in display order.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+async fn category_names(state: &AppState, user: Uuid) -> Vec<String> {
+    state
+        .pool
+        .list_for_owner(user)
+        .await
+        .expect("list categories")
+        .into_iter()
+        .map(|c| c.name)
+        .collect()
 }
 
 #[cfg(test)]
-mod tests {
-    //! MB-0001 P6: route rendering, htmx fragments, and the unauthenticated path.
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+#[allow(clippy::expect_used)]
+async fn category_id(state: &AppState, user: Uuid, name: &str) -> Uuid {
+    state
+        .pool
+        .list_for_owner(user)
+        .await
+        .expect("list categories")
+        .into_iter()
+        .find(|c| c.name == name)
+        .expect("category exists")
+        .id
+}
 
-    use std::sync::Arc;
+/// P6: `GET /categories` renders the owner's categories; add / rename / move /
+/// delete return the fragment over htmx and the full page (via 303, or with
+/// the error) otherwise; unauthenticated requests are rejected.
+#[cfg(test)]
+#[actix_web::test]
+async fn crud_and_auth() {
+    use actix_web::test::{TestRequest, call_service};
 
-    use actix_identity::IdentityMiddleware;
-    use actix_session::SessionMiddleware;
-    use actix_session::storage::CookieSessionStore;
-    use actix_web::cookie::{Cookie, Key};
-    use actix_web::{App, http::StatusCode, test, web};
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
 
-    use kauppa_core::password;
-    use kauppa_core::repo::{CategoryRepo, SqlitePool, UserRepo};
+    let state = test_state().await;
+    let app = test_app!(state);
 
-    use crate::routes;
-    use crate::state::AppState;
-
-    const PASSWORD: &str = "correct horse battery staple";
-
-    async fn test_state() -> (web::Data<AppState>, uuid::Uuid) {
-        let url = format!(
-            "sqlite:file:catweb-{}?mode=memory&cache=shared",
-            uuid::Uuid::new_v4()
-        );
-        let pool = SqlitePool::connect(&url).await.unwrap();
-        pool.run_migrations().await.unwrap();
-        let hash = password::hash(PASSWORD).unwrap();
-        let user = UserRepo::create(&pool, "u@example.com", "U", &hash)
-            .await
-            .unwrap();
-
-        // Build the registry from an absolute path: `cargo test` runs with the
-        // crate dir as CWD, so the production `./templates` would not resolve.
-        let mut hb = handlebars::Handlebars::new();
-        hb.set_strict_mode(true);
-        hb.register_templates_directory(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../templates"),
-            handlebars::DirectorySourceOptions::default(),
-        )
-        .unwrap();
-
-        let state = web::Data::new(AppState {
-            pool,
-            templates: Arc::new(hb),
-        });
-        (state, user.id)
-    }
-
-    macro_rules! build_app {
-        ($state:expr) => {
-            test::init_service(
-                App::new()
-                    .app_data($state.clone())
-                    .wrap(IdentityMiddleware::default())
-                    .wrap(
-                        SessionMiddleware::builder(
-                            CookieSessionStore::default(),
-                            Key::from(&[0u8; 64]),
-                        )
-                        .cookie_name("kauppa_sid".to_owned())
-                        .cookie_secure(false)
-                        .build(),
-                    )
-                    .configure(routes::configure),
-            )
-            .await
-        };
-    }
-
-    /// P6: an unauthenticated request to the page is rejected.
-    #[actix_web::test]
-    async fn index_requires_auth() {
-        let (state, _) = test_state().await;
-        let app = build_app!(state);
-
-        let resp = test::call_service(
-            &app,
-            test::TestRequest::get().uri("/categories").to_request(),
-        )
-        .await;
+    // Unauthenticated: every route is rejected.
+    let any = Uuid::new_v4();
+    let anonymous = [
+        TestRequest::get().uri("/categories"),
+        TestRequest::post()
+            .uri("/categories")
+            .set_form([("name", "Hevi")]),
+        TestRequest::post()
+            .uri(&format!("/categories/{any}/rename"))
+            .set_form([("name", "Hevi")]),
+        TestRequest::post()
+            .uri(&format!("/categories/{any}/move"))
+            .set_form([("dir", "up")]),
+        TestRequest::post().uri(&format!("/categories/{any}/delete")),
+    ];
+    for req in anonymous {
+        let resp = call_service(&app, req.to_request()).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
-    /// P6: signed in, GET renders the full page and the mutations return
-    /// fragments over htmx (full-page redirect without it).
-    #[actix_web::test]
-    async fn crud_and_auth() {
-        let (state, user) = test_state().await;
-        let app = build_app!(state.clone());
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let theirs = make_category(&state, other, "Pakasteet").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let post = |uri: &str, form: &[(&str, &str)]| {
+        TestRequest::post()
+            .uri(uri)
+            .cookie(session.clone())
+            .set_form(form)
+    };
+    let hx = |req: TestRequest| req.insert_header(("HX-Request", "true")).to_request();
 
-        // Log in and capture the session cookie.
-        let login = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri("/auth/login")
-                .set_form([("email", "u@example.com"), ("password", PASSWORD)])
-                .to_request(),
+    // The page: a full document whose forms work without JS.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri("/categories")
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("<html") && body.contains("Categories"));
+    assert!(body.contains(r#"method="post" action="/categories""#));
+    assert!(!body.contains("Pakasteet"), "another owner's category");
+
+    // Add over htmx: the fragment, with the new category.
+    let resp = call_service(&app, hx(post("/categories", &[("name", "Hevi")]))).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        !body.contains("<html"),
+        "htmx response should be a fragment"
+    );
+    assert!(body.contains(r#"id="categories""#) && body.contains(r#"value="Hevi""#));
+
+    // Add without htmx: 303 back to the page.
+    let resp = call_service(&app, post("/categories", &[("name", "Kylmä")]).to_request()).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok()),
+        Some("/categories")
+    );
+
+    // Rejected input is shown, not dropped: over htmx as the fragment with an
+    // alert; without htmx as the full page with the 4xx status and the typed
+    // name kept.
+    let resp = call_service(&app, hx(post("/categories", &[("name", "  ")]))).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains(r#"role="alert""#) && body.contains("must not be empty"));
+    let resp = call_service(&app, post("/categories", &[("name", "Hevi")]).to_request()).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_string(resp).await;
+    assert!(body.contains("<html") && body.contains("category already exists: Hevi"));
+    assert!(
+        body.contains(r#"id="new-category" name="name""#) && body.contains(r#"value="Hevi" />"#)
+    );
+    assert_eq!(category_names(&state, user).await, ["Hevi", "Kylmä"]);
+
+    let hevi = category_id(&state, user, "Hevi").await;
+
+    // Rename, move, and delete over htmx.
+    let resp = call_service(
+        &app,
+        hx(post(
+            &format!("/categories/{hevi}/rename"),
+            &[("name", "Hedelmät")],
+        )),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(body_string(resp).await.contains(r#"value="Hedelmät""#));
+
+    let resp = call_service(
+        &app,
+        hx(post(
+            &format!("/categories/{hevi}/move"),
+            &[("dir", "down")],
+        )),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    let (moved, other_row) = (body.find("Hedelmät"), body.find("Kylmä"));
+    assert!(
+        moved.is_some() && other_row < moved,
+        "Hedelmät moved below Kylmä"
+    );
+    assert_eq!(category_names(&state, user).await, ["Kylmä", "Hedelmät"]);
+
+    let resp = call_service(&app, hx(post(&format!("/categories/{hevi}/delete"), &[]))).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(!body_string(resp).await.contains("Hedelmät"));
+
+    // Without htmx, edits redirect back to the page; another owner's category
+    // is not found.
+    let kylma = category_id(&state, user, "Kylmä").await;
+    let resp = call_service(
+        &app,
+        post(
+            &format!("/categories/{kylma}/rename"),
+            &[("name", "Kylmät")],
         )
-        .await;
-        assert_eq!(login.status(), StatusCode::SEE_OTHER);
-        let session: Cookie<'static> = login
-            .response()
-            .cookies()
-            .find(|c| c.name() == "kauppa_sid")
-            .expect("session cookie")
-            .into_owned();
-
-        // GET the page: full HTML document.
-        let page = test::call_service(
-            &app,
-            test::TestRequest::get()
-                .uri("/categories")
-                .cookie(session.clone())
-                .to_request(),
-        )
-        .await;
-        assert_eq!(page.status(), StatusCode::OK);
-        let page_body = String::from_utf8(test::read_body(page).await.to_vec()).unwrap();
-        assert!(
-            page_body.contains("<html"),
-            "page should be a full document"
-        );
-        assert!(page_body.contains("Categories"));
-
-        // Create over htmx: a fragment (no <html>) containing the new name.
-        let created = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri("/categories")
-                .cookie(session.clone())
-                .insert_header(("HX-Request", "true"))
-                .set_form([("name", "Hevi")])
-                .to_request(),
-        )
-        .await;
-        assert_eq!(created.status(), StatusCode::OK);
-        let frag = String::from_utf8(test::read_body(created).await.to_vec()).unwrap();
-        assert!(
-            !frag.contains("<html"),
-            "htmx response should be a fragment"
-        );
-        assert!(frag.contains("id=\"category-list\""));
-        assert!(frag.contains("Hevi"));
-
-        // Create without htmx: 303 redirect back to the page.
-        let redirect = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri("/categories")
-                .cookie(session.clone())
-                .set_form([("name", "Kylma")])
-                .to_request(),
-        )
-        .await;
-        assert_eq!(redirect.status(), StatusCode::SEE_OTHER);
-        assert_eq!(
-            redirect
-                .headers()
-                .get(actix_web::http::header::LOCATION)
-                .unwrap(),
-            "/categories"
-        );
-
-        // Grab the created ids straight from the repo to drive rename/move/delete.
-        let cats = CategoryRepo::list_for_owner(&state.pool, user)
-            .await
-            .unwrap();
-        assert_eq!(cats.len(), 2);
-        let hevi = cats.iter().find(|c| c.name == "Hevi").unwrap().id;
-
-        // Rename over htmx.
-        let renamed = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri(&format!("/categories/{hevi}/rename"))
-                .cookie(session.clone())
-                .insert_header(("HX-Request", "true"))
-                .set_form([("name", "Pakasteet")])
-                .to_request(),
-        )
-        .await;
-        assert_eq!(renamed.status(), StatusCode::OK);
-        let renamed_body = String::from_utf8(test::read_body(renamed).await.to_vec()).unwrap();
-        assert!(renamed_body.contains("Pakasteet"));
-        assert!(!renamed_body.contains(">Hevi<"));
-
-        // Move over htmx (reorder).
-        let moved = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri(&format!("/categories/{hevi}/move"))
-                .cookie(session.clone())
-                .insert_header(("HX-Request", "true"))
-                .set_form([("dir", "down")])
-                .to_request(),
-        )
-        .await;
-        assert_eq!(moved.status(), StatusCode::OK);
-
-        // Delete over htmx; the name is gone from the fragment afterwards.
-        let deleted = test::call_service(
-            &app,
-            test::TestRequest::post()
-                .uri(&format!("/categories/{hevi}/delete"))
-                .cookie(session.clone())
-                .insert_header(("HX-Request", "true"))
-                .to_request(),
-        )
-        .await;
-        assert_eq!(deleted.status(), StatusCode::OK);
-        let deleted_body = String::from_utf8(test::read_body(deleted).await.to_vec()).unwrap();
-        assert!(!deleted_body.contains("Pakasteet"));
-
-        let remaining = CategoryRepo::list_for_owner(&state.pool, user)
-            .await
-            .unwrap();
-        assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].name, "Kylma");
-    }
+        .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let resp = call_service(&app, hx(post(&format!("/categories/{theirs}/delete"), &[]))).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(category_names(&state, user).await, ["Kylmät"]);
+    assert_eq!(category_names(&state, other).await, ["Pakasteet"]);
 }

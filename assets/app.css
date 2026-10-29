@@ -87,30 +87,33 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 .link.danger { color: var(--error); }
 .link:disabled { color: var(--muted); opacity: 0.5; cursor: default; }
 
-/* Favorites (MB-0002) */
-.add-product, .product-edit form {
+/* Categories (MB-0001) and favorites (MB-0002) */
+.add-category, .add-product, .product-edit form {
   display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin: 1rem 0;
 }
-.add-product label, .product-edit label { display: flex; flex-direction: column; flex: 1 1 10rem; }
+.add-category label, .add-product label, .product-edit label { display: flex; flex-direction: column; flex: 1 1 10rem; }
+.add-category input, .category-rename input,
 .add-product input, .add-product select, .product-edit input, .product-edit select {
   margin-top: 0.25rem; padding: 0.5rem; min-width: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--bg); color: var(--fg); font: inherit;
 }
 .product-group h2 { margin: 1.5rem 0 0.5rem; font-size: 1rem; color: var(--muted); }
-.product-list {
+.category-list, .product-list {
   list-style: none; margin: 0; padding: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
 }
-.product-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.5rem; padding: 0.25rem 0.75rem; }
-.product-row + .product-row { border-top: 1px solid var(--border); }
+.category-row, .product-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.5rem; padding: 0.25rem 0.75rem; }
+.category-row + .category-row, .product-row + .product-row { border-top: 1px solid var(--border); }
 .product-name { flex: 1 1 8rem; overflow-wrap: anywhere; }
-.product-row .row-actions { display: flex; margin: 0; }
+.category-row .row-actions, .product-row .row-actions { display: flex; margin: 0; }
 /* Comfortable touch targets for the one-handed reorder buttons. */
-.product-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.1rem; }
+.category-row .row-actions .link, .product-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.1rem; }
 .product-edit summary { cursor: pointer; color: var(--primary); padding: 0.5rem 0; }
 .product-edit[open] { flex-basis: 100%; }
 .product-edit form { margin: 0 0 0.75rem; }
+.category-rename { display: flex; flex: 1 1 12rem; gap: 0.5rem; align-items: center; margin: 0; }
+.category-rename input { flex: 1 1 auto; margin-top: 0; }
 
 @media (max-width: 480px) {
   main { padding: 0.75rem; }
