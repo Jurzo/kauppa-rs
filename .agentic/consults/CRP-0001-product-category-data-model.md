@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: data-owner
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: ".agentic/runbooks/feature.md escalation trigger `migrations/**` → data-owner; AGENTS.md do-not-touch (schema changes require an approved Resolution Record)"
 ---
 ```
