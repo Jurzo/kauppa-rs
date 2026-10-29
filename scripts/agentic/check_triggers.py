@@ -74,7 +74,11 @@ def approved_rrs() -> set[str]:
         m = FRONT_MATTER.search(text)
         if not m:
             continue
-        data = yaml.safe_load(m.group(1)) or {}
+        # The front-matter block wraps the mapping in `---` fences, so it is a
+        # YAML stream (trailing `---` opens an empty second doc); safe_load
+        # rejects that. Take the first non-empty document.
+        docs = [d for d in yaml.safe_load_all(m.group(1)) if d is not None]
+        data = docs[0] if docs else {}
         if data.get("status") == "approved":
             found.add(data.get("id", ""))
     return found

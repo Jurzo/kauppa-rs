@@ -28,12 +28,32 @@ ARTIFACT_DIRS = {
 FRONT_MATTER = re.compile(r"^```yaml\n(.*?)\n```", re.DOTALL | re.MULTILINE)
 
 
+class _FrontMatterLoader(yaml.SafeLoader):
+    """SafeLoader that keeps RFC3339 timestamps as strings.
+
+    The schemas type fields like `decided_at` as `string`, but PyYAML's implicit
+    resolver would parse an unquoted `2026-10-28T00:00:00Z` into a datetime and
+    fail validation. Drop the timestamp resolver so such scalars load as str.
+    """
+
+
+_FrontMatterLoader.yaml_implicit_resolvers = {
+    ch: [(tag, regexp) for tag, regexp in resolvers if tag != "tag:yaml.org,2002:timestamp"]
+    for ch, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+
+
 def extract_front_matter(path: pathlib.Path) -> dict | None:
     text = path.read_text(encoding="utf-8")
     match = FRONT_MATTER.search(text)
     if not match:
         return None
-    return yaml.safe_load(match.group(1))
+    # The front-matter block wraps the mapping in `---` fences (see the
+    # TEMPLATE files), so the captured text is a YAML *stream* whose trailing
+    # `---` opens an empty second document. safe_load() rejects multi-document
+    # streams; take the first non-empty document instead.
+    docs = [doc for doc in yaml.load_all(match.group(1), Loader=_FrontMatterLoader) if doc is not None]
+    return docs[0] if docs else None
 
 
 def validate_dir(dir_name: str, schema_path: pathlib.Path) -> list[str]:

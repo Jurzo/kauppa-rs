@@ -73,7 +73,10 @@ def main() -> int:
             if not m:
                 errors.append(f"{brief_path.name}: no YAML front matter.")
             else:
-                data = yaml.safe_load(m.group(1)) or {}
+                # `---`-fenced front matter is a YAML stream; take the first
+                # non-empty document (safe_load would reject the trailing `---`).
+                docs = [d for d in yaml.safe_load_all(m.group(1)) if d is not None]
+                data = docs[0] if docs else {}
                 for prop in data.get("acceptance") or []:
                     pid = prop.get("id")
                     if pid and pid not in body:
