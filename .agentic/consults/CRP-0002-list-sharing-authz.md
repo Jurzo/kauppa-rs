@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: high
 urgency: low
-state: open
+state:  answered
 runbook_trigger: ".agentic/mentorship/security.md Authorization rule (`owner_id = $current_user`) and threat #3 (horizontal privilege escalation); feature.md escalation trigger `migrations/**` → data-owner for the new share table"
 ---
 ```
