@@ -45,12 +45,7 @@ Approved by @juuso.kalliomaki
 
 ## Roll-back into the system (Hardened)
 
-- .agentic/mentorship/persistence.md
-- .agentic/runbooks/migration.md
-- .agentic/missions/MB-0001.md
-- .agentic/missions/MB-0002.md
-- .agentic/missions/MB-0003.md
-- .agentic/missions/MB-0004.md
+-
 
 ## Supersession and history
 
