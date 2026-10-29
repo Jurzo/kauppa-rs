@@ -75,7 +75,7 @@ copies a recipe's ingredients onto a list.
 
 ## Conceptual plan
 
-Add migration `0004_ingredient_product.sql`: `ALTER TABLE ingredients ADD COLUMN
+Add migration `0005_ingredient_product.sql`: `ALTER TABLE ingredients ADD COLUMN
 product_id TEXT REFERENCES products(id) ON DELETE SET NULL`. A nullable FK column
 is addable in place (no table rebuild) under SQLite's `ADD COLUMN` rules; keep
 the existing `text` column as the denormalized display name. Extend `RecipeRepo`

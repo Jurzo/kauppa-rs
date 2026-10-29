@@ -76,7 +76,7 @@ briefs build directly on the item model established here.
 
 ## Conceptual plan
 
-Add migration `0005_list_item_products.sql`: `ALTER TABLE list_items` to
+Add migration `0006_list_item_products.sql`: `ALTER TABLE list_items` to
 `ADD COLUMN product_id TEXT REFERENCES products(id) ON DELETE SET NULL`,
 `ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL`, and
 `ADD COLUMN removed_at TEXT` (RFC3339; NULL = active). All three are nullable, so

@@ -107,7 +107,7 @@ Approved by data-owner @juuso.kalliomaki
 
 ## Roll-back into the system (Hardened)
 
-To apply after approval; nothing here is applied yet.
+Applied in PR #7.
 
 - `RR-0001`:
   - replace the "Migrations under this decision" list with constraint 1;
@@ -122,3 +122,6 @@ To apply after approval; nothing here is applied yet.
 ## Supersession and history
 
 Status: active. Amends RR-0001; supersedes nothing.
+
+- 2026-10-29: roll-back applied to RR-0001, MB-0003, MB-0004, MB-0005, MB-0006,
+  and MB-0008; CRP-0003 marked answered (PR #7).

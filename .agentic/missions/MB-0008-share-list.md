@@ -91,7 +91,7 @@ Depends on MB-0004 (the list / list-item model). Session identity comes from
 
 ## Conceptual plan
 
-Add migration `0006_list_shares.sql`: a `STRICT` `list_shares(id, list_id
+Add migration `0007_list_shares.sql`: a `STRICT` `list_shares(id, list_id
 REFERENCES shopping_lists(id) ON DELETE CASCADE, grantee_id REFERENCES users(id)
 ON DELETE CASCADE, role TEXT with a CHECK in ('view','edit'), created_at)` with
 `UNIQUE(list_id, grantee_id)`. Put the access decision in the repo layer as one

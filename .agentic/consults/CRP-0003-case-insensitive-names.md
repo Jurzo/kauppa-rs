@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: data-owner
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "RR-0001 constraint 8 (a migration not listed in the RR needs an amendment through a consult); .agentic/runbooks/migration.md entry gate 2–3 and Forbidden (UPDATE … SET in a migration needs explicit RR authorization); feature.md escalation trigger `migrations/**` → data-owner"
 ---
 ```
