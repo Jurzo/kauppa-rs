@@ -90,6 +90,31 @@ if snapshotting seems to need a new column, stop and escalate to data-owner
 (this brief asserts none is needed); if the multiplier tempts a numeric
 quantity schema, that is a separate future decision, not this brief.
 
+## Implementation notes (2026-10-31, within `may_decide`)
+
+- **Multiplier rule** (`kauppa_core::domain::quantity::scale`, documented
+  there). Only a leading number scales; the rest of the quantity is kept as
+  typed. That number may be:
+  - an integer or a decimal with `.` or `,`;
+  - `a/b`;
+  - `½ ¼ ¾`, optionally after an integer;
+  - a range `5-6` / `5–6`, where both ends scale.
+
+  Results are a whole number when they can be, else at most two decimals,
+  using `,` if the original did. Text without a leading number ("ripaus")
+  passes through. A multiplier of 1 copies quantities verbatim.
+- **Multiplier input.** Any number in (0, 100]: blank means 1, and a decimal
+  comma is accepted, so a recipe can be halved (0,5) or made one and a half
+  times.
+- **One `BEGIN IMMEDIATE` transaction** covers the ownership checks, the
+  ingredient read, and all inserts. Items use the product's name at add-time
+  (or the ingredient's saved name once the product is gone), and its
+  category.
+- **A recipe without ingredients** is rejected with a message rather than
+  adding nothing silently.
+- **Route:** `POST /lists/{id}/recipes`, with a recipe picker and a "Times"
+  field on the list page.
+
 ## Validation plan
 
 P1–P4 are `kauppa-core` tests against a temp SQLite pool (ingredient snapshot,
