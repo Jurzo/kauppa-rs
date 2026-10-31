@@ -37,6 +37,10 @@ jobs:
       - name: cargo test
         run: cargo test --workspace --all-targets
 
+      # kauppa-core alone, without feature unification from kauppa-web (RR-0005).
+      - name: cargo test -p kauppa-core
+        run: cargo test -p kauppa-core --all-targets
+
   deny:
     name: cargo deny
     runs-on: ubuntu-latest
