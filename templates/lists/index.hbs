@@ -2,22 +2,9 @@
 <section>
   <header class="section-header">
     <h1>Shopping lists</h1>
-    <button class="button primary"
-            hx-post="/lists"
-            hx-swap="afterbegin"
-            hx-target="#list-grid">New list</button>
+    <p class="muted">Most recently updated first.</p>
   </header>
-  <div id="list-grid" class="grid">
-    {{#if lists}}
-      {{#each lists}}
-        <article class="card">
-          <h2>{{this.name}}</h2>
-          <p class="muted">Updated {{this.updated_at}}</p>
-        </article>
-      {{/each}}
-    {{else}}
-      <p class="empty">No lists yet. Create your first one.</p>
-    {{/if}}
-  </div>
+
+  {{> lists/_index }}
 </section>
 {{/layout}}

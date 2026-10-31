@@ -634,33 +634,100 @@ impl ProductRepo for SqlitePool {
     }
 }
 
+fn row_to_list(row: &SqliteRow) -> CoreResult<ShoppingList> {
+    let id: String = row.try_get("id")?;
+    let owner_id: String = row.try_get("owner_id")?;
+    Ok(ShoppingList {
+        id: parse_uuid(&id)?,
+        owner_id: parse_uuid(&owner_id)?,
+        name: row.try_get("name")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
 #[async_trait]
 impl ShoppingListRepo for SqlitePool {
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ShoppingList>> {
-        let owner = owner_id.to_string();
+        // `id` as tiebreak keeps the order stable for equal timestamps.
         let rows = sqlx::query(
             r"SELECT id, owner_id, name, created_at, updated_at
                 FROM shopping_lists
                 WHERE owner_id = ?1
-                ORDER BY updated_at DESC",
+                ORDER BY updated_at DESC, id ASC",
         )
-        .bind(&owner)
+        .bind(owner_id.to_string())
         .fetch_all(&self.inner)
         .await?;
 
-        rows.into_iter()
-            .map(|row| {
-                let id: String = row.try_get("id")?;
-                let owner_id: String = row.try_get("owner_id")?;
-                Ok(ShoppingList {
-                    id: parse_uuid(&id)?,
-                    owner_id: parse_uuid(&owner_id)?,
-                    name: row.try_get("name")?,
-                    created_at: row.try_get("created_at")?,
-                    updated_at: row.try_get("updated_at")?,
-                })
-            })
-            .collect()
+        rows.iter().map(row_to_list).collect()
+    }
+
+    async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<ShoppingList> {
+        let name = clean_name("list", name)?;
+        let row = sqlx::query(
+            r"INSERT INTO shopping_lists (id, owner_id, name, created_at, updated_at)
+              VALUES (?1, ?2, ?3, ?4, ?4)
+              RETURNING id, owner_id, name, created_at, updated_at",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(owner_id.to_string())
+        .bind(name)
+        .bind(Utc::now())
+        .fetch_one(&self.inner)
+        .await?;
+
+        row_to_list(&row)
+    }
+
+    async fn get(&self, owner_id: Uuid, id: Uuid) -> CoreResult<ShoppingList> {
+        let row = sqlx::query(
+            r"SELECT id, owner_id, name, created_at, updated_at
+                FROM shopping_lists
+                WHERE id = ?1 AND owner_id = ?2",
+        )
+        .bind(id.to_string())
+        .bind(owner_id.to_string())
+        .fetch_optional(&self.inner)
+        .await?;
+
+        row.as_ref()
+            .map(row_to_list)
+            .transpose()?
+            .ok_or(CoreError::NotFound)
+    }
+
+    async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList> {
+        let name = clean_name("list", name)?;
+        let row = sqlx::query(
+            r"UPDATE shopping_lists SET name = ?1, updated_at = ?2
+                WHERE id = ?3 AND owner_id = ?4
+              RETURNING id, owner_id, name, created_at, updated_at",
+        )
+        .bind(name)
+        .bind(Utc::now())
+        .bind(id.to_string())
+        .bind(owner_id.to_string())
+        .fetch_optional(&self.inner)
+        .await?;
+
+        row.as_ref()
+            .map(row_to_list)
+            .transpose()?
+            .ok_or(CoreError::NotFound)
+    }
+
+    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
+        let result = sqlx::query(r"DELETE FROM shopping_lists WHERE id = ?1 AND owner_id = ?2")
+            .bind(id.to_string())
+            .bind(owner_id.to_string())
+            .execute(&self.inner)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+        Ok(())
     }
 }
 
