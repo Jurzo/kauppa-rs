@@ -639,3 +639,67 @@ async fn crud_and_auth() {
         ]
     );
 }
+
+/// MB-0010 P6: adding a favorite whose name differs only by case from an
+/// existing one shows the "already exists" error, over htmx and without it,
+/// and creates nothing.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn case_duplicate_rejected() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    for name in ["maito", "Äyräs"] {
+        ProductRepo::create(&state.pool, user, name, kylma)
+            .await
+            .expect("create product");
+    }
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let hevi = hevi.to_string();
+    let post = |name: &str| {
+        TestRequest::post()
+            .uri("/favorites")
+            .cookie(session.clone())
+            .set_form([("name", name), ("category_id", hevi.as_str())])
+    };
+
+    // Over htmx: the fragment with the alert.
+    let resp = call_service(
+        &app,
+        post("Maito")
+            .insert_header(("HX-Request", "true"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(
+        !body.contains("<html"),
+        "htmx response should be a fragment"
+    );
+    assert!(body.contains(r#"role="alert""#) && body.contains("product already exists"));
+
+    // Without htmx: the full page with 409.
+    let resp = call_service(&app, post("ÄYRÄS").to_request()).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = body_string(resp).await;
+    assert!(body.contains("<html") && body.contains("product already exists"));
+
+    assert_eq!(
+        catalog_shape(&state, user).await,
+        [(
+            Some("Kylmä".to_owned()),
+            vec!["maito".to_owned(), "Äyräs".to_owned()]
+        )]
+    );
+}

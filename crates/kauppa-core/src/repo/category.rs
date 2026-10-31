@@ -1,4 +1,5 @@
-//! MB-0001 acceptance tests for the category repository (P1–P5). Test-only
+//! MB-0001 acceptance tests for the category repository (P1–P5), plus MB-0010
+//! P1 and P3. Test-only
 //! module: `CategoryRepo` lives in `repo` and its SQLite impl in
 //! `repo::sqlite`; this module exists so the brief's
 //! `cargo test -p kauppa-core repo::category::<name>` checks select these tests.
@@ -143,4 +144,73 @@ async fn rename_and_delete() {
         CategoryRepo::delete(&pool, u, cat.id).await,
         Err(CoreError::NotFound)
     ));
+}
+
+// MB-0010 acceptance tests (P1, P3); the brief's checks select them as
+// `repo::category::unique_ignoring_case` and `case_only_rename`.
+
+/// MB-0010 P1: an owner can't have two categories whose names differ only by
+/// case, ASCII or not, on create or rename. Other owners are unaffected.
+#[tokio::test]
+async fn unique_ignoring_case() {
+    let pool = test_pool().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let other = make_user(&pool, "other@example.com").await;
+
+    for (first, second) in [("hevi", "Hevi"), ("äyräs", "ÄYRÄS"), ("Kylmä", "kylmä")] {
+        CategoryRepo::create(&pool, u, first).await.unwrap();
+        assert!(
+            matches!(
+                CategoryRepo::create(&pool, u, second).await,
+                Err(CoreError::Conflict(_))
+            ),
+            "{second:?} collides with {first:?}"
+        );
+        // Trimming happens before matching.
+        assert!(matches!(
+            CategoryRepo::create(&pool, u, &format!("  {second} ")).await,
+            Err(CoreError::Conflict(_))
+        ));
+        CategoryRepo::create(&pool, other, second).await.unwrap();
+    }
+
+    // Rename into another row's name, in a different case.
+    let pakasteet = CategoryRepo::create(&pool, u, "Pakasteet").await.unwrap();
+    assert!(matches!(
+        CategoryRepo::rename(&pool, u, pakasteet.id, "ÄyRäS").await,
+        Err(CoreError::Conflict(_))
+    ));
+    let names: Vec<String> = CategoryRepo::list_for_owner(&pool, u)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(names, ["hevi", "äyräs", "Kylmä", "Pakasteet"]);
+}
+
+/// MB-0010 P3: names are stored and shown as typed (trimmed); only matching
+/// ignores case. Renaming a category to another casing of its own name works.
+#[tokio::test]
+async fn case_only_rename() {
+    let pool = test_pool().await;
+    let u = make_user(&pool, "u@example.com").await;
+
+    let cat = CategoryRepo::create(&pool, u, "  äyriäiset ")
+        .await
+        .unwrap();
+    assert_eq!(cat.name, "äyriäiset");
+
+    let renamed = CategoryRepo::rename(&pool, u, cat.id, "Äyriäiset")
+        .await
+        .unwrap();
+    assert_eq!(renamed.name, "Äyriäiset");
+    let renamed = CategoryRepo::rename(&pool, u, cat.id, "ÄYRIÄISET")
+        .await
+        .unwrap();
+    assert_eq!(renamed.name, "ÄYRIÄISET");
+
+    let cats = CategoryRepo::list_for_owner(&pool, u).await.unwrap();
+    assert_eq!(cats.len(), 1);
+    assert_eq!(cats[0].name, "ÄYRIÄISET");
 }
