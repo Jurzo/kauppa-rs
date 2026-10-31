@@ -86,6 +86,22 @@ consult rather than adding a column here (see open questions).
    that is a `shopping_lists` schema change and would need a data-owner consult.
    Deferred out of this initial version.
 
+## Decisions (owner, 2026-10-31)
+
+1. **Sequencing (open question 1): this brief lands first**, and MB-0004 adds
+   items on `/lists/{id}` in a PR stacked on it. There is no implicit default
+   list.
+2. Open question 2 (an archived/completed state) stays deferred.
+
+Implementation notes (within `may_decide`):
+
+- A new list needs a name; names needn't be unique. Renaming counts as an
+  update, so it moves the list to the top of the index.
+- Routes: `POST /lists`, `GET /lists/{id}`, `POST /lists/{id}/rename`, and
+  `POST /lists/{id}/delete`.
+- `GET /lists/{id}` returns the `lists/_list` fragment only for a non-boosted
+  htmx request. Boosted navigation gets the full page.
+
 ## Validation plan
 
 P1, P2, P4 are `kauppa-core` tests over a temp SQLite pool (owner-scoped create,
