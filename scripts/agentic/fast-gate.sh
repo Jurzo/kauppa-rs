@@ -20,4 +20,10 @@ echo "::group::cargo test"
 cargo test --workspace --all-targets
 echo "::endgroup::"
 
+# kauppa-core alone: a feature that only arrives through another crate's
+# dependency tree fails here (MB-0009, RR-0005).
+echo "::group::cargo test -p kauppa-core"
+cargo test -p kauppa-core --all-targets
+echo "::endgroup::"
+
 echo "fast-gate: OK"
