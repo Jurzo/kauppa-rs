@@ -40,6 +40,25 @@
     <p class="muted">Save <a href="/favorites">favorites</a> to add them here in one tap.</p>
   {{/if}}
 
+  {{#if recipes}}
+    <form class="add-product" method="post" action="/lists/{{id}}/recipes"
+          hx-post="/lists/{{id}}/recipes" hx-target="#list-{{id}}" hx-swap="outerHTML">
+      <label>Recipe
+        <select name="recipe_id" required>
+          <option value="" disabled selected>Choose a recipe</option>
+          {{#each recipes}}
+            <option value="{{this.id}}">{{this.title}}</option>
+          {{/each}}
+        </select>
+      </label>
+      <label>Times
+        <input name="multiplier" type="text" inputmode="decimal" autocomplete="off"
+               value="{{#if draft.multiplier}}{{draft.multiplier}}{{else}}1{{/if}}" />
+      </label>
+      <button type="submit" class="button">Add ingredients</button>
+    </form>
+  {{/if}}
+
   <ul class="product-list">
     {{#each items}}
       <li class="product-row">

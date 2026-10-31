@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::CoreResult;
 use crate::domain::{
     Category, Direction, Ingredient, ListItem, NewIngredient, Product, ProductGroup, Recipe,
-    RecipeDetail, RecipeInput, ShoppingList, User, ordering,
+    RecipeDetail, RecipeInput, ShoppingList, User, ordering, quantity,
 };
 use crate::error::CoreError;
 use crate::repo::name_key::name_key;
@@ -906,6 +906,95 @@ impl ShoppingListRepo for SqlitePool {
         tx.commit().await?;
 
         self.fetch_item(owner_id, list_id, id).await
+    }
+
+    async fn add_recipe(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        recipe_id: Uuid,
+        multiplier: f64,
+    ) -> CoreResult<Vec<ListItem>> {
+        if !(multiplier.is_finite() && multiplier > 0.0 && multiplier <= 100.0) {
+            return Err(CoreError::Invalid(
+                "the multiplier must be more than 0 and at most 100".to_owned(),
+            ));
+        }
+        let owner = owner_id.to_string();
+        let list = list_id.to_string();
+        let recipe = recipe_id.to_string();
+        // IMMEDIATE: the ingredients read and the inserts see one state, and
+        // a failure leaves no half-added recipe.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        touch_owned_list(&mut tx, &owner, &list).await?;
+
+        let title: String =
+            sqlx::query(r"SELECT title FROM recipes WHERE id = ?1 AND owner_id = ?2")
+                .bind(&recipe)
+                .bind(&owner)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or(CoreError::NotFound)?
+                .try_get("title")?;
+        // The same owner-checked read as `RecipeRepo::get`: live product names
+        // and categories, or the saved name once a product is gone.
+        let ingredients = sqlx::query(INGREDIENT_SELECT)
+            .bind(&recipe)
+            .bind(&owner)
+            .bind(None::<String>)
+            .fetch_all(&mut *tx)
+            .await?
+            .iter()
+            .map(|row| row_to_ingredient(row, owner_id))
+            .collect::<CoreResult<Vec<Ingredient>>>()?;
+        if ingredients.is_empty() {
+            return Err(CoreError::Invalid(format!("{title} has no ingredients")));
+        }
+
+        let first: i64 = sqlx::query(
+            r"SELECT COALESCE(MAX(position), -1) + 1 AS next FROM list_items WHERE list_id = ?1",
+        )
+        .bind(&list)
+        .fetch_one(&mut *tx)
+        .await?
+        .try_get("next")?;
+        let unscaled = (multiplier - 1.0).abs() < f64::EPSILON;
+        let mut ids = Vec::with_capacity(ingredients.len());
+        for (offset, ingredient) in ingredients.into_iter().enumerate() {
+            let position = first
+                + i64::try_from(offset)
+                    .map_err(|_| CoreError::Invalid("too many ingredients".to_owned()))?;
+            let quantity = ingredient.quantity.map(|q| {
+                if unscaled {
+                    q
+                } else {
+                    quantity::scale(&q, multiplier)
+                }
+            });
+            let id = Uuid::new_v4();
+            sqlx::query(
+                r"INSERT INTO list_items
+                      (id, list_id, product_id, text, category_id, quantity, position)
+                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )
+            .bind(id.to_string())
+            .bind(&list)
+            .bind(ingredient.product_id.map(|p| p.to_string()))
+            .bind(&ingredient.text)
+            .bind(ingredient.category.map(|c| c.id.to_string()))
+            .bind(quantity)
+            .bind(position)
+            .execute(&mut *tx)
+            .await?;
+            ids.push(id);
+        }
+        tx.commit().await?;
+
+        let mut added = Vec::with_capacity(ids.len());
+        for id in ids {
+            added.push(self.fetch_item(owner_id, list_id, id).await?);
+        }
+        Ok(added)
     }
 
     async fn assign_category(

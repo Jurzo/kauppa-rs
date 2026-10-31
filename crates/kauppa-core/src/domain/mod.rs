@@ -1,6 +1,7 @@
 pub mod category;
 pub mod ordering;
 pub mod product;
+pub mod quantity;
 pub mod recipe;
 pub mod shopping_list;
 pub mod user;
