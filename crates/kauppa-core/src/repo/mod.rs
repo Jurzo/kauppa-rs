@@ -13,6 +13,8 @@ pub mod sqlite;
 mod category;
 #[cfg(test)]
 mod product;
+#[cfg(test)]
+mod recipe;
 
 pub use sqlite::SqlitePool;
 
@@ -20,7 +22,10 @@ use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::CoreResult;
-use crate::domain::{Category, Direction, Product, ProductGroup, Recipe, ShoppingList, User};
+use crate::domain::{
+    Category, Direction, Ingredient, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail,
+    RecipeInput, ShoppingList, User,
+};
 
 #[async_trait]
 pub trait UserRepo: Send + Sync {
@@ -53,19 +58,30 @@ pub trait CategoryRepo: Send + Sync {
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
 }
 
-/// The per-user product catalog (favorites). Every method is owner-scoped: a
-/// product or category that isn't `owner_id`'s behaves as if it didn't exist.
+/// The per-user product catalog.
+///
+/// Favorites are the products with `is_favorite`; the rest were created from
+/// recipe ingredients (MB-0003) and stay hidden from the favorites views.
+/// Every method is owner-scoped: a product or category that isn't
+/// `owner_id`'s behaves as if it didn't exist.
 #[async_trait]
 pub trait ProductRepo: Send + Sync {
     /// Create a favorite in `category_id`, appended at the end of that
-    /// category. Rejects empty names (`Invalid`), owner-duplicate names
-    /// (`Conflict`), and a category the owner doesn't have (`Invalid`).
+    /// category. If a hidden product of the same name exists, it is promoted
+    /// instead: it becomes a favorite and moves to `category_id`, keeping its
+    /// id and name. Rejects empty names (`Invalid`), names of existing
+    /// favorites (`Conflict`), and a category the owner doesn't have
+    /// (`Invalid`).
     async fn create(&self, owner_id: Uuid, name: &str, category_id: Uuid) -> CoreResult<Product>;
 
-    /// The owner's products grouped by category: groups follow category order
+    /// The owner's favorites grouped by category: groups follow category order
     /// (uncategorized last), products follow `position` (name as tiebreak).
-    /// Categories with no products are omitted.
+    /// Hidden products and categories with no favorites are omitted.
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ProductGroup>>;
+
+    /// The owner's product (favorite or hidden) whose name matches `name`
+    /// ignoring case (RR-0003), if any. Rejects empty names (`Invalid`).
+    async fn find_by_name(&self, owner_id: Uuid, name: &str) -> CoreResult<Option<Product>>;
 
     /// Rename a product the caller owns. `NotFound` if it isn't theirs.
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product>;
@@ -79,8 +95,9 @@ pub trait ProductRepo: Send + Sync {
         category_id: Uuid,
     ) -> CoreResult<Product>;
 
-    /// Move a product one step within its category, atomically. Moving past
-    /// either end is a no-op.
+    /// Move a product one step within its category, atomically, past the
+    /// next favorite (hidden products keep their place). Moving past either
+    /// end is a no-op.
     async fn move_within_category(
         &self,
         owner_id: Uuid,
@@ -97,7 +114,64 @@ pub trait ShoppingListRepo: Send + Sync {
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ShoppingList>>;
 }
 
+/// Recipes and their ingredients.
+///
+/// Every method is owner-scoped: a recipe that isn't `owner_id`'s is
+/// `NotFound`, and so is an ingredient outside the given recipe.
 #[async_trait]
 pub trait RecipeRepo: Send + Sync {
+    /// The owner's recipes, most recently updated first.
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<Recipe>>;
+
+    /// Create a recipe with no ingredients. Rejects an empty title and
+    /// servings below 1 (`Invalid`).
+    async fn create(&self, owner_id: Uuid, input: &RecipeInput) -> CoreResult<Recipe>;
+
+    /// A recipe with its ingredients in position order.
+    async fn get(&self, owner_id: Uuid, id: Uuid) -> CoreResult<RecipeDetail>;
+
+    /// Replace a recipe's title, instructions, and servings. Validates like
+    /// `create`.
+    async fn update(&self, owner_id: Uuid, id: Uuid, input: &RecipeInput) -> CoreResult<Recipe>;
+
+    /// Append an ingredient, atomically. Its product is the owner's product
+    /// matching `product_name` ignoring case; if there is none, one is created
+    /// in `category_id`, hidden from favorites. `Invalid` for an empty name, a
+    /// new product without a category, or a category the owner doesn't have.
+    ///
+    /// Whether an existing product has a category is not checked here: RR-0001
+    /// makes "an ingredient needs a categorized product" a handler rule.
+    async fn add_ingredient(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient: &NewIngredient,
+    ) -> CoreResult<Ingredient>;
+
+    /// Set or clear (`None` or blank) an ingredient's quantity.
+    async fn set_ingredient_quantity(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<()>;
+
+    /// Move an ingredient one step within its recipe, atomically. Moving past
+    /// either end is a no-op.
+    async fn move_ingredient(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient_id: Uuid,
+        direction: Direction,
+    ) -> CoreResult<()>;
+
+    /// Remove an ingredient. Its product stays in the catalog.
+    async fn remove_ingredient(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient_id: Uuid,
+    ) -> CoreResult<()>;
 }

@@ -8,6 +8,6 @@ pub mod user;
 pub use category::Category;
 pub use ordering::Direction;
 pub use product::{Product, ProductGroup};
-pub use recipe::{Ingredient, Recipe};
+pub use recipe::{Ingredient, NewIngredient, Recipe, RecipeDetail, RecipeInput};
 pub use shopping_list::{ListItem, ShoppingList};
 pub use user::User;

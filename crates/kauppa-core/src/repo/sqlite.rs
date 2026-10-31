@@ -14,7 +14,8 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Product, ProductGroup, Recipe, ShoppingList, User, ordering,
+    Category, Direction, Ingredient, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail,
+    RecipeInput, ShoppingList, User, ordering,
 };
 use crate::error::CoreError;
 use crate::repo::name_key::name_key;
@@ -311,9 +312,51 @@ impl ProductRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str, category_id: Uuid) -> CoreResult<Product> {
         let name = clean_name("product", name)?;
         let now = Utc::now();
+        let owner = owner_id.to_string();
+        let category = category_id.to_string();
+        // IMMEDIATE: the hidden-product check and the insert can't race another
+        // writer creating the same name.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
 
-        // One statement: nothing is inserted unless the category is the
-        // owner's, and the product is appended at the end of that category.
+        let category_owned =
+            sqlx::query(r"SELECT 1 FROM categories WHERE id = ?1 AND owner_id = ?2")
+                .bind(&category)
+                .bind(&owner)
+                .fetch_optional(&mut *tx)
+                .await?
+                .is_some();
+        if !category_owned {
+            return Err(unknown_category());
+        }
+
+        // A hidden product (created from a recipe ingredient) of this name is
+        // promoted rather than duplicated: one product, one row (RR-0001).
+        let promoted = sqlx::query(
+            r"UPDATE products
+                SET is_favorite = 1,
+                    category_id = ?1,
+                    position = (SELECT COALESCE(MAX(p.position), -1) + 1
+                                  FROM products p
+                                  WHERE p.owner_id = ?2 AND p.category_id = ?1),
+                    updated_at = ?3
+                WHERE owner_id = ?2 AND name_key = ?4 AND is_favorite = 0
+              RETURNING id, owner_id, name, category_id, position, is_favorite,
+                        created_at, updated_at",
+        )
+        .bind(&category)
+        .bind(&owner)
+        .bind(now)
+        .bind(name_key(name))
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(row) = promoted {
+            let product = row_to_product(&row)?;
+            tx.commit().await?;
+            return Ok(product);
+        }
+
+        // Nothing is inserted unless the category is the owner's, and the
+        // product is appended at the end of that category.
         let row = sqlx::query(
             r"INSERT INTO products
                   (id, owner_id, name, name_key, category_id, position, is_favorite,
@@ -329,19 +372,22 @@ impl ProductRepo for SqlitePool {
                         created_at, updated_at",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(owner_id.to_string())
+        .bind(&owner)
         .bind(name)
         .bind(now)
-        .bind(category_id.to_string())
+        .bind(&category)
         .bind(name_key(name))
-        .fetch_optional(&self.inner)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
 
-        row.as_ref()
+        let product = row
+            .as_ref()
             .map(row_to_product)
             .transpose()?
-            .ok_or_else(unknown_category)
+            .ok_or_else(unknown_category)?;
+        tx.commit().await?;
+        Ok(product)
     }
 
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ProductGroup>> {
@@ -354,7 +400,7 @@ impl ProductRepo for SqlitePool {
                      c.position AS group_position, c.created_at AS group_created_at
                 FROM products p
                 LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
-                WHERE p.owner_id = ?1
+                WHERE p.owner_id = ?1 AND p.is_favorite = 1
                 ORDER BY c.id IS NULL, c.position, c.name, p.position, p.name",
         )
         .bind(owner_id.to_string())
@@ -391,6 +437,22 @@ impl ProductRepo for SqlitePool {
             }
         }
         Ok(groups)
+    }
+
+    async fn find_by_name(&self, owner_id: Uuid, name: &str) -> CoreResult<Option<Product>> {
+        let name = clean_name("product", name)?;
+        let row = sqlx::query(
+            r"SELECT id, owner_id, name, category_id, position, is_favorite,
+                     created_at, updated_at
+                FROM products
+                WHERE owner_id = ?1 AND name_key = ?2",
+        )
+        .bind(owner_id.to_string())
+        .bind(name_key(name))
+        .fetch_optional(&self.inner)
+        .await?;
+
+        row.as_ref().map(row_to_product).transpose()
     }
 
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product> {
@@ -502,7 +564,7 @@ impl ProductRepo for SqlitePool {
 
         // `IS` so the uncategorized (NULL) group can be ordered too.
         let siblings = sqlx::query(
-            r"SELECT id FROM products
+            r"SELECT id, is_favorite FROM products
                 WHERE owner_id = ?1 AND category_id IS ?2
                 ORDER BY position ASC, name ASC",
         )
@@ -510,17 +572,36 @@ impl ProductRepo for SqlitePool {
         .bind(category_id.as_deref())
         .fetch_all(&mut *tx)
         .await?;
-        let mut ids = siblings
-            .iter()
-            .map(|row| row.try_get::<String, _>("id"))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut ids = Vec::with_capacity(siblings.len());
+        let mut favorite = Vec::with_capacity(siblings.len());
+        for row in &siblings {
+            ids.push(row.try_get::<String, _>("id")?);
+            favorite.push(row.try_get::<bool, _>("is_favorite")?);
+        }
 
-        let index = ids
+        // Step among the products the user sees: a favorite swaps places with
+        // the next favorite, and hidden products in between keep their slots.
+        // A hidden product (not reachable from the favorites views) steps
+        // among all products.
+        let target = ids
             .iter()
             .position(|p| *p == id_str)
             .ok_or(CoreError::NotFound)?;
-        if !ordering::step(&mut ids, index, direction) {
+        let slots: Vec<usize> = if favorite[target] {
+            (0..ids.len()).filter(|&i| favorite[i]).collect()
+        } else {
+            (0..ids.len()).collect()
+        };
+        let mut visible: Vec<String> = slots.iter().map(|&i| ids[i].clone()).collect();
+        let index = slots
+            .iter()
+            .position(|&i| i == target)
+            .ok_or(CoreError::NotFound)?;
+        if !ordering::step(&mut visible, index, direction) {
             return Ok(());
+        }
+        for (&slot, product_id) in slots.iter().zip(visible) {
+            ids[slot] = product_id;
         }
 
         // Rewrite the whole group densely, which also heals any ties or gaps.
@@ -583,6 +664,127 @@ impl ShoppingListRepo for SqlitePool {
     }
 }
 
+fn row_to_recipe(row: &SqliteRow) -> CoreResult<Recipe> {
+    let id: String = row.try_get("id")?;
+    let owner_id: String = row.try_get("owner_id")?;
+    Ok(Recipe {
+        id: parse_uuid(&id)?,
+        owner_id: parse_uuid(&owner_id)?,
+        title: row.try_get("title")?,
+        instructions: row.try_get("instructions")?,
+        servings: row.try_get("servings")?,
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+/// Map a row of [`INGREDIENT_SELECT`] to an ingredient.
+fn row_to_ingredient(row: &SqliteRow, owner_id: Uuid) -> CoreResult<Ingredient> {
+    let id: String = row.try_get("id")?;
+    let recipe_id: String = row.try_get("recipe_id")?;
+    let product_id: Option<String> = row.try_get("product_id")?;
+    let category_id: Option<String> = row.try_get("category_id")?;
+    let category = category_id
+        .as_deref()
+        .map(|id| -> CoreResult<Category> {
+            Ok(Category {
+                id: parse_uuid(id)?,
+                owner_id,
+                name: row.try_get("category_name")?,
+                position: row.try_get("category_position")?,
+                created_at: row.try_get("category_created_at")?,
+            })
+        })
+        .transpose()?;
+    Ok(Ingredient {
+        id: parse_uuid(&id)?,
+        recipe_id: parse_uuid(&recipe_id)?,
+        product_id: product_id.as_deref().map(parse_uuid).transpose()?,
+        text: row.try_get("text")?,
+        quantity: row.try_get("quantity")?,
+        position: row.try_get("position")?,
+        category,
+    })
+}
+
+/// A recipe's ingredients with their products' live names and categories.
+/// Binds: `?1` recipe id, `?2` owner id, `?3` one ingredient id or NULL for
+/// all. Every join checks the owner, so another user's product or category
+/// can never show up here (RR-0001 constraint 9).
+const INGREDIENT_SELECT: &str = r"
+    SELECT i.id, i.recipe_id, p.id AS product_id, COALESCE(p.name, i.text) AS text,
+           i.quantity, i.position,
+           c.id AS category_id, c.name AS category_name,
+           c.position AS category_position, c.created_at AS category_created_at
+      FROM ingredients i
+      JOIN recipes r ON r.id = i.recipe_id AND r.owner_id = ?2
+      LEFT JOIN products p ON p.id = i.product_id AND p.owner_id = r.owner_id
+      LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = r.owner_id
+     WHERE i.recipe_id = ?1 AND (?3 IS NULL OR i.id = ?3)
+     ORDER BY i.position ASC, i.id ASC";
+
+/// Trim a recipe's fields and check them: a non-empty title, servings ≥ 1.
+fn clean_recipe(input: &RecipeInput) -> CoreResult<RecipeInput> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(CoreError::Invalid(
+            "recipe title must not be empty".to_owned(),
+        ));
+    }
+    if input.servings.is_some_and(|n| n < 1) {
+        return Err(CoreError::Invalid("servings must be at least 1".to_owned()));
+    }
+    Ok(RecipeInput {
+        title: title.to_owned(),
+        instructions: input.instructions.trim().to_owned(),
+        servings: input.servings,
+    })
+}
+
+/// Trim a quantity; blank means "no quantity".
+fn clean_quantity(quantity: Option<&str>) -> Option<&str> {
+    quantity.map(str::trim).filter(|q| !q.is_empty())
+}
+
+impl SqlitePool {
+    async fn fetch_ingredients(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        only: Option<Uuid>,
+    ) -> CoreResult<Vec<Ingredient>> {
+        let rows = sqlx::query(INGREDIENT_SELECT)
+            .bind(recipe_id.to_string())
+            .bind(owner_id.to_string())
+            .bind(only.map(|id| id.to_string()))
+            .fetch_all(&self.inner)
+            .await?;
+        rows.iter()
+            .map(|row| row_to_ingredient(row, owner_id))
+            .collect()
+    }
+}
+
+/// Fail with `NotFound` unless `recipe_id` is `owner`'s, and mark it updated.
+/// Runs inside the caller's transaction so ingredient writes and the recipe's
+/// `updated_at` commit together.
+async fn touch_owned_recipe(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    owner: &str,
+    recipe_id: &str,
+) -> CoreResult<()> {
+    let result = sqlx::query(r"UPDATE recipes SET updated_at = ?1 WHERE id = ?2 AND owner_id = ?3")
+        .bind(Utc::now())
+        .bind(recipe_id)
+        .bind(owner)
+        .execute(&mut **tx)
+        .await?;
+    if result.rows_affected() == 0 {
+        return Err(CoreError::NotFound);
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl RecipeRepo for SqlitePool {
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<Recipe>> {
@@ -597,20 +799,243 @@ impl RecipeRepo for SqlitePool {
         .fetch_all(&self.inner)
         .await?;
 
-        rows.into_iter()
-            .map(|row| {
-                let id: String = row.try_get("id")?;
-                let owner_id: String = row.try_get("owner_id")?;
-                Ok(Recipe {
-                    id: parse_uuid(&id)?,
-                    owner_id: parse_uuid(&owner_id)?,
-                    title: row.try_get("title")?,
-                    instructions: row.try_get("instructions")?,
-                    servings: row.try_get("servings")?,
-                    created_at: row.try_get("created_at")?,
-                    updated_at: row.try_get("updated_at")?,
-                })
-            })
-            .collect()
+        rows.iter().map(row_to_recipe).collect()
+    }
+
+    async fn create(&self, owner_id: Uuid, input: &RecipeInput) -> CoreResult<Recipe> {
+        let input = clean_recipe(input)?;
+        let row = sqlx::query(
+            r"INSERT INTO recipes
+                  (id, owner_id, title, instructions, servings, created_at, updated_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+              RETURNING id, owner_id, title, instructions, servings, created_at, updated_at",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(owner_id.to_string())
+        .bind(&input.title)
+        .bind(&input.instructions)
+        .bind(input.servings)
+        .bind(Utc::now())
+        .fetch_one(&self.inner)
+        .await?;
+
+        row_to_recipe(&row)
+    }
+
+    async fn get(&self, owner_id: Uuid, id: Uuid) -> CoreResult<RecipeDetail> {
+        let row = sqlx::query(
+            r"SELECT id, owner_id, title, instructions, servings, created_at, updated_at
+                FROM recipes
+                WHERE id = ?1 AND owner_id = ?2",
+        )
+        .bind(id.to_string())
+        .bind(owner_id.to_string())
+        .fetch_optional(&self.inner)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+
+        Ok(RecipeDetail {
+            recipe: row_to_recipe(&row)?,
+            ingredients: self.fetch_ingredients(owner_id, id, None).await?,
+        })
+    }
+
+    async fn update(&self, owner_id: Uuid, id: Uuid, input: &RecipeInput) -> CoreResult<Recipe> {
+        let input = clean_recipe(input)?;
+        let row = sqlx::query(
+            r"UPDATE recipes
+                SET title = ?1, instructions = ?2, servings = ?3, updated_at = ?4
+                WHERE id = ?5 AND owner_id = ?6
+              RETURNING id, owner_id, title, instructions, servings, created_at, updated_at",
+        )
+        .bind(&input.title)
+        .bind(&input.instructions)
+        .bind(input.servings)
+        .bind(Utc::now())
+        .bind(id.to_string())
+        .bind(owner_id.to_string())
+        .fetch_optional(&self.inner)
+        .await?;
+
+        row.as_ref()
+            .map(row_to_recipe)
+            .transpose()?
+            .ok_or(CoreError::NotFound)
+    }
+
+    async fn add_ingredient(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient: &NewIngredient,
+    ) -> CoreResult<Ingredient> {
+        let name = clean_name("product", &ingredient.product_name)?;
+        let owner = owner_id.to_string();
+        let recipe = recipe_id.to_string();
+        let now = Utc::now();
+        // IMMEDIATE: the product lookup and its creation can't race another
+        // writer adding the same name.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        touch_owned_recipe(&mut tx, &owner, &recipe).await?;
+
+        // Reuse the owner's product of this name (MB-0003 P3, matched through
+        // name_key per RR-0003 constraint 3); its category is kept as is.
+        let existing =
+            sqlx::query(r"SELECT id, name FROM products WHERE owner_id = ?1 AND name_key = ?2")
+                .bind(&owner)
+                .bind(name_key(name))
+                .fetch_optional(&mut *tx)
+                .await?;
+        let (product_id, product_name): (String, String) = if let Some(row) = existing {
+            (row.try_get("id")?, row.try_get("name")?)
+        } else {
+            let category = ingredient.category_id.ok_or_else(|| {
+                CoreError::Invalid(format!("choose a category for the new product {name}"))
+            })?;
+            // A new product, hidden from favorites, appended at the end of an
+            // owned category; nothing is inserted for a foreign one.
+            let row = sqlx::query(
+                r"INSERT INTO products
+                      (id, owner_id, name, name_key, category_id, position, is_favorite,
+                       created_at, updated_at)
+                  SELECT ?1, ?2, ?3, ?4, c.id,
+                         (SELECT COALESCE(MAX(p.position), -1) + 1
+                            FROM products p
+                            WHERE p.owner_id = ?2 AND p.category_id = c.id),
+                         0, ?5, ?5
+                    FROM categories c
+                    WHERE c.id = ?6 AND c.owner_id = ?2
+                  RETURNING id",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&owner)
+            .bind(name)
+            .bind(name_key(name))
+            .bind(now)
+            .bind(category.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?
+            .ok_or_else(unknown_category)?;
+            (row.try_get("id")?, name.to_owned())
+        };
+
+        let id = Uuid::new_v4();
+        sqlx::query(
+            r"INSERT INTO ingredients (id, recipe_id, product_id, text, quantity, position)
+              VALUES (?1, ?2, ?3, ?4, ?5,
+                      (SELECT COALESCE(MAX(position), -1) + 1
+                         FROM ingredients WHERE recipe_id = ?2))",
+        )
+        .bind(id.to_string())
+        .bind(&recipe)
+        .bind(&product_id)
+        .bind(&product_name)
+        .bind(clean_quantity(ingredient.quantity.as_deref()))
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        self.fetch_ingredients(owner_id, recipe_id, Some(id))
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(CoreError::NotFound)
+    }
+
+    async fn set_ingredient_quantity(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<()> {
+        let recipe = recipe_id.to_string();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
+
+        let result =
+            sqlx::query(r"UPDATE ingredients SET quantity = ?1 WHERE id = ?2 AND recipe_id = ?3")
+                .bind(clean_quantity(quantity))
+                .bind(ingredient_id.to_string())
+                .bind(&recipe)
+                .execute(&mut *tx)
+                .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn move_ingredient(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient_id: Uuid,
+        direction: Direction,
+    ) -> CoreResult<()> {
+        let recipe = recipe_id.to_string();
+        let id_str = ingredient_id.to_string();
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
+
+        let rows = sqlx::query(
+            r"SELECT id FROM ingredients WHERE recipe_id = ?1 ORDER BY position ASC, id ASC",
+        )
+        .bind(&recipe)
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut ids = rows
+            .iter()
+            .map(|row| row.try_get::<String, _>("id"))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let index = ids
+            .iter()
+            .position(|i| *i == id_str)
+            .ok_or(CoreError::NotFound)?;
+        if !ordering::step(&mut ids, index, direction) {
+            return Ok(());
+        }
+
+        // Rewrite the whole list densely, which also heals gaps left by removals.
+        for (index, id) in ids.iter().enumerate() {
+            let position = i64::try_from(index)
+                .map_err(|_| CoreError::Invalid("too many ingredients".to_owned()))?;
+            sqlx::query(r"UPDATE ingredients SET position = ?1 WHERE id = ?2 AND recipe_id = ?3")
+                .bind(position)
+                .bind(id)
+                .bind(&recipe)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn remove_ingredient(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ingredient_id: Uuid,
+    ) -> CoreResult<()> {
+        let recipe = recipe_id.to_string();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
+
+        let result = sqlx::query(r"DELETE FROM ingredients WHERE id = ?1 AND recipe_id = ?2")
+            .bind(ingredient_id.to_string())
+            .bind(&recipe)
+            .execute(&mut *tx)
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+
+        tx.commit().await?;
+        Ok(())
     }
 }

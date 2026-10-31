@@ -1,5 +1,5 @@
 //! MB-0002 acceptance tests for the product repository (P2–P5), plus the
-//! repo-level half of P1, and MB-0010 P2 and P3. Test-only module: `ProductRepo` lives in `repo` and
+//! repo-level half of P1, MB-0010 P2 and P3, and MB-0003's favorites rules. Test-only module: `ProductRepo` lives in `repo` and
 //! its SQLite impl in `repo::sqlite`; this module exists so the brief's
 //! `cargo test -p kauppa-core repo::product::<name>` checks select these tests.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -7,8 +7,8 @@
 use uuid::Uuid;
 
 use crate::CoreError;
-use crate::domain::{Direction, ProductGroup};
-use crate::repo::{CategoryRepo, ProductRepo, SqlitePool, UserRepo};
+use crate::domain::{Direction, NewIngredient, ProductGroup, RecipeInput};
+use crate::repo::{CategoryRepo, ProductRepo, RecipeRepo, SqlitePool, UserRepo};
 
 /// A fresh, isolated in-memory database with migrations applied.
 async fn test_pool() -> SqlitePool {
@@ -390,5 +390,131 @@ async fn case_only_rename() {
     assert_eq!(
         shape(&ProductRepo::list_for_owner(&pool, u).await.unwrap()),
         [(Some("Kylmä"), vec!["TÄYSMAITO"])]
+    );
+}
+
+/// A recipe-created product (`is_favorite = 0`, MB-0003) for these tests.
+async fn make_hidden(pool: &SqlitePool, owner: Uuid, name: &str, category: Uuid) -> Uuid {
+    let recipe = RecipeRepo::create(
+        pool,
+        owner,
+        &RecipeInput {
+            title: format!("Recipe with {name}"),
+            ..RecipeInput::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id;
+    let new = NewIngredient {
+        product_name: name.to_owned(),
+        quantity: None,
+        category_id: Some(category),
+    };
+    RecipeRepo::add_ingredient(pool, owner, recipe, &new)
+        .await
+        .unwrap()
+        .product_id
+        .expect("linked product")
+}
+
+/// MB-0003 (owner decision): favorites views list only favorites; products
+/// created from recipe ingredients stay hidden.
+#[tokio::test]
+async fn list_hides_non_favorites() {
+    let pool = test_pool().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let hevi = make_category(&pool, u, "Hevi").await;
+    let kylma = make_category(&pool, u, "Kylmä").await;
+
+    ProductRepo::create(&pool, u, "Omena", hevi).await.unwrap();
+    make_hidden(&pool, u, "Kurkku", hevi).await;
+    make_hidden(&pool, u, "Maito", kylma).await;
+
+    assert_eq!(
+        shape(&ProductRepo::list_for_owner(&pool, u).await.unwrap()),
+        [(Some("Hevi"), vec!["Omena"])]
+    );
+}
+
+/// MB-0003 (owner decision): adding a favorite whose name matches a hidden
+/// product promotes that product — same row, moved to the chosen category —
+/// instead of answering "already exists". An existing favorite still
+/// conflicts.
+#[tokio::test]
+async fn create_promotes_hidden_product() {
+    let pool = test_pool().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let other = make_user(&pool, "other@example.com").await;
+    let hevi = make_category(&pool, u, "Hevi").await;
+    let kylma = make_category(&pool, u, "Kylmä").await;
+    let theirs = make_category(&pool, other, "Kylmä").await;
+    ProductRepo::create(&pool, u, "Jogurtti", kylma)
+        .await
+        .unwrap();
+    let hidden = make_hidden(&pool, u, "maito", hevi).await;
+
+    // A foreign category is refused before anything is promoted.
+    assert!(matches!(
+        ProductRepo::create(&pool, u, "Maito", theirs).await,
+        Err(CoreError::Invalid(_))
+    ));
+    assert!(
+        !ProductRepo::find_by_name(&pool, u, "maito")
+            .await
+            .unwrap()
+            .unwrap()
+            .is_favorite
+    );
+
+    let promoted = ProductRepo::create(&pool, u, "MAITO", kylma).await.unwrap();
+    assert_eq!(
+        promoted.id, hidden,
+        "the same row, so recipes keep pointing at it"
+    );
+    assert!(promoted.is_favorite);
+    assert_eq!(promoted.name, "maito", "keeps its stored name");
+    assert_eq!(promoted.category_id, Some(kylma));
+    assert_eq!(
+        shape(&ProductRepo::list_for_owner(&pool, u).await.unwrap()),
+        [(Some("Kylmä"), vec!["Jogurtti", "maito"])],
+        "appended at the end of the chosen category"
+    );
+
+    assert!(matches!(
+        ProductRepo::create(&pool, u, "Maito", kylma).await,
+        Err(CoreError::Conflict(_))
+    ));
+}
+
+/// MB-0003: moving a favorite steps past the next favorite; hidden products in
+/// the same category keep their slots and never block a move.
+#[tokio::test]
+async fn move_skips_hidden_products() {
+    let pool = test_pool().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let hevi = make_category(&pool, u, "Hevi").await;
+
+    let omena = ProductRepo::create(&pool, u, "Omena", hevi).await.unwrap();
+    make_hidden(&pool, u, "Kurkku", hevi).await;
+    let porkkana = ProductRepo::create(&pool, u, "Porkkana", hevi)
+        .await
+        .unwrap();
+
+    ProductRepo::move_within_category(&pool, u, porkkana.id, Direction::Up)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&ProductRepo::list_for_owner(&pool, u).await.unwrap()),
+        [(Some("Hevi"), vec!["Porkkana", "Omena"])]
+    );
+    // Omena is now the last favorite, so down is a no-op even though the
+    // hidden Kurkku sits between the two in position order.
+    ProductRepo::move_within_category(&pool, u, omena.id, Direction::Down)
+        .await
+        .unwrap();
+    assert_eq!(
+        shape(&ProductRepo::list_for_owner(&pool, u).await.unwrap()),
+        [(Some("Hevi"), vec!["Porkkana", "Omena"])]
     );
 }
