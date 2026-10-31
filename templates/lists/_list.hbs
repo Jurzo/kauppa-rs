@@ -1,4 +1,92 @@
 <div id="list-{{id}}" class="shopping-list" data-list-id="{{id}}">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+
+  <form class="add-product" method="post" action="/lists/{{id}}/items"
+        hx-post="/lists/{{id}}/items" hx-target="#list-{{id}}" hx-swap="outerHTML">
+    <label>Item
+      <input id="new-item" name="text" type="text" required autocomplete="off"
+             placeholder="e.g. Kynttilät" value="{{draft.text}}" />
+    </label>
+    <label>Quantity
+      <input name="quantity" type="text" autocomplete="off" placeholder="optional"
+             value="{{draft.quantity}}" />
+    </label>
+    <button type="submit" class="button primary">Add</button>
+  </form>
+
+  {{#if favorites}}
+    <form class="add-product" method="post" action="/lists/{{id}}/favorites"
+          hx-post="/lists/{{id}}/favorites" hx-target="#list-{{id}}" hx-swap="outerHTML">
+      <label>Favorite
+        <select name="product_id" required>
+          <option value="" disabled selected>Choose a favorite</option>
+          {{#each favorites}}
+            <optgroup label="{{#if this.name}}{{this.name}}{{else}}Uncategorized{{/if}}">
+              {{#each this.products}}
+                <option value="{{this.id}}">{{this.name}}</option>
+              {{/each}}
+            </optgroup>
+          {{/each}}
+        </select>
+      </label>
+      <label>Quantity
+        <input name="quantity" type="text" autocomplete="off" placeholder="optional" />
+      </label>
+      <button type="submit" class="button">Add favorite</button>
+    </form>
+  {{else}}
+    <p class="muted">Save <a href="/favorites">favorites</a> to add them here in one tap.</p>
+  {{/if}}
+
+  <ul class="product-list">
+    {{#each items}}
+      <li class="product-row">
+        <span class="product-name">
+          {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}
+          <span class="muted">· {{#if this.category}}{{this.category}}{{else}}Uncategorized{{/if}}</span>
+        </span>
+        <details class="product-edit"{{#unless this.category}}{{#if ../has_categories}} open{{/if}}{{/unless}}>
+          <summary>{{#if this.category}}Edit{{else}}Choose category{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
+          {{#if ../has_categories}}
+            <form method="post" action="/lists/{{../id}}/items/{{this.id}}/category"
+                  hx-post="/lists/{{../id}}/items/{{this.id}}/category" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+              <label>Category
+                {{> products/_category_picker this.picker }}
+              </label>
+              <button type="submit" class="button">Set</button>
+            </form>
+          {{else}}
+            <p class="muted"><a href="/categories">Create a category</a> to group items.</p>
+          {{/if}}
+          <form method="post" action="/lists/{{../id}}/items/{{this.id}}/remove"
+                hx-post="/lists/{{../id}}/items/{{this.id}}/remove" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+            <button type="submit" class="link danger">Remove</button>
+          </form>
+        </details>
+      </li>
+    {{else}}
+      <li class="product-row empty">No items yet.</li>
+    {{/each}}
+  </ul>
+
+  {{#if removed}}
+    <details class="removed-items">
+      <summary>Removed ({{removed_count}})</summary>
+      <ul class="product-list">
+        {{#each removed}}
+          <li class="product-row">
+            <span class="product-name muted">{{this.text}}</span>
+            <form class="row-actions" method="post" action="/lists/{{../id}}/items/{{this.id}}/restore"
+                  hx-post="/lists/{{../id}}/items/{{this.id}}/restore" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+              <button type="submit" class="link">Restore</button>
+            </form>
+          </li>
+        {{/each}}
+      </ul>
+    </details>
+  {{/if}}
+
   <p class="muted">Updated {{updated}}</p>
-  <p class="empty">No items yet.</p>
 </div>

@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail,
-    RecipeInput, ShoppingList, User, ordering,
+    Category, Direction, Ingredient, ListItem, NewIngredient, Product, ProductGroup, Recipe,
+    RecipeDetail, RecipeInput, ShoppingList, User, ordering,
 };
 use crate::error::CoreError;
 use crate::repo::name_key::name_key;
@@ -646,6 +646,102 @@ fn row_to_list(row: &SqliteRow) -> CoreResult<ShoppingList> {
     })
 }
 
+/// Map a row of [`ITEM_SELECT`] to a list item.
+fn row_to_item(row: &SqliteRow, owner_id: Uuid) -> CoreResult<ListItem> {
+    let id: String = row.try_get("id")?;
+    let list_id: String = row.try_get("list_id")?;
+    let product_id: Option<String> = row.try_get("product_id")?;
+    let category_id: Option<String> = row.try_get("category_id")?;
+    let category = category_id
+        .as_deref()
+        .map(|id| -> CoreResult<Category> {
+            Ok(Category {
+                id: parse_uuid(id)?,
+                owner_id,
+                name: row.try_get("category_name")?,
+                position: row.try_get("category_position")?,
+                created_at: row.try_get("category_created_at")?,
+            })
+        })
+        .transpose()?;
+    Ok(ListItem {
+        id: parse_uuid(&id)?,
+        list_id: parse_uuid(&list_id)?,
+        product_id: product_id.as_deref().map(parse_uuid).transpose()?,
+        text: row.try_get("text")?,
+        quantity: row.try_get("quantity")?,
+        checked: row.try_get("checked")?,
+        position: row.try_get("position")?,
+        category,
+        removed_at: row.try_get("removed_at")?,
+    })
+}
+
+/// A list's items with their categories' live names and order. Binds: `?1`
+/// list id, `?2` owner id, `?3` one item id or NULL for all, `?4` 1 for
+/// removed items or 0 for active ones (ignored when `?3` is set). Every join
+/// checks the owner (RR-0001 constraint 9).
+const ITEM_SELECT: &str = r"
+    SELECT i.id, i.list_id, p.id AS product_id, i.text, i.quantity, i.checked, i.position,
+           i.removed_at,
+           c.id AS category_id, c.name AS category_name,
+           c.position AS category_position, c.created_at AS category_created_at
+      FROM list_items i
+      JOIN shopping_lists l ON l.id = i.list_id AND l.owner_id = ?2
+      LEFT JOIN products p ON p.id = i.product_id AND p.owner_id = l.owner_id
+      LEFT JOIN categories c ON c.id = i.category_id AND c.owner_id = l.owner_id
+     WHERE i.list_id = ?1
+       AND (CASE WHEN ?3 IS NULL THEN (i.removed_at IS NOT NULL) = ?4 ELSE i.id = ?3 END)
+     ORDER BY i.position ASC, i.id ASC";
+
+impl SqlitePool {
+    async fn fetch_items(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        only: Option<Uuid>,
+        removed: bool,
+    ) -> CoreResult<Vec<ListItem>> {
+        let rows = sqlx::query(ITEM_SELECT)
+            .bind(list_id.to_string())
+            .bind(owner_id.to_string())
+            .bind(only.map(|id| id.to_string()))
+            .bind(removed)
+            .fetch_all(&self.inner)
+            .await?;
+        rows.iter().map(|row| row_to_item(row, owner_id)).collect()
+    }
+
+    async fn fetch_item(&self, owner_id: Uuid, list_id: Uuid, id: Uuid) -> CoreResult<ListItem> {
+        self.fetch_items(owner_id, list_id, Some(id), false)
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(CoreError::NotFound)
+    }
+}
+
+/// Fail with `NotFound` unless `list_id` is `owner`'s, and mark it updated,
+/// so a list being worked on rises to the top of the index. Runs inside the
+/// caller's transaction so the item write and `updated_at` commit together.
+async fn touch_owned_list(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    owner: &str,
+    list_id: &str,
+) -> CoreResult<()> {
+    let result =
+        sqlx::query(r"UPDATE shopping_lists SET updated_at = ?1 WHERE id = ?2 AND owner_id = ?3")
+            .bind(Utc::now())
+            .bind(list_id)
+            .bind(owner)
+            .execute(&mut **tx)
+            .await?;
+    if result.rows_affected() == 0 {
+        return Err(CoreError::NotFound);
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl ShoppingListRepo for SqlitePool {
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ShoppingList>> {
@@ -727,6 +823,172 @@ impl ShoppingListRepo for SqlitePool {
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
         }
+        Ok(())
+    }
+
+    async fn items(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        removed: bool,
+    ) -> CoreResult<Vec<ListItem>> {
+        // An unknown or foreign list is NotFound, not an empty list.
+        ShoppingListRepo::get(self, owner_id, list_id).await?;
+        self.fetch_items(owner_id, list_id, None, removed).await
+    }
+
+    async fn add_item(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        text: &str,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        let text = clean_name("item", text)?;
+        let list = list_id.to_string();
+        let id = Uuid::new_v4();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_list(&mut tx, &owner_id.to_string(), &list).await?;
+
+        // Appended at the end; removed items keep their positions, so a
+        // restored item returns to its place.
+        sqlx::query(
+            r"INSERT INTO list_items (id, list_id, text, quantity, position)
+              VALUES (?1, ?2, ?3, ?4,
+                      (SELECT COALESCE(MAX(position), -1) + 1
+                         FROM list_items WHERE list_id = ?2))",
+        )
+        .bind(id.to_string())
+        .bind(&list)
+        .bind(text)
+        .bind(clean_quantity(quantity))
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        self.fetch_item(owner_id, list_id, id).await
+    }
+
+    async fn add_product(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        product_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        let owner = owner_id.to_string();
+        let list = list_id.to_string();
+        let id = Uuid::new_v4();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_list(&mut tx, &owner, &list).await?;
+
+        // One statement: the item copies the product's name and category, and
+        // nothing is inserted unless the product is the owner's.
+        let inserted = sqlx::query(
+            r"INSERT INTO list_items
+                  (id, list_id, product_id, text, category_id, quantity, position)
+              SELECT ?1, ?2, p.id, p.name, p.category_id, ?3,
+                     (SELECT COALESCE(MAX(position), -1) + 1
+                        FROM list_items WHERE list_id = ?2)
+                FROM products p
+                WHERE p.id = ?4 AND p.owner_id = ?5",
+        )
+        .bind(id.to_string())
+        .bind(&list)
+        .bind(clean_quantity(quantity))
+        .bind(product_id.to_string())
+        .bind(&owner)
+        .execute(&mut *tx)
+        .await?;
+        if inserted.rows_affected() == 0 {
+            return Err(CoreError::Invalid("unknown product".to_owned()));
+        }
+        tx.commit().await?;
+
+        self.fetch_item(owner_id, list_id, id).await
+    }
+
+    async fn assign_category(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        category_id: Uuid,
+    ) -> CoreResult<ListItem> {
+        let owner = owner_id.to_string();
+        let list = list_id.to_string();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_list(&mut tx, &owner, &list).await?;
+
+        let item_exists = sqlx::query(r"SELECT 1 FROM list_items WHERE id = ?1 AND list_id = ?2")
+            .bind(item_id.to_string())
+            .bind(&list)
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some();
+        if !item_exists {
+            return Err(CoreError::NotFound);
+        }
+        // The category must be the owner's (RR-0001 constraint 9).
+        let updated = sqlx::query(
+            r"UPDATE list_items SET category_id = ?1
+                WHERE id = ?3 AND list_id = ?4
+                  AND EXISTS (SELECT 1 FROM categories WHERE id = ?1 AND owner_id = ?2)",
+        )
+        .bind(category_id.to_string())
+        .bind(&owner)
+        .bind(item_id.to_string())
+        .bind(&list)
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() == 0 {
+            return Err(unknown_category());
+        }
+        tx.commit().await?;
+
+        self.fetch_item(owner_id, list_id, item_id).await
+    }
+
+    async fn remove_item(&self, owner_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()> {
+        let list = list_id.to_string();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_list(&mut tx, &owner_id.to_string(), &list).await?;
+
+        let result = sqlx::query(
+            r"UPDATE list_items SET removed_at = ?1
+                WHERE id = ?2 AND list_id = ?3 AND removed_at IS NULL",
+        )
+        .bind(Utc::now())
+        .bind(item_id.to_string())
+        .bind(&list)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn restore_item(&self, owner_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()> {
+        let list = list_id.to_string();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_list(&mut tx, &owner_id.to_string(), &list).await?;
+
+        let result = sqlx::query(
+            r"UPDATE list_items SET removed_at = NULL
+                WHERE id = ?1 AND list_id = ?2 AND removed_at IS NOT NULL",
+        )
+        .bind(item_id.to_string())
+        .bind(&list)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+
+        tx.commit().await?;
         Ok(())
     }
 }
