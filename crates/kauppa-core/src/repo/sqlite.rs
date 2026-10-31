@@ -17,6 +17,7 @@ use crate::domain::{
     Category, Direction, Product, ProductGroup, Recipe, ShoppingList, User, ordering,
 };
 use crate::error::CoreError;
+use crate::repo::name_key::name_key;
 use crate::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo, UserRepo};
 
 #[derive(Clone, Debug)]
@@ -191,12 +192,13 @@ impl CategoryRepo for SqlitePool {
         .try_get("next")?;
 
         sqlx::query(
-            r"INSERT INTO categories (id, owner_id, name, position, created_at)
-              VALUES (?1, ?2, ?3, ?4, ?5)",
+            r"INSERT INTO categories (id, owner_id, name, name_key, position, created_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )
         .bind(&id_str)
         .bind(&owner)
         .bind(name)
+        .bind(name_key(name))
         .bind(position)
         .bind(now)
         .execute(&self.inner)
@@ -237,19 +239,21 @@ impl CategoryRepo for SqlitePool {
         let owner = owner_id.to_string();
         let id_str = id.to_string();
 
-        let result =
-            sqlx::query(r"UPDATE categories SET name = ?1 WHERE id = ?2 AND owner_id = ?3")
-                .bind(name)
-                .bind(&id_str)
-                .bind(&owner)
-                .execute(&self.inner)
-                .await
-                .map_err(|e| match &e {
-                    sqlx::Error::Database(db) if db.is_unique_violation() => {
-                        CoreError::Conflict(format!("category already exists: {name}"))
-                    }
-                    _ => CoreError::Database(e),
-                })?;
+        let result = sqlx::query(
+            r"UPDATE categories SET name = ?1, name_key = ?2 WHERE id = ?3 AND owner_id = ?4",
+        )
+        .bind(name)
+        .bind(name_key(name))
+        .bind(&id_str)
+        .bind(&owner)
+        .execute(&self.inner)
+        .await
+        .map_err(|e| match &e {
+            sqlx::Error::Database(db) if db.is_unique_violation() => {
+                CoreError::Conflict(format!("category already exists: {name}"))
+            }
+            _ => CoreError::Database(e),
+        })?;
 
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
@@ -312,8 +316,9 @@ impl ProductRepo for SqlitePool {
         // owner's, and the product is appended at the end of that category.
         let row = sqlx::query(
             r"INSERT INTO products
-                  (id, owner_id, name, category_id, position, is_favorite, created_at, updated_at)
-              SELECT ?1, ?2, ?3, c.id,
+                  (id, owner_id, name, name_key, category_id, position, is_favorite,
+                   created_at, updated_at)
+              SELECT ?1, ?2, ?3, ?6, c.id,
                      (SELECT COALESCE(MAX(p.position), -1) + 1
                         FROM products p
                         WHERE p.owner_id = ?2 AND p.category_id = c.id),
@@ -328,6 +333,7 @@ impl ProductRepo for SqlitePool {
         .bind(name)
         .bind(now)
         .bind(category_id.to_string())
+        .bind(name_key(name))
         .fetch_optional(&self.inner)
         .await
         .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
@@ -391,7 +397,7 @@ impl ProductRepo for SqlitePool {
         let name = clean_name("product", name)?;
 
         let row = sqlx::query(
-            r"UPDATE products SET name = ?1, updated_at = ?2
+            r"UPDATE products SET name = ?1, name_key = ?5, updated_at = ?2
                 WHERE id = ?3 AND owner_id = ?4
               RETURNING id, owner_id, name, category_id, position, is_favorite,
                         created_at, updated_at",
@@ -400,6 +406,7 @@ impl ProductRepo for SqlitePool {
         .bind(Utc::now())
         .bind(id.to_string())
         .bind(owner_id.to_string())
+        .bind(name_key(name))
         .fetch_optional(&self.inner)
         .await
         .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
