@@ -52,7 +52,8 @@ runbook: .agentic/runbooks/dependency-bump.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions:
+  - RR-0005
 ---
 ```
 

@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: ".agentic/runbooks/dependency-bump.md (\"Changing enabled features\"; entry gate 2–3: CRP open, RR approved before the PR); feature.md escalation trigger `Cargo.toml`, `crates/*/Cargo.toml` dependency changes → platform; MB-0009 autonomy.escalate (any change to Cargo.toml or crates/*/Cargo.toml)"
 ---
 ```
