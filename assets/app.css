@@ -119,3 +119,15 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
   main { padding: 0.75rem; }
   .topbar nav { gap: 0.5rem; }
 }
+
+/* Recipes (MB-0003) */
+.recipe-details { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin: 1rem 0; }
+.recipe-details label { display: flex; flex-direction: column; flex: 1 1 10rem; }
+.recipe-details .recipe-instructions { flex-basis: 100%; }
+.recipe-details input, .recipe-details textarea {
+  margin-top: 0.25rem; padding: 0.5rem; min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--fg); font: inherit;
+}
+.recipe-details textarea { resize: vertical; }
+.ingredient-quantity { font-weight: 600; }

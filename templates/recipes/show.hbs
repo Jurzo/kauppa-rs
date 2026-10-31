@@ -1,0 +1,13 @@
+{{#> layout title=title signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>{{title}}</h1>
+    <a href="/recipes">All recipes</a>
+  </header>
+
+  {{> recipes/_details details }}
+
+  <h2>Ingredients</h2>
+  {{> recipes/_ingredients ingredients }}
+</section>
+{{/layout}}

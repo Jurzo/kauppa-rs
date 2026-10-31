@@ -2,22 +2,19 @@
 <section>
   <header class="section-header">
     <h1>Recipes</h1>
-    <button class="button primary"
-            hx-post="/recipes"
-            hx-swap="afterbegin"
-            hx-target="#recipe-grid">New recipe</button>
   </header>
+
+  {{> recipes/_new new }}
+
   <div id="recipe-grid" class="grid">
-    {{#if recipes}}
-      {{#each recipes}}
-        <article class="card">
-          <h2>{{this.title}}</h2>
-          {{#if this.servings}}<p class="muted">Serves {{this.servings}}</p>{{/if}}
-        </article>
-      {{/each}}
+    {{#each recipes}}
+      <article class="card">
+        <h2><a href="/recipes/{{this.id}}">{{this.title}}</a></h2>
+        {{#if this.servings}}<p class="muted">Serves {{this.servings}}</p>{{/if}}
+      </article>
     {{else}}
-      <p class="empty">No recipes yet.</p>
-    {{/if}}
+      <p class="empty">No recipes yet. Name your first one above.</p>
+    {{/each}}
   </div>
 </section>
 {{/layout}}

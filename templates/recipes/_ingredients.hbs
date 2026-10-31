@@ -1,0 +1,60 @@
+<div id="ingredients" class="ingredients">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+
+  <ul class="product-list">
+    {{#each items}}
+      <li class="product-row">
+        <span class="product-name">
+          {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.name}}
+          {{#if this.category}}<span class="muted">· {{this.category}}</span>{{/if}}
+        </span>
+        <form class="row-actions" method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/move"
+              hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/move" hx-target="#ingredients" hx-swap="outerHTML">
+          <button id="ingredient-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
+                  aria-label="Move {{this.name}} up"{{#if @first}} disabled{{/if}}>↑</button>
+          <button id="ingredient-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
+                  aria-label="Move {{this.name}} down"{{#if @last}} disabled{{/if}}>↓</button>
+        </form>
+        <details class="product-edit">
+          <summary>Edit<span class="visually-hidden"> {{this.name}}</span></summary>
+          <form method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/quantity"
+                hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/quantity" hx-target="#ingredients" hx-swap="outerHTML">
+            <label>Quantity
+              <input name="quantity" type="text" autocomplete="off" value="{{this.quantity}}" />
+            </label>
+            <button type="submit" class="button">Save</button>
+          </form>
+          <form method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/delete"
+                hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/delete" hx-target="#ingredients" hx-swap="outerHTML">
+            <button type="submit" class="link danger">Remove</button>
+          </form>
+        </details>
+      </li>
+    {{else}}
+      <li class="product-row empty">No ingredients yet.</li>
+    {{/each}}
+  </ul>
+
+  {{#if has_categories}}
+    <form class="add-product" method="post" action="/recipes/{{recipe_id}}/ingredients"
+          hx-post="/recipes/{{recipe_id}}/ingredients" hx-target="#ingredients" hx-swap="outerHTML">
+      <label>Ingredient
+        <input id="new-ingredient-name" name="name" type="text" required
+               autocomplete="off" placeholder="e.g. Maito" value="{{add.name}}" />
+      </label>
+      <label>Quantity
+        <input name="quantity" type="text" autocomplete="off" placeholder="optional, e.g. 5 dl"
+               value="{{add.quantity}}" />
+      </label>
+      <label>Category <span class="muted">(for a new product)</span>
+        {{> products/_category_picker add.picker }}
+      </label>
+      <button type="submit" class="button primary">Add</button>
+    </form>
+  {{else}}
+    <p class="empty">Ingredients are grouped by category —
+      <a href="/categories">create a category</a> first.</p>
+  {{/if}}
+</div>

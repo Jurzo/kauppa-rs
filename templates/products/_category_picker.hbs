@@ -1,4 +1,4 @@
-<select name="category_id" required>
+<select name="category_id"{{#if required}} required{{/if}}>
   <option value="" disabled{{#unless has_selection}} selected{{/unless}}>Choose a category</option>
   {{#each options}}
     <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
