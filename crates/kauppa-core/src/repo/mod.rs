@@ -4,7 +4,6 @@
 //! domain tests can stub them and so backends can be swapped (SQLite today,
 //! Postgres later) without touching handlers.
 
-mod name_key;
 pub mod sqlite;
 
 // Mission Brief acceptance tests for the repo traits; the module paths match
