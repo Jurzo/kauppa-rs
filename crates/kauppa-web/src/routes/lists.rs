@@ -4,7 +4,14 @@
 //! mutations answer htmx with the re-rendered `#lists` fragment; plain
 //! requests get a 303 (PRG), or the full page when the input was rejected.
 //! All endpoints require an authenticated user, and another user's list is a
-//! 404. Items are MB-0004's; this module only opens the list they belong to.
+//! 404.
+//!
+//! An open list is also where it is assembled (MB-0004): free-text items,
+//! favorites, a category per item, and soft removal with restore. Those
+//! mutations answer htmx with the re-rendered `#list-{id}` fragment, and plain
+//! requests with a 303 back to the list. A favorite's item copies its name and
+//! category at add-time (RR-0001); a free-text item stays uncategorized until
+//! the user picks a category.
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -12,16 +19,39 @@ use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use kauppa_core::domain::ShoppingList;
-use kauppa_core::repo::ShoppingListRepo;
+use kauppa_core::domain::{Category, ListItem, ProductGroup, ShoppingList};
+use kauppa_core::repo::{CategoryRepo, ProductRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::{WebError, WebResult};
+use crate::routes::products::{Picker, parse_category};
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 struct NameForm {
     name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ItemForm {
+    text: String,
+    #[serde(default)]
+    quantity: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct FavoriteForm {
+    // Missing and empty both mean "nothing chosen", which becomes a message.
+    #[serde(default)]
+    product_id: String,
+    #[serde(default)]
+    quantity: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CategoryForm {
+    #[serde(default)]
+    category_id: String,
 }
 
 fn current_user(id: &Identity) -> WebResult<Uuid> {
@@ -59,7 +89,167 @@ struct ListCard {
 
 #[derive(Debug, Serialize)]
 struct ShowView {
-    list: ListCard,
+    list: ListView,
+}
+
+/// An open list and its builder (`lists/_list`).
+#[derive(Debug, Serialize)]
+struct ListView {
+    id: Uuid,
+    name: String,
+    updated: String,
+    items: Vec<ItemRow>,
+    removed: Vec<ItemRow>,
+    removed_count: usize,
+    favorites: Vec<FavoriteGroup>,
+    has_categories: bool,
+    draft: ItemDraft,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ItemRow {
+    id: Uuid,
+    text: String,
+    quantity: String,
+    category: Option<String>,
+    picker: Picker,
+}
+
+/// Favorites for the "add a favorite" `<select>`, one `<optgroup>` per
+/// category.
+#[derive(Debug, Serialize)]
+struct FavoriteGroup {
+    name: Option<String>,
+    products: Vec<FavoriteOption>,
+}
+
+#[derive(Debug, Serialize)]
+struct FavoriteOption {
+    id: Uuid,
+    name: String,
+}
+
+/// The free-text form's values after a rejected submission.
+#[derive(Debug, Default, Serialize)]
+struct ItemDraft {
+    text: String,
+    quantity: String,
+}
+
+fn item_row(item: ListItem, categories: &[Category]) -> ItemRow {
+    let category_id = item.category.as_ref().map(|c| c.id);
+    ItemRow {
+        id: item.id,
+        text: item.text,
+        quantity: item.quantity.unwrap_or_default(),
+        category: item.category.map(|c| c.name),
+        picker: Picker::new(categories, category_id),
+    }
+}
+
+fn favorite_groups(groups: Vec<ProductGroup>) -> Vec<FavoriteGroup> {
+    groups
+        .into_iter()
+        .map(|g| FavoriteGroup {
+            name: g.category.map(|c| c.name),
+            products: g
+                .products
+                .into_iter()
+                .map(|p| FavoriteOption {
+                    id: p.id,
+                    name: p.name,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
+/// Render an open list as the full page or, for htmx, its `#list-{id}`
+/// fragment.
+async fn render_list(
+    state: &AppState,
+    user: Uuid,
+    list_id: Uuid,
+    fragment: bool,
+    status: StatusCode,
+    draft: ItemDraft,
+    error: Option<String>,
+) -> WebResult<HttpResponse> {
+    let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
+    let items = ShoppingListRepo::items(&state.pool, user, list_id, false).await?;
+    let removed = ShoppingListRepo::items(&state.pool, user, list_id, true).await?;
+    let categories = CategoryRepo::list_for_owner(&state.pool, user).await?;
+    let favorites = ProductRepo::list_for_owner(&state.pool, user).await?;
+    let card = ListCard::from(list);
+    let removed_count = removed.len();
+    let view = ListView {
+        id: card.id,
+        name: card.name,
+        updated: card.updated,
+        items: items
+            .into_iter()
+            .map(|i| item_row(i, &categories))
+            .collect(),
+        removed: removed
+            .into_iter()
+            .map(|i| item_row(i, &categories))
+            .collect(),
+        removed_count,
+        favorites: favorite_groups(favorites),
+        has_categories: !categories.is_empty(),
+        draft,
+        error,
+    };
+    let body = if fragment {
+        state.templates.render("lists/_list", &view)?
+    } else {
+        state
+            .templates
+            .render("lists/show", &ShowView { list: view })?
+    };
+    Ok(HttpResponse::build(status)
+        .content_type("text/html")
+        .body(body))
+}
+
+/// Answer an item mutation on an open list, like `respond` does for the
+/// index: the fragment for htmx (rejections included, with 200), else a 303
+/// back to the list, or the full page with 400 for rejected input.
+async fn respond_item<T>(
+    state: &AppState,
+    req: &HttpRequest,
+    user: Uuid,
+    list_id: Uuid,
+    outcome: CoreResult<T>,
+    draft: ItemDraft,
+) -> WebResult<HttpResponse> {
+    let error = match outcome {
+        Ok(_) => None,
+        Err(CoreError::Invalid(m)) => Some(m),
+        Err(e) => return Err(e.into()),
+    };
+    if let Some(reason) = &error {
+        tracing::debug!(user_id = %user, list_id = %list_id, %reason, "list item rejected");
+    }
+
+    if is_hx(req) {
+        render_list(state, user, list_id, true, StatusCode::OK, draft, error).await
+    } else if error.is_none() {
+        Ok(HttpResponse::SeeOther()
+            .append_header((header::LOCATION, format!("/lists/{list_id}")))
+            .finish())
+    } else {
+        let status = StatusCode::BAD_REQUEST;
+        render_list(state, user, list_id, false, status, draft, error).await
+    }
+}
+
+fn parse_product(raw: &str) -> CoreResult<Uuid> {
+    match raw.trim() {
+        "" => Err(CoreError::Invalid("choose a favorite to add".to_owned())),
+        raw => Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown product".to_owned())),
+    }
 }
 
 impl From<ShoppingList> for ListCard {
@@ -175,14 +365,18 @@ pub async fn show(
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let list = ShoppingListRepo::get(&state.pool, user, path.into_inner()).await?;
-    let view = ShowView { list: list.into() };
-    let body = if wants_fragment(&req) {
-        state.templates.render("lists/_list", &view.list)?
-    } else {
-        state.templates.render("lists/show", &view)?
-    };
-    Ok(HttpResponse::Ok().content_type("text/html").body(body))
+    let fragment = wants_fragment(&req);
+    let draft = ItemDraft::default();
+    render_list(
+        &state,
+        user,
+        path.into_inner(),
+        fragment,
+        StatusCode::OK,
+        draft,
+        None,
+    )
+    .await
 }
 
 #[post("/{id}/rename")]
@@ -224,6 +418,99 @@ pub async fn delete(
         String::new(),
     )
     .await
+}
+
+/// Add a free-text item; it stays uncategorized until a category is chosen.
+#[post("/{id}/items")]
+pub async fn add_item(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<Uuid>,
+    form: web::Form<ItemForm>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let list_id = path.into_inner();
+    let outcome =
+        ShoppingListRepo::add_item(&state.pool, user, list_id, &form.text, Some(&form.quantity))
+            .await;
+    let draft = if outcome.is_ok() {
+        ItemDraft::default()
+    } else {
+        let form = form.into_inner();
+        ItemDraft {
+            text: form.text,
+            quantity: form.quantity,
+        }
+    };
+    respond_item(&state, &req, user, list_id, outcome, draft).await
+}
+
+/// Add one of the user's favorites, copying its name and category now.
+#[post("/{id}/favorites")]
+pub async fn add_favorite(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<Uuid>,
+    form: web::Form<FavoriteForm>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let list_id = path.into_inner();
+    let outcome = match parse_product(&form.product_id) {
+        Ok(product) => {
+            ShoppingListRepo::add_product(&state.pool, user, list_id, product, Some(&form.quantity))
+                .await
+        }
+        Err(e) => Err(e),
+    };
+    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+}
+
+#[post("/{id}/items/{item}/category")]
+pub async fn assign_category(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+    form: web::Form<CategoryForm>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (list_id, item_id) = path.into_inner();
+    let outcome = match parse_category(&form.category_id) {
+        Ok(category) => {
+            ShoppingListRepo::assign_category(&state.pool, user, list_id, item_id, category).await
+        }
+        Err(e) => Err(e),
+    };
+    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+}
+
+/// Remove an item (soft delete; it can be restored).
+#[post("/{id}/items/{item}/remove")]
+pub async fn remove_item(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (list_id, item_id) = path.into_inner();
+    let outcome = ShoppingListRepo::remove_item(&state.pool, user, list_id, item_id).await;
+    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+}
+
+#[post("/{id}/items/{item}/restore")]
+pub async fn restore_item(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (list_id, item_id) = path.into_inner();
+    let outcome = ShoppingListRepo::restore_item(&state.pool, user, list_id, item_id).await;
+    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 // MB-0007 acceptance tests (P3, P5). They sit at module level rather than in a
@@ -494,4 +781,292 @@ async fn lifecycle_htmx_and_auth() {
         let resp = call_service(&app, req.to_request()).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
+}
+
+// MB-0004 acceptance tests (P5, P6), at module level for the brief's
+// `cargo test -p kauppa-web routes::lists::<name>` checks.
+
+/// `(text, category)` of a list's active items, in order.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+async fn item_shape(state: &AppState, user: Uuid, list: Uuid) -> Vec<(String, Option<String>)> {
+    ShoppingListRepo::items(&state.pool, user, list, false)
+        .await
+        .expect("list items")
+        .into_iter()
+        .map(|i| (i.text, i.category.map(|c| c.name)))
+        .collect()
+}
+
+/// MB-0004 P5: items are isolated through their list — another user can't
+/// read the list or add, categorize, remove, or restore its items, over htmx
+/// or not, and nothing changes.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn owner_isolation() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let their_category = make_category(&state, other, "Kylmä").await;
+    let their_milk = ProductRepo::create(&state.pool, other, "Maito", their_category)
+        .await
+        .expect("their favorite");
+    let list = ShoppingListRepo::create(&state.pool, user, "Oma")
+        .await
+        .expect("list")
+        .id;
+    let bread = ShoppingListRepo::add_item(&state.pool, user, list, "Leipä", None)
+        .await
+        .expect("item")
+        .id;
+    let gone = ShoppingListRepo::add_item(&state.pool, user, list, "Sokeri", None)
+        .await
+        .expect("item")
+        .id;
+    ShoppingListRepo::remove_item(&state.pool, user, list, gone)
+        .await
+        .expect("remove");
+    let intruder =
+        session_cookie(&call_service(&app, login_request("other@example.com").to_request()).await);
+
+    let base = format!("/lists/{list}");
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&base)
+            .cookie(intruder.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let writes: [(String, Vec<(&str, String)>); 5] = [
+        (format!("{base}/items"), vec![("text", "Omena".to_owned())]),
+        (
+            format!("{base}/favorites"),
+            vec![("product_id", their_milk.id.to_string())],
+        ),
+        (
+            format!("{base}/items/{bread}/category"),
+            vec![("category_id", kylma.to_string())],
+        ),
+        (format!("{base}/items/{bread}/remove"), vec![]),
+        (format!("{base}/items/{gone}/restore"), vec![]),
+    ];
+    for (uri, form) in writes {
+        for hx in [false, true] {
+            let mut req = TestRequest::post()
+                .uri(&uri)
+                .cookie(intruder.clone())
+                .set_form(form.clone());
+            if hx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{uri} (htmx: {hx})");
+        }
+    }
+
+    assert_eq!(
+        item_shape(&state, user, list).await,
+        [("Leipä".to_owned(), None)]
+    );
+    let removed = ShoppingListRepo::items(&state.pool, user, list, true)
+        .await
+        .expect("removed");
+    assert_eq!(removed.len(), 1, "still removed");
+
+    // And the owner can't add another user's favorite to their own list.
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/favorites"))
+            .cookie(session)
+            .set_form([("product_id", their_milk.id.to_string())])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(item_shape(&state, user, list).await.len(), 1);
+}
+
+/// MB-0004 P6: add-item, add-favorite, assign-category, and remove (and
+/// restore) answer htmx with the `#list-{id}` fragment and plain requests with
+/// a 303, or the full page with 400 when the input was rejected.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn htmx_fragments() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let koti = make_category(&state, user, "Koti").await;
+    let maito = ProductRepo::create(&state.pool, user, "Maito", kylma)
+        .await
+        .expect("favorite");
+    let list = ShoppingListRepo::create(&state.pool, user, "Viikko")
+        .await
+        .expect("list")
+        .id;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let base = format!("/lists/{list}");
+    let post = |uri: String, form: Vec<(&'static str, String)>| {
+        TestRequest::post()
+            .uri(&uri)
+            .cookie(session.clone())
+            .set_form(form)
+    };
+    let fragment_id = format!(r#"id="list-{list}""#);
+
+    // htmx: each mutation answers with the fragment.
+    let hx_call = |req: TestRequest| {
+        let app = &app;
+        async move {
+            let resp =
+                call_service(app, req.insert_header(("HX-Request", "true")).to_request()).await;
+            assert_eq!(resp.status(), StatusCode::OK);
+            body_string(resp).await
+        }
+    };
+    let body = hx_call(post(
+        format!("{base}/items"),
+        vec![
+            ("text", "Kynttilät".to_owned()),
+            ("quantity", "6".to_owned()),
+        ],
+    ))
+    .await;
+    assert!(!body.contains("<html") && body.contains(&fragment_id));
+    assert!(body.contains("Kynttilät") && body.contains("Uncategorized"));
+    let candles = ShoppingListRepo::items(&state.pool, user, list, false)
+        .await
+        .expect("items")[0]
+        .id;
+
+    let body = hx_call(post(
+        format!("{base}/favorites"),
+        vec![("product_id", maito.id.to_string())],
+    ))
+    .await;
+    assert!(body.contains(&fragment_id) && body.contains("Maito"));
+
+    let body = hx_call(post(
+        format!("{base}/items/{candles}/category"),
+        vec![("category_id", koti.to_string())],
+    ))
+    .await;
+    assert!(body.contains(&fragment_id) && body.contains("· Koti"));
+
+    let body = hx_call(post(format!("{base}/items/{candles}/remove"), vec![])).await;
+    assert!(body.contains(&fragment_id) && body.contains("Removed (1)"));
+    assert_eq!(
+        item_shape(&state, user, list).await,
+        [("Maito".to_owned(), Some("Kylmä".to_owned()))]
+    );
+
+    let body = hx_call(post(format!("{base}/items/{candles}/restore"), vec![])).await;
+    assert!(body.contains(&fragment_id) && !body.contains("Removed ("));
+
+    // htmx rejections stay in the fragment, keeping the typed values.
+    let body = hx_call(post(
+        format!("{base}/items"),
+        vec![("text", " ".to_owned()), ("quantity", "2".to_owned())],
+    ))
+    .await;
+    assert!(body.contains(&fragment_id) && body.contains("must not be empty"));
+    assert!(body.contains(r#"value="2""#));
+    let body = hx_call(post(format!("{base}/favorites"), vec![])).await;
+    assert!(body.contains("choose a favorite"));
+
+    // Without htmx: a 303 back to the list on success.
+    for (uri, form) in [
+        (format!("{base}/items"), vec![("text", "Leipä".to_owned())]),
+        (
+            format!("{base}/favorites"),
+            vec![
+                ("product_id", maito.id.to_string()),
+                ("quantity", "1 l".to_owned()),
+            ],
+        ),
+        (
+            format!("{base}/items/{candles}/category"),
+            vec![("category_id", kylma.to_string())],
+        ),
+        (format!("{base}/items/{candles}/remove"), vec![]),
+        (format!("{base}/items/{candles}/restore"), vec![]),
+    ] {
+        let resp = call_service(&app, post(uri.clone(), form).to_request()).await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{uri}");
+        assert_eq!(
+            resp.headers().get(header::LOCATION).expect("location"),
+            base.as_str()
+        );
+    }
+    assert_eq!(
+        item_shape(&state, user, list).await,
+        [
+            ("Kynttilät".to_owned(), Some("Kylmä".to_owned())),
+            ("Maito".to_owned(), Some("Kylmä".to_owned())),
+            ("Leipä".to_owned(), None),
+            ("Maito".to_owned(), Some("Kylmä".to_owned())),
+        ]
+    );
+
+    // Without htmx, rejected input is the full page with 400.
+    for (uri, form, message) in [
+        (
+            format!("{base}/items"),
+            vec![("text", String::new())],
+            "must not be empty",
+        ),
+        (
+            format!("{base}/favorites"),
+            vec![("product_id", "nope".to_owned())],
+            "unknown product",
+        ),
+        (
+            format!("{base}/items/{candles}/category"),
+            vec![("category_id", String::new())],
+            "choose a category",
+        ),
+    ] {
+        let resp = call_service(&app, post(uri.clone(), form).to_request()).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{uri}");
+        let body = body_string(resp).await;
+        assert!(body.contains("<html") && body.contains(message), "{uri}");
+    }
+
+    // The page shows the builder with the favorites picker.
+    let page = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&base)
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(page.contains("<html") && page.contains(&fragment_id));
+    assert!(page.contains(&format!(r#"<option value="{}">Maito</option>"#, maito.id)));
 }

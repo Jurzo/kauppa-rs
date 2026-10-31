@@ -25,8 +25,8 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail,
-    RecipeInput, ShoppingList, User,
+    Category, Direction, Ingredient, ListItem, NewIngredient, Product, ProductGroup, Recipe,
+    RecipeDetail, RecipeInput, ShoppingList, User,
 };
 
 #[async_trait]
@@ -134,6 +134,52 @@ pub trait ShoppingListRepo: Send + Sync {
 
     /// Delete a list; its items go with it (`ON DELETE CASCADE`).
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
+
+    /// A list's items in position order: the active ones by default
+    /// (`removed_at IS NULL`, RR-0001 constraint 7), or only the removed ones.
+    async fn items(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        removed: bool,
+    ) -> CoreResult<Vec<ListItem>>;
+
+    /// Append a free-text item. It is uncategorized until a category is
+    /// assigned (RR-0001 constraint 5). Rejects empty text (`Invalid`).
+    async fn add_item(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        text: &str,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem>;
+
+    /// Append an item for one of the owner's products, copying its name and
+    /// category now (RR-0001 constraint 6). `Invalid` for a product that
+    /// isn't the owner's.
+    async fn add_product(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        product_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem>;
+
+    /// Put an item in one of the owner's categories. Changes only this item,
+    /// never the catalog. `Invalid` for a category that isn't the owner's.
+    async fn assign_category(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        category_id: Uuid,
+    ) -> CoreResult<ListItem>;
+
+    /// Soft-delete an active item (sets `removed_at`).
+    async fn remove_item(&self, owner_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()>;
+
+    /// Put a removed item back on the list, in its old position.
+    async fn restore_item(&self, owner_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()>;
 }
 
 /// Recipes and their ingredients.

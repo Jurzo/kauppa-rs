@@ -92,6 +92,28 @@ subtle ones — test them at the repo layer first. Slow-mode trigger: if "snapsh
 seems to require denormalizing more than the category reference, re-read the
 RR-0001 snapshot sub-decision before widening the schema.
 
+## Decisions (owner, 2026-10-31)
+
+1. **Sequencing:** MB-0007 lands first and provides list creation. This brief
+   assembles items on `/lists/{id}`, in a PR stacked on MB-0007's.
+
+Implementation notes (within `may_decide`):
+
+- The snapshot stores `category_id` only, plus the product's name in `text`.
+  The category's name and order are read live (RR-0001: membership is
+  frozen).
+- `ShoppingListRepo::add_product` accepts any product the owner has. The UI
+  offers favorites; MB-0005 will add recipe ingredients through it.
+- Adding the same favorite twice gives two items.
+- Removed items keep their position, so a restored item returns to its place.
+- Routes:
+  - `POST /lists/{id}/items` (free text);
+  - `POST /lists/{id}/favorites`;
+  - `POST /lists/{id}/items/{item}/category`;
+  - `POST /lists/{id}/items/{item}/remove`;
+  - `POST /lists/{id}/items/{item}/restore`. Restore follows from P3, which
+    says a removed item can be restored.
+
 ## Validation plan
 
 P1–P4 are `kauppa-core` tests against a temp SQLite pool (favorite snapshot,

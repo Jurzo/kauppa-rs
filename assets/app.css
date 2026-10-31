@@ -131,3 +131,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 }
 .recipe-details textarea { resize: vertical; }
 .ingredient-quantity { font-weight: 600; }
+
+/* Shopping lists (MB-0004, MB-0007) */
+.add-product select { min-width: 10rem; }
+.removed-items { margin-top: 1rem; }
+.removed-items summary { cursor: pointer; color: var(--muted); padding: 0.5rem 0; }
