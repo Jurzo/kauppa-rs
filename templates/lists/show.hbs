@@ -1,0 +1,10 @@
+{{#> layout title=list.name signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>{{list.name}}</h1>
+    <a href="/lists">All lists</a>
+  </header>
+
+  {{> lists/_list list }}
+</section>
+{{/layout}}

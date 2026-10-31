@@ -12,6 +12,8 @@ pub mod sqlite;
 #[cfg(test)]
 mod category;
 #[cfg(test)]
+mod list;
+#[cfg(test)]
 mod product;
 #[cfg(test)]
 mod recipe;
@@ -109,9 +111,29 @@ pub trait ProductRepo: Send + Sync {
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
 }
 
+/// Named shopping lists (MB-0007).
+///
+/// Every method is owner-scoped: a list that isn't `owner_id`'s is
+/// `NotFound`. (Shared lists, MB-0008, will widen this through RR-0002's
+/// authorization predicate.)
 #[async_trait]
 pub trait ShoppingListRepo: Send + Sync {
+    /// The owner's lists, most recently updated first.
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ShoppingList>>;
+
+    /// Create an empty list. Rejects an empty name (`Invalid`); names need
+    /// not be unique.
+    async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<ShoppingList>;
+
+    /// One of the owner's lists, to open and continue.
+    async fn get(&self, owner_id: Uuid, id: Uuid) -> CoreResult<ShoppingList>;
+
+    /// Rename a list; it counts as an update, so it moves to the top of the
+    /// index. Rejects an empty name (`Invalid`).
+    async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList>;
+
+    /// Delete a list; its items go with it (`ON DELETE CASCADE`).
+    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
 }
 
 /// Recipes and their ingredients.

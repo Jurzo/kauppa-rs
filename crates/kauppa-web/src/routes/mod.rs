@@ -25,7 +25,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(
             web::scope("/lists")
                 .service(lists::index)
-                .service(lists::create),
+                .service(lists::create)
+                .service(lists::show)
+                .service(lists::rename)
+                .service(lists::delete),
         )
         .service(
             web::scope("/recipes")
