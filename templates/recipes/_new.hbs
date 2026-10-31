@@ -1,0 +1,11 @@
+<form id="new-recipe" class="add-product" method="post" action="/recipes"
+      hx-post="/recipes" hx-target="#new-recipe" hx-swap="outerHTML">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  <label>New recipe
+    <input id="new-recipe-title" name="title" type="text" required
+           autocomplete="off" placeholder="e.g. Pannukakku" value="{{title}}" />
+  </label>
+  <button type="submit" class="button primary">Create</button>
+</form>

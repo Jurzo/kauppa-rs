@@ -30,7 +30,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .service(
             web::scope("/recipes")
                 .service(recipes::index)
-                .service(recipes::create),
+                .service(recipes::create)
+                .service(recipes::show)
+                .service(recipes::update)
+                .service(recipes::add_ingredient)
+                .service(recipes::set_quantity)
+                .service(recipes::move_ingredient)
+                .service(recipes::remove_ingredient),
         )
         .service(
             web::scope("/categories")

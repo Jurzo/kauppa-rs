@@ -62,7 +62,7 @@ fn is_hx(req: &HttpRequest) -> bool {
 
 /// Enforce "a favorite must have a category" (RR-0001) on the submitted id.
 /// Whether the category is the user's is checked by the repo.
-fn parse_category(raw: &str) -> CoreResult<Uuid> {
+pub fn parse_category(raw: &str) -> CoreResult<Uuid> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Err(CoreError::Invalid(
@@ -108,12 +108,14 @@ struct ProductView {
     picker: Picker,
 }
 
-/// A category `<select>`; `has_selection` is false when the placeholder
-/// ("Choose a category") should be selected instead.
+/// A category `<select>` (`products/_category_picker`); `has_selection` is
+/// false when the placeholder ("Choose a category") should be selected
+/// instead. Also used by the recipe editor, where it is optional.
 #[derive(Debug, Serialize)]
-struct Picker {
+pub struct Picker {
     options: Vec<PickerOption>,
     has_selection: bool,
+    required: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -124,7 +126,8 @@ struct PickerOption {
 }
 
 impl Picker {
-    fn new(categories: &[Category], selected: Option<Uuid>) -> Self {
+    /// A required picker over `categories`, with `selected` chosen.
+    pub fn new(categories: &[Category], selected: Option<Uuid>) -> Self {
         let options: Vec<PickerOption> = categories
             .iter()
             .map(|c| PickerOption {
@@ -137,7 +140,14 @@ impl Picker {
         Self {
             options,
             has_selection,
+            required: true,
         }
+    }
+
+    /// The same picker, but submittable without a choice.
+    pub const fn optional(mut self) -> Self {
+        self.required = false;
+        self
     }
 }
 

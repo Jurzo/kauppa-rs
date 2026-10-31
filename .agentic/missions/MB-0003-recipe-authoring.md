@@ -89,6 +89,26 @@ Checkpoint: repo tests (P1, P3, P4, P5) green before the web slice. Slow-mode
 trigger: if the upsert seems to need a schema change beyond `product_id`, stop —
 RR-0001 scopes this brief to that one column.
 
+## Decisions (owner, 2026-10-31)
+
+1. **One category per product (RR-0001 as is).** In the ingredient form, the
+   category choice applies only when the name matches no product: the new
+   product is created in it. An existing product keeps its own category. A
+   product with several categories was considered and set aside, without a
+   consult.
+2. **`/favorites` shows only favorites.** Products created from ingredients
+   (`is_favorite = 0`) stay hidden there but are reused by name. Moving a
+   favorite steps past the next favorite; hidden products keep their slots.
+3. **Adding a hidden product as a favorite promotes it.** It becomes a
+   favorite in the chosen category, keeping its id and name, so the recipes
+   that use it stay linked. An existing favorite still conflicts.
+
+Implementation notes (within `may_decide`): `ingredients.text` stays as the
+name saved with the ingredient and is shown only once the product link is
+gone (deleted product); otherwise the product's live name and category are
+shown. The editor routes follow the `/favorites` pattern: `GET /recipes/{id}`,
+`POST /recipes/{id}` (details), and `POST /recipes/{id}/ingredients[/{ingredient}/{quantity|move|delete}]`.
+
 ## Validation plan
 
 P1, P3, P4, P5 are `kauppa-core` tests against a temp SQLite pool (recipe +

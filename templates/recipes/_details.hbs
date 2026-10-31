@@ -1,0 +1,17 @@
+<form id="recipe-details" class="recipe-details" method="post" action="/recipes/{{id}}"
+      hx-post="/recipes/{{id}}" hx-target="#recipe-details" hx-swap="outerHTML">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  <label>Title
+    <input name="title" type="text" required value="{{title}}" />
+  </label>
+  <label>Servings
+    <input name="servings" type="number" min="1" step="1" inputmode="numeric" value="{{servings}}" />
+  </label>
+  <label class="recipe-instructions">Instructions
+    <textarea name="instructions" rows="6">{{instructions}}</textarea>
+  </label>
+  <button type="submit" class="button primary">Save</button>
+  {{#if saved}}<p class="muted" role="status">Saved.</p>{{/if}}
+</form>
