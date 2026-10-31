@@ -165,6 +165,23 @@ pub trait ShoppingListRepo: Send + Sync {
         quantity: Option<&str>,
     ) -> CoreResult<ListItem>;
 
+    /// Append one item per ingredient of one of the owner's recipes, in
+    /// recipe order and atomically (MB-0005). Each item copies, at add-time,
+    /// the ingredient's product, that product's current name and category,
+    /// and the ingredient's quantity with its leading number scaled by
+    /// `multiplier` (`domain::quantity::scale`). An ingredient whose product
+    /// is gone or uncategorized becomes an uncategorized item. The recipe and
+    /// the catalog are only read. `NotFound` for a list or recipe that isn't
+    /// the owner's; `Invalid` for a recipe without ingredients or a
+    /// multiplier outside (0, 100].
+    async fn add_recipe(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        recipe_id: Uuid,
+        multiplier: f64,
+    ) -> CoreResult<Vec<ListItem>>;
+
     /// Put an item in one of the owner's categories. Changes only this item,
     /// never the catalog. `Invalid` for a category that isn't the owner's.
     async fn assign_category(

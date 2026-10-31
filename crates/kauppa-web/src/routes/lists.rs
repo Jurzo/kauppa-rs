@@ -11,7 +11,8 @@
 //! mutations answer htmx with the re-rendered `#list-{id}` fragment, and plain
 //! requests with a 303 back to the list. A favorite's item copies its name and
 //! category at add-time (RR-0001); a free-text item stays uncategorized until
-//! the user picks a category.
+//! the user picks a category. Adding a recipe (MB-0005) adds one item per
+//! ingredient the same way, with an optional quantity multiplier.
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -20,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use kauppa_core::domain::{Category, ListItem, ProductGroup, ShoppingList};
-use kauppa_core::repo::{CategoryRepo, ProductRepo, ShoppingListRepo};
+use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::{WebError, WebResult};
@@ -46,6 +47,15 @@ struct FavoriteForm {
     product_id: String,
     #[serde(default)]
     quantity: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecipeForm {
+    // Missing and empty both mean "nothing chosen", which becomes a message.
+    #[serde(default)]
+    recipe_id: String,
+    #[serde(default)]
+    multiplier: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -102,6 +112,7 @@ struct ListView {
     removed: Vec<ItemRow>,
     removed_count: usize,
     favorites: Vec<FavoriteGroup>,
+    recipes: Vec<RecipeOption>,
     has_categories: bool,
     draft: ItemDraft,
     error: Option<String>,
@@ -130,11 +141,19 @@ struct FavoriteOption {
     name: String,
 }
 
-/// The free-text form's values after a rejected submission.
+#[derive(Debug, Serialize)]
+struct RecipeOption {
+    id: Uuid,
+    title: String,
+}
+
+/// The add forms' values after a rejected submission.
 #[derive(Debug, Default, Serialize)]
 struct ItemDraft {
     text: String,
     quantity: String,
+    /// The recipe multiplier as typed; the form shows 1 when empty.
+    multiplier: String,
 }
 
 fn item_row(item: ListItem, categories: &[Category]) -> ItemRow {
@@ -181,6 +200,7 @@ async fn render_list(
     let removed = ShoppingListRepo::items(&state.pool, user, list_id, true).await?;
     let categories = CategoryRepo::list_for_owner(&state.pool, user).await?;
     let favorites = ProductRepo::list_for_owner(&state.pool, user).await?;
+    let recipes = RecipeRepo::list_for_owner(&state.pool, user).await?;
     let card = ListCard::from(list);
     let removed_count = removed.len();
     let view = ListView {
@@ -197,6 +217,13 @@ async fn render_list(
             .collect(),
         removed_count,
         favorites: favorite_groups(favorites),
+        recipes: recipes
+            .into_iter()
+            .map(|r| RecipeOption {
+                id: r.id,
+                title: r.title,
+            })
+            .collect(),
         has_categories: !categories.is_empty(),
         draft,
         error,
@@ -243,6 +270,25 @@ async fn respond_item<T>(
         let status = StatusCode::BAD_REQUEST;
         render_list(state, user, list_id, false, status, draft, error).await
     }
+}
+
+fn parse_recipe(raw: &str) -> CoreResult<Uuid> {
+    match raw.trim() {
+        "" => Err(CoreError::Invalid("choose a recipe to add".to_owned())),
+        raw => Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown recipe".to_owned())),
+    }
+}
+
+/// The recipe multiplier: blank means 1, and a decimal comma is accepted
+/// ("1,5"). Its range is checked by the repo.
+fn parse_multiplier(raw: &str) -> CoreResult<f64> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(1.0);
+    }
+    raw.replace(',', ".").parse::<f64>().map_err(|_| {
+        CoreError::Invalid("the multiplier must be a number, e.g. 2 or 1,5".to_owned())
+    })
 }
 
 fn parse_product(raw: &str) -> CoreResult<Uuid> {
@@ -441,6 +487,7 @@ pub async fn add_item(
         ItemDraft {
             text: form.text,
             quantity: form.quantity,
+            ..ItemDraft::default()
         }
     };
     respond_item(&state, &req, user, list_id, outcome, draft).await
@@ -465,6 +512,37 @@ pub async fn add_favorite(
         Err(e) => Err(e),
     };
     respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+}
+
+/// Add a recipe's ingredients, optionally multiplied (MB-0005).
+#[post("/{id}/recipes")]
+pub async fn add_recipe(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<Uuid>,
+    form: web::Form<RecipeForm>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let list_id = path.into_inner();
+    let outcome = match (
+        parse_recipe(&form.recipe_id),
+        parse_multiplier(&form.multiplier),
+    ) {
+        (Ok(recipe), Ok(multiplier)) => {
+            ShoppingListRepo::add_recipe(&state.pool, user, list_id, recipe, multiplier).await
+        }
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    };
+    let draft = ItemDraft {
+        multiplier: if outcome.is_ok() {
+            String::new()
+        } else {
+            form.into_inner().multiplier
+        },
+        ..ItemDraft::default()
+    };
+    respond_item(&state, &req, user, list_id, outcome, draft).await
 }
 
 #[post("/{id}/items/{item}/category")]
@@ -1069,4 +1147,279 @@ async fn htmx_fragments() {
     .await;
     assert!(page.contains("<html") && page.contains(&fragment_id));
     assert!(page.contains(&format!(r#"<option value="{}">Maito</option>"#, maito.id)));
+}
+
+// MB-0005 acceptance tests (P5, P6), at module level for the brief's
+// `cargo test -p kauppa-web routes::lists::<name>` checks.
+
+/// A recipe with one ingredient per `(product name, quantity)`, all in
+/// `category`.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+async fn make_recipe(
+    state: &AppState,
+    owner: Uuid,
+    title: &str,
+    category: Uuid,
+    ingredients: &[(&str, Option<&str>)],
+) -> Uuid {
+    use kauppa_core::domain::{NewIngredient, RecipeInput};
+
+    let recipe = RecipeRepo::create(
+        &state.pool,
+        owner,
+        &RecipeInput {
+            title: title.to_owned(),
+            ..RecipeInput::default()
+        },
+    )
+    .await
+    .expect("create recipe")
+    .id;
+    for &(name, quantity) in ingredients {
+        let new = NewIngredient {
+            product_name: name.to_owned(),
+            quantity: quantity.map(str::to_owned),
+            category_id: Some(category),
+        };
+        RecipeRepo::add_ingredient(&state.pool, owner, recipe, &new)
+            .await
+            .expect("add ingredient");
+    }
+    recipe
+}
+
+/// MB-0005 P5: a user can't add from another user's recipe, nor onto another
+/// user's list — over htmx or not — and nothing is added anywhere.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn add_recipe_owner_isolation() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let mine = make_category(&state, user, "Kylmä").await;
+    let theirs = make_category(&state, other, "Kylmä").await;
+    let my_recipe = make_recipe(&state, user, "Puuro", mine, &[("Maito", Some("5 dl"))]).await;
+    let their_recipe = make_recipe(
+        &state,
+        other,
+        "Salaatti",
+        theirs,
+        &[("Feta", Some("1 pkt"))],
+    )
+    .await;
+    let my_list = ShoppingListRepo::create(&state.pool, user, "Oma")
+        .await
+        .expect("list")
+        .id;
+    let their_list = ShoppingListRepo::create(&state.pool, other, "Heidän")
+        .await
+        .expect("list")
+        .id;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+
+    for (list, recipe) in [
+        (my_list, their_recipe),
+        (their_list, my_recipe),
+        (their_list, their_recipe),
+        (my_list, Uuid::new_v4()),
+    ] {
+        for hx in [false, true] {
+            let mut req = TestRequest::post()
+                .uri(&format!("/lists/{list}/recipes"))
+                .cookie(session.clone())
+                .set_form([
+                    ("recipe_id", recipe.to_string()),
+                    ("multiplier", "2".to_owned()),
+                ]);
+            if hx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(
+                resp.status(),
+                StatusCode::NOT_FOUND,
+                "{list}/{recipe} (htmx: {hx})"
+            );
+        }
+    }
+    assert_eq!(item_shape(&state, user, my_list).await.len(), 0);
+    assert_eq!(item_shape(&state, other, their_list).await.len(), 0);
+
+    // The list page offers only the user's own recipes.
+    let page = crate::routes::test_support::body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&format!("/lists/{my_list}"))
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(page.contains(&my_recipe.to_string()));
+    assert!(!page.contains(&their_recipe.to_string()));
+}
+
+/// MB-0005 P6: adding a recipe answers htmx with the `#list-{id}` fragment
+/// and plain requests with a 303 (or the full page with 400 for rejected
+/// input); without a session it is rejected.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn add_recipe_htmx() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let pancakes = make_recipe(
+        &state,
+        user,
+        "Pannukakku",
+        kylma,
+        &[("Maito", Some("5 dl")), ("Kananmuna", Some("2"))],
+    )
+    .await;
+    let empty = make_recipe(&state, user, "Tyhjä", kylma, &[]).await;
+    let list = ShoppingListRepo::create(&state.pool, user, "Viikko")
+        .await
+        .expect("list")
+        .id;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let uri = format!("/lists/{list}/recipes");
+    let post = |form: Vec<(&'static str, String)>| {
+        TestRequest::post()
+            .uri(&uri)
+            .cookie(session.clone())
+            .set_form(form)
+    };
+    let fragment_id = format!(r#"id="list-{list}""#);
+
+    // htmx: the fragment with the scaled ingredients.
+    let resp = call_service(
+        &app,
+        post(vec![
+            ("recipe_id", pancakes.to_string()),
+            ("multiplier", "1,5".to_owned()),
+        ])
+        .insert_header(("HX-Request", "true"))
+        .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(!body.contains("<html") && body.contains(&fragment_id));
+    assert!(body.contains("7.5 dl") && body.contains("Maito") && body.contains("· Kylmä"));
+
+    // Plain: a 303 back to the list; a blank multiplier means 1.
+    let resp = call_service(
+        &app,
+        post(vec![
+            ("recipe_id", pancakes.to_string()),
+            ("multiplier", String::new()),
+        ])
+        .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(header::LOCATION).expect("location"),
+        format!("/lists/{list}").as_str()
+    );
+    assert_eq!(
+        ShoppingListRepo::items(&state.pool, user, list, false)
+            .await
+            .expect("items")
+            .into_iter()
+            .map(|i| i.quantity.unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["7.5 dl", "3", "5 dl", "2"]
+    );
+
+    // Rejected input: in the fragment over htmx (keeping the multiplier),
+    // the full page with 400 otherwise; nothing is added.
+    let rejected = [
+        (vec![("multiplier", "2".to_owned())], "choose a recipe"),
+        (vec![("recipe_id", "nope".to_owned())], "unknown recipe"),
+        (
+            vec![
+                ("recipe_id", pancakes.to_string()),
+                ("multiplier", "kaksi".to_owned()),
+            ],
+            "must be a number",
+        ),
+        (
+            vec![
+                ("recipe_id", pancakes.to_string()),
+                ("multiplier", "0".to_owned()),
+            ],
+            "more than 0",
+        ),
+        (vec![("recipe_id", empty.to_string())], "has no ingredients"),
+    ];
+    for (form, message) in rejected {
+        let resp = call_service(
+            &app,
+            post(form.clone())
+                .insert_header(("HX-Request", "true"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK, "{form:?}");
+        let body = body_string(resp).await;
+        assert!(
+            body.contains(&fragment_id) && body.contains(message),
+            "{form:?}"
+        );
+        let resp = call_service(&app, post(form.clone()).to_request()).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{form:?}");
+        let body = body_string(resp).await;
+        assert!(body.contains("<html") && body.contains(message), "{form:?}");
+    }
+    let body = body_string(
+        call_service(
+            &app,
+            post(vec![
+                ("recipe_id", pancakes.to_string()),
+                ("multiplier", "kaksi".to_owned()),
+            ])
+            .insert_header(("HX-Request", "true"))
+            .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(
+        body.contains(r#"value="kaksi""#),
+        "keeps the typed multiplier"
+    );
+    assert_eq!(item_shape(&state, user, list).await.len(), 4);
+
+    // Signed out: rejected.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&uri)
+            .set_form([("recipe_id", pancakes.to_string())])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }

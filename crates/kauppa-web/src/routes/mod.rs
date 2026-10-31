@@ -31,6 +31,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(lists::delete)
                 .service(lists::add_item)
                 .service(lists::add_favorite)
+                .service(lists::add_recipe)
                 .service(lists::assign_category)
                 .service(lists::remove_item)
                 .service(lists::restore_item),
