@@ -86,6 +86,34 @@ catalog, re-read MB-0004's snapshot decision — the view groups by the item's
 *snapshotted* category, not the product's current one; if ordering needs a new
 column, stop and escalate.
 
+## Implementation notes (2026-11-01, within `may_decide`)
+
+- **Its own page:** `GET /lists/{id}/shop`, linked from the list page ("Go
+  shopping"). The builder stays on `/lists/{id}`. The store page has no add
+  forms, so it is short and light on a phone; it links back with "Edit list".
+- **Routes:**
+  - `GET /lists/{id}/shop` — the full page, or the `#shop-{id}` fragment for
+    a non-boosted htmx request;
+  - `POST /lists/{id}/shop/items/{item}/check`;
+  - `POST /lists/{id}/shop/items/{item}/remove`.
+- **Check-off sets a state, not a flip.** The button sends `checked=true` or
+  `false`, so a double tap or a retry on a flaky connection can't undo
+  itself. It is a server round-trip that re-renders the whole store fragment
+  (lists are tens of items), which keeps the counts and groups right.
+- **Order:**
+  - Groups follow the item's own (snapshotted) category, in the user's
+    category order with name as tiebreak; one trailing group holds the
+    uncategorized items.
+  - Within a group, items whose product is still in that category follow the
+    product's position. The rest follow by name, ignoring case, then list
+    position.
+  - Done in Rust after one owner-joined query.
+- **Label:** the trailing group says "Uncategorized", matching the rest of
+  the English UI, rather than "Muut" (the label is in `may_decide`).
+- **Display:** checked items stay in place, struck through, with a "found"
+  count. Removed items leave the view and can be restored from the list
+  page's "Removed" section.
+
 ## Validation plan
 
 P2 is a `kauppa-core` test over a temp SQLite pool (deterministic in-category
