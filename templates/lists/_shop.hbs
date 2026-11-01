@@ -1,0 +1,34 @@
+<div id="shop-{{id}}" class="shop" data-list-id="{{id}}">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+
+  <p class="muted" role="status">{{found}} of {{total}} found</p>
+
+  {{#each groups}}
+    <section class="product-group">
+      <h2>{{#if this.name}}{{this.name}}{{else}}Uncategorized{{/if}}</h2>
+      <ul class="product-list">
+        {{#each this.items}}
+          <li class="product-row shop-row{{#if this.checked}} found{{/if}}">
+            <form class="shop-check" method="post" action="/lists/{{../../id}}/shop/items/{{this.id}}/check"
+                  hx-post="/lists/{{../../id}}/shop/items/{{this.id}}/check" hx-target="#shop-{{../../id}}" hx-swap="outerHTML">
+              <button type="submit" class="link shop-toggle" name="checked"
+                      value="{{#if this.checked}}false{{else}}true{{/if}}" aria-pressed="{{this.checked}}"
+                      aria-label="{{#if this.checked}}Mark {{this.text}} not found{{else}}Mark {{this.text}} found{{/if}}">
+                <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
+                <span class="product-name">{{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}</span>
+              </button>
+            </form>
+            <form class="row-actions" method="post" action="/lists/{{../../id}}/shop/items/{{this.id}}/remove"
+                  hx-post="/lists/{{../../id}}/shop/items/{{this.id}}/remove" hx-target="#shop-{{../../id}}" hx-swap="outerHTML">
+              <button type="submit" class="link" aria-label="Remove {{this.text}} — not needed">✕</button>
+            </form>
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+  {{else}}
+    <p class="empty">Nothing to fetch. <a href="/lists/{{id}}">Add items</a>.</p>
+  {{/each}}
+</div>

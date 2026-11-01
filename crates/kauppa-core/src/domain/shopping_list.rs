@@ -36,3 +36,11 @@ pub struct ListItem {
     /// When the item was removed; `None` while it is on the list.
     pub removed_at: Option<DateTime<Utc>>,
 }
+
+/// The items of one category in the store view (MB-0006), in shopping order.
+/// `category` is `None` for the uncategorized group, which always comes last.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListGroup {
+    pub category: Option<Category>,
+    pub items: Vec<ListItem>,
+}

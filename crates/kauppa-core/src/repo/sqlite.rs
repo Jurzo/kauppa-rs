@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, ListItem, NewIngredient, Product, ProductGroup, Recipe,
-    RecipeDetail, RecipeInput, ShoppingList, User, ordering, quantity,
+    Category, Direction, Ingredient, ListGroup, ListItem, NewIngredient, Product, ProductGroup,
+    Recipe, RecipeDetail, RecipeInput, ShoppingList, User, ordering, quantity,
 };
 use crate::error::CoreError;
 use crate::repo::name_key::name_key;
@@ -694,6 +694,62 @@ const ITEM_SELECT: &str = r"
        AND (CASE WHEN ?3 IS NULL THEN (i.removed_at IS NOT NULL) = ?4 ELSE i.id = ?3 END)
      ORDER BY i.position ASC, i.id ASC";
 
+/// A list's active items for the store view, with the columns of
+/// [`ITEM_SELECT`] plus `product_position`: the product's position, but only
+/// while the product is still in the item's category (otherwise the position
+/// belongs to another category's order). Binds: `?1` list id, `?2` owner id.
+const STORE_VIEW_SELECT: &str = r"
+    SELECT i.id, i.list_id, p.id AS product_id, i.text, i.quantity, i.checked, i.position,
+           i.removed_at,
+           c.id AS category_id, c.name AS category_name,
+           c.position AS category_position, c.created_at AS category_created_at,
+           CASE WHEN p.category_id = c.id THEN p.position END AS product_position
+      FROM list_items i
+      JOIN shopping_lists l ON l.id = i.list_id AND l.owner_id = ?2
+      LEFT JOIN products p ON p.id = i.product_id AND p.owner_id = l.owner_id
+      LEFT JOIN categories c ON c.id = i.category_id AND c.owner_id = l.owner_id
+     WHERE i.list_id = ?1 AND i.removed_at IS NULL";
+
+/// Group store-view rows by category and order them (see
+/// `ShoppingListRepo::store_view`).
+fn group_for_store(mut rows: Vec<(ListItem, Option<i64>)>) -> Vec<ListGroup> {
+    // Category order: user position, then name; uncategorized last.
+    let group_key = |item: &ListItem| {
+        item.category
+            .as_ref()
+            .map(|c| (c.position, c.name.to_lowercase(), c.id))
+    };
+    rows.sort_by(|(a, a_pos), (b, b_pos)| {
+        let (ga, gb) = (group_key(a), group_key(b));
+        ga.is_none()
+            .cmp(&gb.is_none())
+            .then_with(|| ga.cmp(&gb))
+            // Within a group: product position first, then by name.
+            .then_with(|| a_pos.is_none().cmp(&b_pos.is_none()))
+            .then_with(|| a_pos.cmp(b_pos))
+            .then_with(|| a.text.to_lowercase().cmp(&b.text.to_lowercase()))
+            .then_with(|| a.position.cmp(&b.position))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    let mut groups: Vec<ListGroup> = Vec::new();
+    for (item, _) in rows {
+        match groups.last_mut() {
+            Some(group)
+                if group.category.as_ref().map(|c| c.id)
+                    == item.category.as_ref().map(|c| c.id) =>
+            {
+                group.items.push(item);
+            }
+            _ => groups.push(ListGroup {
+                category: item.category.clone(),
+                items: vec![item],
+            }),
+        }
+    }
+    groups
+}
+
 impl SqlitePool {
     async fn fetch_items(
         &self,
@@ -1032,6 +1088,54 @@ impl ShoppingListRepo for SqlitePool {
         .await?;
         if updated.rows_affected() == 0 {
             return Err(unknown_category());
+        }
+        tx.commit().await?;
+
+        self.fetch_item(owner_id, list_id, item_id).await
+    }
+
+    async fn store_view(&self, owner_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>> {
+        // An unknown or foreign list is NotFound, not an empty view.
+        ShoppingListRepo::get(self, owner_id, list_id).await?;
+        let rows = sqlx::query(STORE_VIEW_SELECT)
+            .bind(list_id.to_string())
+            .bind(owner_id.to_string())
+            .fetch_all(&self.inner)
+            .await?;
+        let rows = rows
+            .iter()
+            .map(|row| -> CoreResult<(ListItem, Option<i64>)> {
+                Ok((
+                    row_to_item(row, owner_id)?,
+                    row.try_get("product_position")?,
+                ))
+            })
+            .collect::<CoreResult<Vec<_>>>()?;
+        Ok(group_for_store(rows))
+    }
+
+    async fn set_checked(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        checked: bool,
+    ) -> CoreResult<ListItem> {
+        let list = list_id.to_string();
+        let mut tx = self.inner.begin().await?;
+        touch_owned_list(&mut tx, &owner_id.to_string(), &list).await?;
+
+        let result = sqlx::query(
+            r"UPDATE list_items SET checked = ?1
+                WHERE id = ?2 AND list_id = ?3 AND removed_at IS NULL",
+        )
+        .bind(checked)
+        .bind(item_id.to_string())
+        .bind(&list)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
         }
         tx.commit().await?;
 
