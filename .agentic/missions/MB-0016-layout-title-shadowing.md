@@ -128,6 +128,13 @@ trigger: if a body turns out to depend on the leak (reading a layout
 parameter as if it were its own field), make that value explicit in its view
 rather than keep relying on the leak.
 
+## Decision (owner, 2026-11-01)
+
+**Option A**: rename the layout's parameters. The convention change goes
+through CRP-0006 (open; it recommends the `page_` prefix for both `title` and
+`signed_in`) and an RR, which must be approved before the fix PR. Option B is
+rejected.
+
 ## Validation plan
 
 - P1–P4: `kauppa-web` tests through `routes::test_support`, on full-page
