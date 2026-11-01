@@ -10,5 +10,5 @@ pub use category::Category;
 pub use ordering::Direction;
 pub use product::{Product, ProductGroup};
 pub use recipe::{Ingredient, NewIngredient, Recipe, RecipeDetail, RecipeInput};
-pub use shopping_list::{ListItem, ShoppingList};
+pub use shopping_list::{ListGroup, ListItem, ShoppingList};
 pub use user::User;

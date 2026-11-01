@@ -25,8 +25,8 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, ListItem, NewIngredient, Product, ProductGroup, Recipe,
-    RecipeDetail, RecipeInput, ShoppingList, User,
+    Category, Direction, Ingredient, ListGroup, ListItem, NewIngredient, Product, ProductGroup,
+    Recipe, RecipeDetail, RecipeInput, ShoppingList, User,
 };
 
 #[async_trait]
@@ -190,6 +190,24 @@ pub trait ShoppingListRepo: Send + Sync {
         list_id: Uuid,
         item_id: Uuid,
         category_id: Uuid,
+    ) -> CoreResult<ListItem>;
+
+    /// A list's active items grouped for the store (MB-0006). Groups follow
+    /// the item's own (snapshotted) category, in the user's category order
+    /// with name as tiebreak; uncategorized items form one last group. Within
+    /// a group, items whose product is still in that category follow the
+    /// product's position there, and the rest follow by name, ignoring case;
+    /// position on the list breaks remaining ties. Empty groups are omitted.
+    async fn store_view(&self, owner_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>>;
+
+    /// Mark an active item found (`checked`) or not. Setting the state
+    /// rather than flipping it makes a repeated request harmless.
+    async fn set_checked(
+        &self,
+        owner_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        checked: bool,
     ) -> CoreResult<ListItem>;
 
     /// Soft-delete an active item (sets `removed_at`).
