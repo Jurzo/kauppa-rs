@@ -457,8 +457,9 @@ fn parse_recipe(raw: &str) -> CoreResult<Uuid> {
 }
 
 /// The recipe multiplier: blank means 1, and a decimal comma is accepted
-/// ("1,5"). Its range is checked by the repo.
-fn parse_multiplier(raw: &str) -> CoreResult<f64> {
+/// ("1,5"). Its range is checked by the repo. Also used by the recipe page's
+/// "Add to a list" form (MB-0015).
+pub fn parse_multiplier(raw: &str) -> CoreResult<f64> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(1.0);

@@ -52,7 +52,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(recipes::add_ingredient)
                 .service(recipes::set_quantity)
                 .service(recipes::move_ingredient)
-                .service(recipes::remove_ingredient),
+                .service(recipes::remove_ingredient)
+                .service(recipes::add_recipe_to_list),
         )
         .service(
             web::scope("/categories")
