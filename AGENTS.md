@@ -112,8 +112,9 @@ consult.
   (`tracing::info!(user_id = %id, "...")`), never `println!` or `eprintln!`.
 - **DB access.** Only via repo traits (`UserRepo`, `ShoppingListRepo`,
   `RecipeRepo`). Hand-rolled `sqlx` calls in handlers are a red flag.
-- **Templates.** Each page is `{{#> layout title="..."}}...{{/layout}}`. Keep
-  layout markup in one place.
+- **Templates.** Each page is `{{#> layout page_title="..."}}...{{/layout}}`.
+  Keep layout markup in one place. Layout parameters are prefixed `page_`
+  (RR-0006).
 - **htmx.** Prefer `hx-*` attributes for interactivity. Server returns HTML
   fragments on `HX-Request: true` and full pages otherwise.
 

@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0016 autonomy.escalate (changing the documented layout convention, AGENTS.md → Conventions and .agentic/mentorship/templating.md); AGENTS.md → Agent role (never modify Mentorship Packs without explicit approval) and Lifecycle (agent-proposed changes go through a CRP and an RR); feature.md escalation trigger `.agentic/{mentorship,runbooks,resolutions}/**`"
 ---
 ```
