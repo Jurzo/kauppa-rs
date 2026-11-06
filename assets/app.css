@@ -112,6 +112,11 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 .product-edit summary { cursor: pointer; color: var(--primary); padding: 0.5rem 0; }
 .product-edit[open] { flex-basis: 100%; }
 .product-edit form { margin: 0 0 0.75rem; }
+/* Recipe-created products, below the favorites (MB-0014) */
+.recipe-products { margin-top: 2.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.recipe-products .product-group h3 { margin: 1.5rem 0 0.5rem; font-size: 1rem; color: var(--muted); }
+.product-usage { font-size: 0.875rem; }
+.product-row .row-actions .link.make-favorite { font-size: 1rem; }
 .category-rename { display: flex; flex: 1 1 12rem; gap: 0.5rem; align-items: center; margin: 0; }
 .category-rename input { flex: 1 1 auto; margin-top: 0; }
 
