@@ -1,21 +1,15 @@
 # Resolution Record — Defer CSRF protection for list sharing to MB-0018
 
-> Drafted by the agent with the owner's stated outcome (2026-11-06: "Make no
-> changes for now on cross-site protection, create a follow-up brief for
-> setting up more production-ready cross-site protection").
-> `decided_by`, `decided_at`, `status` and the Approvals line are left for the
-> resolver to sign. Resolver notes are marked with `<!-- Resolver: … -->`.
-
 ```yaml
 ---
 id: RR-0008
 closes: CRP-0008
 mission: MB-0008
-decided_by: "<resolver>"
+decided_by: "@juuso.kalliomaki"
 role: security
 risk_tier: high
-decided_at: <RFC3339 timestamp>
-status: <approved | rejected>
+decided_at: 2026-11-06T21:16:42Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0008-share-list.md
@@ -58,11 +52,9 @@ Does not cover:
   middleware wiring, which belongs in its own brief and RR rather than in
   MB-0008.
 
-<!-- Resolver: confirm or edit the rationale above. -->
-
 ## Approvals and authority
 
-<Approved | Rejected> by security-owner <resolver>
+Approved by security-owner @juuso.kalliomaki
 
 ## Linked artifacts and evidence
 
@@ -84,9 +76,6 @@ Does not cover:
 3. **Deployment caution.** Until MB-0018 merges, `security.md`'s rule
    applies as written: CSRF protection comes before any deployment reachable
    outside localhost.
-
-<!-- Resolver: constraint 3 restates an existing "should". Keep it as
-written, make it a "must" for deployments with sharing enabled, or drop it. -->
 
 ## Roll-back into the system (Hardened)
 
