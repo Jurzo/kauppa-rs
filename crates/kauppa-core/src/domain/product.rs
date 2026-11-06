@@ -29,3 +29,21 @@ pub struct ProductGroup {
     pub category: Option<Category>,
     pub products: Vec<Product>,
 }
+
+/// A recipe-created product (MB-0014) with the number of the owner's recipes
+/// that use it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProductUsage {
+    pub product: Product,
+    /// Distinct recipes of the product's owner with an ingredient linked to
+    /// it.
+    pub recipe_count: i64,
+}
+
+/// The recipe-created products of one category, ordered by name. `category`
+/// is `None` for the uncategorized group, which always sorts last.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HiddenProductGroup {
+    pub category: Option<Category>,
+    pub products: Vec<ProductUsage>,
+}
