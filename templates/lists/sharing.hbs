@@ -1,0 +1,12 @@
+{{#> layout page_title=name page_signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>Share {{name}}</h1>
+    <a href="/lists/{{id}}">Back to the list</a>
+  </header>
+  <p class="muted">People you share with can open this list. With “Can edit items” they can also add, check off and remove items. Only you can share, rename or delete it.</p>
+
+  {{> lists/_share_form form }}
+  {{> lists/_grantees grantees }}
+</section>
+{{/layout}}

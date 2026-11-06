@@ -1,0 +1,25 @@
+<details class="product-edit">
+  <summary>Edit<span class="visually-hidden"> {{name}}</span></summary>
+  <form method="post" action="/favorites/{{id}}/rename"
+        hx-post="/favorites/{{id}}/rename" hx-target="#favorites" hx-swap="outerHTML">
+    <label>Name
+      <input name="name" type="text" required value="{{name}}" />
+    </label>
+    <button type="submit" class="button">Rename</button>
+  </form>
+  <form method="post" action="/favorites/{{id}}/category"
+        hx-post="/favorites/{{id}}/category" hx-target="#favorites" hx-swap="outerHTML">
+    <label>Category
+      {{> products/_category_picker picker }}
+    </label>
+    <button type="submit" class="button">Change</button>
+  </form>
+  <form method="post" action="/favorites/{{id}}/delete"
+        hx-post="/favorites/{{id}}/delete" hx-target="#favorites" hx-swap="outerHTML"
+        hx-confirm="{{delete_confirm}}">
+    {{#if delete_warning}}
+      <p class="muted">{{delete_warning}}</p>
+    {{/if}}
+    <button type="submit" class="link danger">Delete</button>
+  </form>
+</details>

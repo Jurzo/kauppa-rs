@@ -18,6 +18,18 @@
 //! their own category in the user's category order, with check-off and
 //! removal. Its mutations answer htmx with the `#shop-{id}` fragment and
 //! plain requests with a 303 back to it.
+//!
+//! Lists can be shared (MB-0008, RR-0002). Authorization is not decided here:
+//! every `ShoppingListRepo` call runs the repo's central access predicate, so
+//! a user with no access gets a 404 and a grantee whose role is too weak a
+//! 403. Handlers only use the access level to decide which controls to show:
+//! a `view` grantee sees the list and the store view read-only; an `edit`
+//! grantee can add free-text items, check, remove and restore; favorites,
+//! recipes and categories come from the owner's catalog and stay the
+//! owner's, as do rename, delete and `/lists/{id}/sharing`. Sharing answers
+//! the same whether or not the email matches an account (RR-0002
+//! constraint 3), and grants and revokes are logged without the grantee's
+//! email (constraint 5).
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -25,7 +37,10 @@ use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use kauppa_core::domain::{Category, ListGroup, ListItem, ProductGroup, ShoppingList};
+use kauppa_core::domain::{
+    Category, ListAccess, ListGroup, ListItem, ListShare, ProductGroup, ShareRole, SharedList,
+    ShoppingList,
+};
 use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
@@ -96,8 +111,32 @@ fn wants_fragment(req: &HttpRequest) -> bool {
 #[derive(Debug, Serialize)]
 struct IndexView {
     lists: Vec<ListCard>,
+    /// Lists other users shared with this one (MB-0008).
+    shared: Vec<SharedCard>,
     draft_name: String,
     error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SharedCard {
+    id: Uuid,
+    name: String,
+    owner_name: String,
+    can_edit: bool,
+    updated: String,
+}
+
+impl From<SharedList> for SharedCard {
+    fn from(shared: SharedList) -> Self {
+        let card = ListCard::from(shared.list);
+        Self {
+            id: card.id,
+            name: card.name,
+            owner_name: shared.owner_name,
+            can_edit: shared.role == ShareRole::Edit,
+            updated: card.updated,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +164,10 @@ struct ListView {
     favorites: Vec<FavoriteGroup>,
     recipes: Vec<RecipeOption>,
     has_categories: bool,
+    /// The owner: catalog controls and the sharing link.
+    is_owner: bool,
+    /// The owner or an `edit` grantee: item controls.
+    can_edit: bool,
     draft: ItemDraft,
     error: Option<String>,
 }
@@ -206,12 +249,22 @@ async fn render_list(
     draft: ItemDraft,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
+    let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let items = ShoppingListRepo::items(&state.pool, user, list_id, false).await?;
     let removed = ShoppingListRepo::items(&state.pool, user, list_id, true).await?;
-    let categories = CategoryRepo::list_for_owner(&state.pool, user).await?;
-    let favorites = ProductRepo::list_for_owner(&state.pool, user).await?;
-    let recipes = RecipeRepo::list_for_owner(&state.pool, user).await?;
+    // The catalog controls are the owner's; a grantee's own catalog has no
+    // place on someone else's list, so it isn't even read.
+    let is_owner = access == ListAccess::Owner;
+    let (categories, favorites, recipes) = if is_owner {
+        (
+            CategoryRepo::list_for_owner(&state.pool, user).await?,
+            ProductRepo::list_for_owner(&state.pool, user).await?,
+            RecipeRepo::list_for_owner(&state.pool, user).await?,
+        )
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
     let card = ListCard::from(list);
     let removed_count = removed.len();
     let view = ListView {
@@ -236,6 +289,8 @@ async fn render_list(
             })
             .collect(),
         has_categories: !categories.is_empty(),
+        is_owner,
+        can_edit: access >= ListAccess::Edit,
         draft,
         error,
     };
@@ -291,6 +346,8 @@ struct ShopView {
     groups: Vec<ShopGroup>,
     found: usize,
     total: usize,
+    /// The owner or an `edit` grantee: check-off and removal.
+    can_edit: bool,
     error: Option<String>,
 }
 
@@ -319,6 +376,7 @@ async fn render_shop(
     status: StatusCode,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
+    let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let groups = ShoppingListRepo::store_view(&state.pool, user, list_id).await?;
     let groups: Vec<ShopGroup> = groups
@@ -343,6 +401,7 @@ async fn render_shop(
         found: items().filter(|i| i.checked).count(),
         total: items().count(),
         groups,
+        can_edit: access >= ListAccess::Edit,
         error,
     };
     let template = if fragment {
@@ -398,8 +457,9 @@ fn parse_recipe(raw: &str) -> CoreResult<Uuid> {
 }
 
 /// The recipe multiplier: blank means 1, and a decimal comma is accepted
-/// ("1,5"). Its range is checked by the repo.
-fn parse_multiplier(raw: &str) -> CoreResult<f64> {
+/// ("1,5"). Its range is checked by the repo. Also used by the recipe page's
+/// "Add to a list" form (MB-0015).
+pub fn parse_multiplier(raw: &str) -> CoreResult<f64> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Ok(1.0);
@@ -436,8 +496,10 @@ async fn render_index(
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
     let lists = ShoppingListRepo::list_for_owner(&state.pool, user).await?;
+    let shared = ShoppingListRepo::shared_with(&state.pool, user).await?;
     let view = IndexView {
         lists: lists.into_iter().map(ListCard::from).collect(),
+        shared: shared.into_iter().map(SharedCard::from).collect(),
         draft_name,
         error,
     };
@@ -764,6 +826,258 @@ pub async fn restore_item(
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::restore_item(&state.pool, user, list_id, item_id).await;
     respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+}
+
+// Sharing (MB-0008): the owner's `/lists/{id}/sharing` page, with the share
+// form (`#share-form-{id}`) and the people with access (`#grantees-{id}`).
+
+#[derive(Debug, Deserialize)]
+struct ShareForm {
+    #[serde(default)]
+    email: String,
+    #[serde(default)]
+    role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SharingQuery {
+    /// Set by the 303 after a plain share, to show the generic notice.
+    #[serde(default)]
+    shared: Option<String>,
+}
+
+/// The sharing page (`lists/sharing`).
+#[derive(Debug, Serialize)]
+struct SharingView {
+    id: Uuid,
+    name: String,
+    form: ShareFormView,
+    grantees: GranteesView,
+}
+
+/// The share form (`lists/_share_form`). After a share it shows the same
+/// notice whether or not the email matched an account, and nothing else that
+/// depends on it (RR-0002 constraint 3).
+#[derive(Debug, Default, Serialize)]
+struct ShareFormView {
+    id: Uuid,
+    email: String,
+    edit_selected: bool,
+    notice: bool,
+    error: Option<String>,
+}
+
+/// The people with access (`lists/_grantees`).
+#[derive(Debug, Serialize)]
+struct GranteesView {
+    id: Uuid,
+    shares: Vec<GranteeRow>,
+    count: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct GranteeRow {
+    /// The grant's id, which revoke takes.
+    id: Uuid,
+    name: String,
+    email: String,
+    can_edit: bool,
+}
+
+impl GranteesView {
+    fn new(list_id: Uuid, shares: Vec<ListShare>) -> Self {
+        let shares: Vec<GranteeRow> = shares
+            .into_iter()
+            .map(|s| GranteeRow {
+                id: s.id,
+                name: s.grantee_name,
+                email: s.grantee_email,
+                can_edit: s.role == ShareRole::Edit,
+            })
+            .collect();
+        Self {
+            id: list_id,
+            count: shares.len(),
+            shares,
+        }
+    }
+}
+
+/// Render the sharing page, or for htmx the share form fragment. Owner only:
+/// `shares` runs the access predicate (404 for strangers, 403 for grantees).
+async fn render_sharing(
+    state: &AppState,
+    user: Uuid,
+    list_id: Uuid,
+    fragment: bool,
+    status: StatusCode,
+    form: ShareFormView,
+) -> WebResult<HttpResponse> {
+    let shares = ShoppingListRepo::shares(&state.pool, user, list_id).await?;
+    let body = if fragment {
+        state.templates.render("lists/_share_form", &form)?
+    } else {
+        let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
+        state.templates.render(
+            "lists/sharing",
+            &SharingView {
+                id: list.id,
+                name: list.name,
+                form,
+                grantees: GranteesView::new(list_id, shares),
+            },
+        )?
+    };
+    Ok(HttpResponse::build(status)
+        .content_type("text/html")
+        .body(body))
+}
+
+/// Who has access to a list, and the form to share it.
+#[get("/{id}/sharing")]
+pub async fn sharing(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<Uuid>,
+    query: web::Query<SharingQuery>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let list_id = path.into_inner();
+    let form = ShareFormView {
+        id: list_id,
+        notice: query.shared.is_some(),
+        ..ShareFormView::default()
+    };
+    // A boosted or plain request gets the page; only a fragment request the
+    // form.
+    render_sharing(
+        &state,
+        user,
+        list_id,
+        wants_fragment(&req),
+        StatusCode::OK,
+        form,
+    )
+    .await
+}
+
+/// Share the list with the account that uses `email`, as `view` or `edit`
+/// (owner only). The answer is the same whether or not an account matched,
+/// so it never tells the owner whether one exists (RR-0002 constraint 3):
+/// the form comes back empty with a generic notice, or a 303 to the sharing
+/// page.
+#[post("/{id}/shares")]
+pub async fn share(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<Uuid>,
+    form: web::Form<ShareForm>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let list_id = path.into_inner();
+    let outcome = match ShareRole::parse(&form.role) {
+        Ok(role) => ShoppingListRepo::share(&state.pool, user, list_id, &form.email, role)
+            .await
+            .map(|granted| (role, granted)),
+        Err(e) => Err(e),
+    };
+    let error = match outcome {
+        Ok((role, granted)) => {
+            // Audit (RR-0002 constraint 5): grantor and list, never the
+            // grantee's email. Whether an account matched is for the server
+            // log only.
+            if let Some(share) = granted {
+                tracing::info!(
+                    grantor_id = %user,
+                    list_id = %list_id,
+                    share_id = %share.id,
+                    grantee_id = %share.grantee_id,
+                    role = %role,
+                    "list share granted"
+                );
+            } else {
+                tracing::info!(
+                    grantor_id = %user,
+                    list_id = %list_id,
+                    role = %role,
+                    "list share requested; no single other account matched"
+                );
+            }
+            None
+        }
+        Err(CoreError::Invalid(m)) => Some(m),
+        Err(e) => return Err(e.into()),
+    };
+
+    let Some(error) = error else {
+        return if is_hx(&req) {
+            let form = ShareFormView {
+                id: list_id,
+                notice: true,
+                ..ShareFormView::default()
+            };
+            render_sharing(&state, user, list_id, true, StatusCode::OK, form).await
+        } else {
+            Ok(HttpResponse::SeeOther()
+                .append_header((
+                    header::LOCATION,
+                    format!("/lists/{list_id}/sharing?shared=1"),
+                ))
+                .finish())
+        };
+    };
+    tracing::debug!(user_id = %user, list_id = %list_id, reason = %error, "share rejected");
+    let form = form.into_inner();
+    let view = ShareFormView {
+        id: list_id,
+        email: form.email,
+        edit_selected: form.role.trim() == "edit",
+        notice: false,
+        error: Some(error),
+    };
+    let (fragment, status) = if is_hx(&req) {
+        (true, StatusCode::OK)
+    } else {
+        (false, StatusCode::BAD_REQUEST)
+    };
+    render_sharing(&state, user, list_id, fragment, status, view).await
+}
+
+/// Revoke a grant (owner only). The grantee loses access on their next
+/// request. htmx gets the `#grantees-{id}` fragment, a plain request a 303
+/// back to the sharing page.
+#[post("/{id}/shares/{share}/revoke")]
+pub async fn revoke(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (list_id, share_id) = path.into_inner();
+    let revoked = ShoppingListRepo::revoke(&state.pool, user, list_id, share_id).await?;
+    tracing::info!(
+        grantor_id = %user,
+        list_id = %list_id,
+        share_id = %revoked.id,
+        grantee_id = %revoked.grantee_id,
+        role = %revoked.role,
+        "list share revoked"
+    );
+
+    if is_hx(&req) {
+        let shares = ShoppingListRepo::shares(&state.pool, user, list_id).await?;
+        let body = state
+            .templates
+            .render("lists/_grantees", &GranteesView::new(list_id, shares))?;
+        Ok(HttpResponse::Ok().content_type("text/html").body(body))
+    } else {
+        Ok(HttpResponse::SeeOther()
+            .append_header((header::LOCATION, format!("/lists/{list_id}/sharing")))
+            .finish())
+    }
 }
 
 // MB-0007 acceptance tests (P3, P5). They sit at module level rather than in a
@@ -2140,4 +2454,870 @@ async fn recipe_picker_shows_titles() {
             assert!(body.contains(option.as_str()), "htmx={htmx}: {option}");
         }
     }
+}
+
+// MB-0008 acceptance tests (P2–P5, P7). Module level, like the ones above, so
+// the brief's `cargo test -p kauppa-web routes::lists::<name>` checks select
+// them. P8 (`share_rejects_cross_origin`) waits on CRP-0008.
+
+/// An owner's list shared with a `view` and an `edit` grantee, plus the
+/// owner's catalog: one active item (`bread`), one removed (`sugar`).
+#[cfg(test)]
+#[derive(Debug, Clone, Copy)]
+struct Shared {
+    owner: Uuid,
+    viewer: Uuid,
+    editor: Uuid,
+    list: Uuid,
+    bread: Uuid,
+    sugar: Uuid,
+    category: Uuid,
+    product: Uuid,
+    recipe: Uuid,
+    viewer_share: Uuid,
+    editor_share: Uuid,
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+async fn shared_list(state: &AppState) -> Shared {
+    use crate::routes::test_support::{make_category, make_user};
+
+    let owner = make_user(state, "owner@example.com").await;
+    let viewer = make_user(state, "viewer@example.com").await;
+    let editor = make_user(state, "editor@example.com").await;
+    let category = make_category(state, owner, "Kylmä").await;
+    let product = ProductRepo::create(&state.pool, owner, "Maito", category)
+        .await
+        .expect("favorite")
+        .id;
+    let recipe = make_recipe(state, owner, "Puuro", category, &[("Kaura", Some("2 dl"))]).await;
+    let list = ShoppingListRepo::create(&state.pool, owner, "Kauppa")
+        .await
+        .expect("list")
+        .id;
+    let bread = ShoppingListRepo::add_item(&state.pool, owner, list, "Leipä", None)
+        .await
+        .expect("item")
+        .id;
+    let sugar = ShoppingListRepo::add_item(&state.pool, owner, list, "Sokeri", None)
+        .await
+        .expect("item")
+        .id;
+    ShoppingListRepo::remove_item(&state.pool, owner, list, sugar)
+        .await
+        .expect("remove");
+    let viewer_share = ShoppingListRepo::share(
+        &state.pool,
+        owner,
+        list,
+        "viewer@example.com",
+        ShareRole::View,
+    )
+    .await
+    .expect("share")
+    .expect("viewer matched")
+    .id;
+    let editor_share = ShoppingListRepo::share(
+        &state.pool,
+        owner,
+        list,
+        "editor@example.com",
+        ShareRole::Edit,
+    )
+    .await
+    .expect("share")
+    .expect("editor matched")
+    .id;
+    Shared {
+        owner,
+        viewer,
+        editor,
+        list,
+        bread,
+        sugar,
+        category,
+        product,
+        recipe,
+        viewer_share,
+        editor_share,
+    }
+}
+
+/// One POST on a list: `(name, uri, form)`.
+#[cfg(test)]
+type ListPost = (&'static str, String, Vec<(&'static str, String)>);
+
+/// Every POST on a list, as `(name, uri, form)`.
+#[cfg(test)]
+fn list_posts(s: &Shared) -> Vec<ListPost> {
+    let base = format!("/lists/{}", s.list);
+    let (bread, sugar) = (s.bread, s.sugar);
+    vec![
+        (
+            "add_item",
+            format!("{base}/items"),
+            vec![("text", "Munat".to_owned())],
+        ),
+        (
+            "add_favorite",
+            format!("{base}/favorites"),
+            vec![("product_id", s.product.to_string())],
+        ),
+        (
+            "add_recipe",
+            format!("{base}/recipes"),
+            vec![
+                ("recipe_id", s.recipe.to_string()),
+                ("multiplier", "1".to_owned()),
+            ],
+        ),
+        (
+            "check",
+            format!("{base}/shop/items/{bread}/check"),
+            vec![("checked", "true".to_owned())],
+        ),
+        (
+            "shop_remove",
+            format!("{base}/shop/items/{bread}/remove"),
+            vec![],
+        ),
+        (
+            "category",
+            format!("{base}/items/{bread}/category"),
+            vec![("category_id", s.category.to_string())],
+        ),
+        ("remove", format!("{base}/items/{bread}/remove"), vec![]),
+        ("restore", format!("{base}/items/{sugar}/restore"), vec![]),
+        (
+            "rename",
+            format!("{base}/rename"),
+            vec![("name", "Hijacked".to_owned())],
+        ),
+        ("delete", format!("{base}/delete"), vec![]),
+        (
+            "share",
+            format!("{base}/shares"),
+            vec![
+                ("email", "x@example.com".to_owned()),
+                ("role", "edit".to_owned()),
+            ],
+        ),
+        (
+            "revoke",
+            format!("{base}/shares/{}/revoke", s.viewer_share),
+            vec![],
+        ),
+    ]
+}
+
+/// Everything about a list that a mutation could change, read as the owner.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+async fn list_snapshot(state: &AppState, s: &Shared) -> String {
+    let list = ShoppingListRepo::get(&state.pool, s.owner, s.list)
+        .await
+        .expect("list");
+    let row = |i: ListItem| (i.text, i.checked, i.category.map(|c| c.name));
+    let active: Vec<_> = ShoppingListRepo::items(&state.pool, s.owner, s.list, false)
+        .await
+        .expect("items")
+        .into_iter()
+        .map(row)
+        .collect();
+    let removed: Vec<_> = ShoppingListRepo::items(&state.pool, s.owner, s.list, true)
+        .await
+        .expect("items")
+        .into_iter()
+        .map(row)
+        .collect();
+    let shares: Vec<_> = ShoppingListRepo::shares(&state.pool, s.owner, s.list)
+        .await
+        .expect("shares")
+        .into_iter()
+        .map(|g| (g.grantee_id, g.role))
+        .collect();
+    format!("{} {active:?} {removed:?} {shares:?}", list.name)
+}
+
+/// MB-0008 P2: a `view` grantee can read the list — the list page and the
+/// store view, full page and fragment, and the index — without any edit
+/// controls, and every mutation (add, check, remove, restore, categorize,
+/// rename, delete, share, revoke) is a 403 over htmx or not, changing
+/// nothing.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn view_role_is_read_only() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    let viewer =
+        session_cookie(&call_service(&app, login_request("viewer@example.com").to_request()).await);
+    let base = format!("/lists/{}", s.list);
+
+    for (uri, marker) in [(base.clone(), "Leipä"), (format!("{base}/shop"), "Leipä")] {
+        for htmx in [false, true] {
+            let mut req = TestRequest::get().uri(&uri).cookie(viewer.clone());
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::OK, "{uri} htmx={htmx}");
+            let body = body_string(resp).await;
+            assert_eq!(body.contains("<html"), !htmx, "{uri} htmx={htmx}");
+            if !htmx {
+                assert!(body.contains("<title>Kauppa — kauppa</title>"), "{uri}");
+            }
+            assert!(body.contains(marker), "{uri} htmx={htmx}: shows the items");
+            // No form posts to the list (the layout's sign-out form is the
+            // page's only form), and no link to its sharing page.
+            for control in [
+                format!(r#"action="{base}"#),
+                "hx-post".to_owned(),
+                format!("{base}/sharing"),
+            ] {
+                assert!(
+                    !body.contains(&control),
+                    "{uri} htmx={htmx}: a viewer sees no `{control}` control"
+                );
+            }
+            let forms = body.matches(r#"method="post""#).count();
+            assert_eq!(
+                forms,
+                usize::from(!htmx),
+                "{uri} htmx={htmx}: sign-out only"
+            );
+        }
+    }
+    // The index lists the list as shared.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri("/lists")
+            .cookie(viewer.clone())
+            .to_request(),
+    )
+    .await;
+    let body = body_string(resp).await;
+    assert!(body.contains("Shared with you"));
+    assert!(body.contains(&format!(r#"href="/lists/{}""#, s.list)));
+    assert!(body.contains("view only"));
+
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("{base}/sharing"))
+            .cookie(viewer.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "sharing page");
+
+    let before = list_snapshot(&state, &s).await;
+    for (name, uri, form) in list_posts(&s) {
+        for htmx in [false, true] {
+            let mut req = TestRequest::post()
+                .uri(&uri)
+                .cookie(viewer.clone())
+                .set_form(form.clone());
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{name} htmx={htmx}");
+        }
+    }
+    assert_eq!(list_snapshot(&state, &s).await, before, "nothing changed");
+    assert_eq!(
+        ShoppingListRepo::access(&state.pool, s.viewer, s.list)
+            .await
+            .expect("still shared"),
+        ListAccess::View
+    );
+}
+
+/// MB-0008 P3: an `edit` grantee can add, check, remove and restore items,
+/// but can't re-share, revoke, rename or delete the list, open its sharing
+/// page, or use the owner's catalog on it (403s, nothing changes).
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn edit_role_cannot_administer() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    let editor =
+        session_cookie(&call_service(&app, login_request("editor@example.com").to_request()).await);
+    let base = format!("/lists/{}", s.list);
+
+    // The full page and the fragment offer the item controls only.
+    for htmx in [false, true] {
+        let mut req = TestRequest::get().uri(&base).cookie(editor.clone());
+        if htmx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        let resp = call_service(&app, req.to_request()).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_string(resp).await;
+        assert_eq!(body.contains("<html"), !htmx);
+        assert!(
+            body.contains(&format!(r#"action="{base}/items""#)),
+            "htmx={htmx}"
+        );
+        assert!(body.contains(&format!("{base}/items/{}/remove", s.bread)));
+        assert!(body.contains(&format!("{base}/items/{}/restore", s.sugar)));
+        for control in [
+            format!(r#"action="{base}/favorites""#),
+            format!(r#"action="{base}/recipes""#),
+            r#"/category""#.to_owned(),
+            format!("{base}/sharing"),
+            format!("{base}/rename"),
+        ] {
+            assert!(!body.contains(&control), "htmx={htmx}: no `{control}`");
+        }
+    }
+
+    // Item writes go through, as plain posts (303) and over htmx (200).
+    let posts = list_posts(&s);
+    let allowed = ["add_item", "check", "remove", "restore"];
+    for (name, uri, form) in posts.iter().filter(|(n, ..)| allowed.contains(n)) {
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(uri)
+                .cookie(editor.clone())
+                .set_form(form.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{name}");
+    }
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/shop/items/{}/check", s.sugar))
+            .cookie(editor.clone())
+            .insert_header(("HX-Request", "true"))
+            .set_form([("checked", "true")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "htmx check");
+    let body = body_string(resp).await;
+    assert!(body.contains(&format!(r#"id="shop-{}""#, s.list)));
+    let active: Vec<(String, bool)> = ShoppingListRepo::items(&state.pool, s.owner, s.list, false)
+        .await
+        .expect("items")
+        .into_iter()
+        .map(|i| (i.text, i.checked))
+        .collect();
+    assert_eq!(
+        active,
+        [("Sokeri".to_owned(), true), ("Munat".to_owned(), false)],
+        "bread checked then removed, sugar restored and checked, eggs added"
+    );
+
+    // Administration and the owner's catalog are refused.
+    let before = list_snapshot(&state, &s).await;
+    for (name, uri, form) in posts.iter().filter(|(n, ..)| !allowed.contains(n)) {
+        if *name == "shop_remove" {
+            continue; // an item write, covered by "remove"
+        }
+        for htmx in [false, true] {
+            let mut req = TestRequest::post()
+                .uri(uri)
+                .cookie(editor.clone())
+                .set_form(form.clone());
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{name} htmx={htmx}");
+        }
+    }
+    // Revoking their own grant is administration too.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/shares/{}/revoke", s.editor_share))
+            .cookie(editor.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "revoke own grant");
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("{base}/sharing"))
+            .cookie(editor.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN, "sharing page");
+    assert_eq!(list_snapshot(&state, &s).await, before, "nothing changed");
+    assert_eq!(
+        ShoppingListRepo::access(&state.pool, s.editor, s.list)
+            .await
+            .expect("still shared"),
+        ListAccess::Edit
+    );
+}
+
+/// MB-0008 P4: only the owner shares, revokes, renames and deletes. The owner
+/// can do all four (and a revoke takes the grantee's access away); a stranger
+/// gets 404 for each and a grantee 403.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn owner_only_administration() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    make_user(&state, "stranger@example.com").await;
+    let invitee = make_user(&state, "invitee@example.com").await;
+    let login = |email: &'static str| login_request(email).to_request();
+    let owner = session_cookie(&call_service(&app, login("owner@example.com")).await);
+    let stranger = session_cookie(&call_service(&app, login("stranger@example.com")).await);
+    let viewer = session_cookie(&call_service(&app, login("viewer@example.com")).await);
+    let editor = session_cookie(&call_service(&app, login("editor@example.com")).await);
+    let base = format!("/lists/{}", s.list);
+    let admin: Vec<(String, Vec<(&str, String)>)> = vec![
+        (
+            format!("{base}/shares"),
+            vec![
+                ("email", "invitee@example.com".to_owned()),
+                ("role", "view".to_owned()),
+            ],
+        ),
+        (format!("{base}/shares/{}/revoke", s.editor_share), vec![]),
+        (
+            format!("{base}/rename"),
+            vec![("name", "Hijacked".to_owned())],
+        ),
+        (format!("{base}/delete"), vec![]),
+    ];
+
+    // Non-owners: a stranger can't tell the list exists; grantees are refused.
+    let before = list_snapshot(&state, &s).await;
+    for (who, cookie, status) in [
+        ("stranger", &stranger, StatusCode::NOT_FOUND),
+        ("viewer", &viewer, StatusCode::FORBIDDEN),
+        ("editor", &editor, StatusCode::FORBIDDEN),
+    ] {
+        let resp = call_service(
+            &app,
+            TestRequest::get()
+                .uri(&format!("{base}/sharing"))
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), status, "{who} sharing page");
+        for (uri, form) in &admin {
+            for htmx in [false, true] {
+                let mut req = TestRequest::post()
+                    .uri(uri)
+                    .cookie(cookie.clone())
+                    .set_form(form.clone());
+                if htmx {
+                    req = req.insert_header(("HX-Request", "true"));
+                }
+                let resp = call_service(&app, req.to_request()).await;
+                assert_eq!(resp.status(), status, "{who} {uri} htmx={htmx}");
+            }
+        }
+    }
+    assert_eq!(list_snapshot(&state, &s).await, before, "nothing changed");
+
+    // The owner's sharing page lists who has access, as a full page.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("{base}/sharing"))
+            .cookie(owner.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("<title>Kauppa — kauppa</title>"));
+    assert!(body.contains("People with access (2)"));
+    assert!(body.contains("viewer@example.com"));
+    assert!(body.contains(&format!("{base}/shares/{}/revoke", s.editor_share)));
+    // ...and the list page links to it for the owner only.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&base)
+            .cookie(owner.clone())
+            .to_request(),
+    )
+    .await;
+    assert!(body_string(resp).await.contains(&format!("{base}/sharing")));
+
+    // Share: a 303 back to the sharing page; the grant exists.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&admin[0].0)
+            .cookie(owner.clone())
+            .set_form(admin[0].1.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(header::LOCATION).expect("location"),
+        &format!("{base}/sharing?shared=1")
+    );
+    assert_eq!(
+        ShoppingListRepo::access(&state.pool, invitee, s.list)
+            .await
+            .expect("invitee granted"),
+        ListAccess::View
+    );
+
+    // Revoke over htmx: the grantee list fragment, without the editor; the
+    // editor is denied on their next request.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&admin[1].0)
+            .cookie(owner.clone())
+            .insert_header(("HX-Request", "true"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains(&format!(r#"id="grantees-{}""#, s.list)));
+    assert!(!body.contains("editor@example.com"));
+    assert!(
+        body.contains("People with access (2)"),
+        "viewer and invitee"
+    );
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&base)
+            .cookie(editor.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "revoked editor");
+
+    // A grant id from another of the owner's lists isn't on this one.
+    let other = ShoppingListRepo::create(&state.pool, s.owner, "Toinen")
+        .await
+        .expect("list")
+        .id;
+    let other_share = ShoppingListRepo::share(
+        &state.pool,
+        s.owner,
+        other,
+        "editor@example.com",
+        ShareRole::Edit,
+    )
+    .await
+    .expect("share")
+    .expect("matched")
+    .id;
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/shares/{other_share}/revoke"))
+            .cookie(owner.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "foreign grant id");
+
+    // Rename and delete: 303s; deleting takes every grant with it.
+    for (uri, form) in &admin[2..] {
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(uri)
+                .cookie(owner.clone())
+                .set_form(form.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{uri}");
+    }
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&base)
+            .cookie(viewer.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND, "deleted");
+    assert!(
+        ShoppingListRepo::shared_with(&state.pool, s.viewer)
+            .await
+            .expect("shared")
+            .is_empty()
+    );
+}
+
+/// MB-0008 P5: sharing to an email with an account, one without, and the
+/// owner's own answer identically — status, `Location` and body, as a plain
+/// post and over htmx — while only the first grants access.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn share_is_enumeration_safe() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let owner = make_user(&state, "owner@example.com").await;
+    let known = make_user(&state, "known@example.com").await;
+    let list = ShoppingListRepo::create(&state.pool, owner, "Kauppa")
+        .await
+        .expect("list")
+        .id;
+    let session =
+        session_cookie(&call_service(&app, login_request("owner@example.com").to_request()).await);
+
+    for htmx in [false, true] {
+        let mut answers = Vec::new();
+        for email in [
+            "known@example.com",
+            "nobody@example.com",
+            "KNOWN@example.com",
+            "owner@example.com",
+            "not-an-email",
+        ] {
+            let mut req = TestRequest::post()
+                .uri(&format!("/lists/{list}/shares"))
+                .cookie(session.clone())
+                .set_form([("email", email), ("role", "edit")]);
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            let status = resp.status();
+            let location = resp
+                .headers()
+                .get(header::LOCATION)
+                .map(|v| v.to_str().expect("ascii").to_owned());
+            let content_type = resp
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .map(|v| v.to_str().expect("ascii").to_owned());
+            let body = body_string(resp).await;
+            assert!(!body.contains(email), "htmx={htmx}: the email isn't echoed");
+            answers.push((email, (status, location, content_type, body)));
+        }
+        let (_, first) = &answers[0];
+        let expected = if htmx {
+            StatusCode::OK
+        } else {
+            StatusCode::SEE_OTHER
+        };
+        assert_eq!(first.0, expected, "htmx={htmx}");
+        if htmx {
+            assert!(first.3.contains("If an account uses that email"));
+        }
+        for (email, answer) in &answers[1..] {
+            assert_eq!(answer, first, "htmx={htmx}: {email} answers like a match");
+        }
+    }
+
+    // Only the real account was granted (once; sharing again updates it).
+    let shares = ShoppingListRepo::shares(&state.pool, owner, list)
+        .await
+        .expect("shares");
+    assert_eq!(shares.len(), 1);
+    assert_eq!(shares[0].grantee_id, known);
+
+    // A rejected input is a different answer, but it says nothing about
+    // accounts either: it is the same for both emails.
+    let mut rejections = Vec::new();
+    for email in ["known@example.com", "nobody@example.com"] {
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(&format!("/lists/{list}/shares"))
+                .cookie(session.clone())
+                .insert_header(("HX-Request", "true"))
+                .set_form([("email", email), ("role", "admin")])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_string(resp).await.replace(email, "EMAIL");
+        assert!(body.contains("choose view or edit"));
+        rejections.push(body);
+    }
+    assert_eq!(rejections[0], rejections[1]);
+}
+
+/// A `tracing` writer that keeps everything written to it.
+#[cfg(test)]
+#[derive(Debug, Clone, Default)]
+struct LogCapture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+#[cfg(test)]
+impl LogCapture {
+    #[allow(clippy::expect_used)]
+    fn text(&self) -> String {
+        String::from_utf8(self.0.lock().expect("log lock").clone()).expect("utf-8 log")
+    }
+}
+
+#[cfg(test)]
+impl std::io::Write for LogCapture {
+    #[allow(clippy::expect_used)]
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("log lock").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+/// MB-0008 P7: granting and revoking log, at `info`, the grantor and the list
+/// id (and the grant's ids, never an email); nothing at `info` or above
+/// carries the grantee's email, matched or not.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn share_audit_logging() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    // Tests run in parallel. With a single registered dispatcher, tracing
+    // computes a new callsite's interest from the *registering* thread's
+    // subscriber, so another test's thread (which has none) could switch the
+    // share callsites off for this one. A second, idle dispatcher makes it
+    // ask every registered subscriber instead.
+    let _idle = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    let capture = LogCapture::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(capture.clone())
+        .with_max_level(tracing::Level::INFO)
+        .with_ansi(false)
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let owner = make_user(&state, "owner@example.com").await;
+    let grantee = make_user(&state, "secret.grantee@example.com").await;
+    let list = ShoppingListRepo::create(&state.pool, owner, "Kauppa")
+        .await
+        .expect("list")
+        .id;
+    let session =
+        session_cookie(&call_service(&app, login_request("owner@example.com").to_request()).await);
+
+    // Callsites another test registered before this subscriber existed:
+    // recompute their interest now that it does.
+    tracing::callsite::rebuild_interest_cache();
+    for email in ["secret.grantee@example.com", "secret.nobody@example.com"] {
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(&format!("/lists/{list}/shares"))
+                .cookie(session.clone())
+                .set_form([("email", email), ("role", "edit")])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    }
+    let grant = ShoppingListRepo::shares(&state.pool, owner, list)
+        .await
+        .expect("shares")
+        .pop()
+        .expect("granted");
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("/lists/{list}/shares/{}/revoke", grant.id))
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+    let log = capture.text();
+    let line = |message: &str| {
+        log.lines()
+            .find(|l| l.contains(message))
+            .unwrap_or_default()
+            .to_owned()
+    };
+    for message in [
+        "list share granted",
+        "list share requested; no single other account matched",
+        "list share revoked",
+    ] {
+        let line = line(message);
+        assert!(line.contains(" INFO "), "{message} at info: {log}");
+        assert!(
+            line.contains(&format!("grantor_id={owner}")),
+            "{message}: {line}"
+        );
+        assert!(
+            line.contains(&format!("list_id={list}")),
+            "{message}: {line}"
+        );
+    }
+    for message in ["list share granted", "list share revoked"] {
+        let line = line(message);
+        assert!(
+            line.contains(&format!("grantee_id={grantee}")),
+            "{message}: {line}"
+        );
+        assert!(
+            line.contains(&format!("share_id={}", grant.id)),
+            "{message}: {line}"
+        );
+    }
+    assert!(
+        !log.contains("secret."),
+        "no email (or its local part) at info or above: {log}"
+    );
 }

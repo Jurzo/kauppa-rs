@@ -3,6 +3,7 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
 
+  {{#if can_edit}}
   <form class="add-product" method="post" action="/lists/{{id}}/items"
         hx-post="/lists/{{id}}/items" hx-target="#list-{{id}}" hx-swap="outerHTML">
     <label>Item
@@ -15,7 +16,11 @@
     </label>
     <button type="submit" class="button primary">Add</button>
   </form>
+  {{else}}
+    <p class="muted">Shared with you to view.</p>
+  {{/if}}
 
+  {{#if is_owner}}
   {{#if favorites}}
     <form class="add-product" method="post" action="/lists/{{id}}/favorites"
           hx-post="/lists/{{id}}/favorites" hx-target="#list-{{id}}" hx-swap="outerHTML">
@@ -58,6 +63,7 @@
       <button type="submit" class="button">Add ingredients</button>
     </form>
   {{/if}}
+  {{/if}}
 
   <ul class="product-list">
     {{#each items}}
@@ -66,6 +72,7 @@
           {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}
           <span class="muted">· {{#if this.category}}{{this.category}}{{else}}Uncategorized{{/if}}</span>
         </span>
+        {{#if ../is_owner}}
         <details class="product-edit"{{#unless this.category}}{{#if ../has_categories}} open{{/if}}{{/unless}}>
           <summary>{{#if this.category}}Edit{{else}}Choose category{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
           {{#if ../has_categories}}
@@ -84,6 +91,12 @@
             <button type="submit" class="link danger">Remove</button>
           </form>
         </details>
+        {{else}}{{#if ../can_edit}}
+          <form class="row-actions" method="post" action="/lists/{{../id}}/items/{{this.id}}/remove"
+                hx-post="/lists/{{../id}}/items/{{this.id}}/remove" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+            <button type="submit" class="link danger">Remove<span class="visually-hidden"> {{this.text}}</span></button>
+          </form>
+        {{/if}}{{/if}}
       </li>
     {{else}}
       <li class="product-row empty">No items yet.</li>
@@ -97,10 +110,12 @@
         {{#each removed}}
           <li class="product-row">
             <span class="product-name muted">{{this.text}}</span>
+            {{#if ../can_edit}}
             <form class="row-actions" method="post" action="/lists/{{../id}}/items/{{this.id}}/restore"
                   hx-post="/lists/{{../id}}/items/{{this.id}}/restore" hx-target="#list-{{../id}}" hx-swap="outerHTML">
               <button type="submit" class="link">Restore</button>
             </form>
+            {{/if}}
           </li>
         {{/each}}
       </ul>
