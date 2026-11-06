@@ -12,5 +12,11 @@
 
   <h2>Add to a list</h2>
   {{> recipes/_add_to_list add_to_list }}
+
+  <form class="recipe-delete" method="post" action="/recipes/{{details.id}}/delete"
+        hx-post="/recipes/{{details.id}}/delete" hx-target="this" hx-swap="none"
+        hx-confirm="Delete the recipe “{{title}}” and its ingredients? The products stay in your catalog.">
+    <button type="submit" class="link danger">Delete recipe</button>
+  </form>
 </section>
 {{/layout}}
