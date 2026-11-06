@@ -57,6 +57,8 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/actix-web.md@v1
+resolutions:
+  - RR-0006
 ---
 ```
 

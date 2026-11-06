@@ -5,7 +5,7 @@ Version: v1 · Scope: `templates/**`, `assets/**`, and any route rendering HTML.
 ## Handlebars
 
 - One shared `layout.hbs` using the partial-block pattern. Every page is
-  `{{#> layout title="…" signed_in=…}}…{{/layout}}`.
+  `{{#> layout page_title="…" page_signed_in=…}}…{{/layout}}`.
 - Pass data through typed structs serialized to JSON via `serde_json::json!`
   only for scaffolds — prefer `#[derive(Serialize)]` structs for anything
   non-trivial. Strict mode is on, so missing fields are errors at render time.
@@ -34,3 +34,5 @@ Version: v1 · Scope: `templates/**`, `assets/**`, and any route rendering HTML.
 - Markup duplication across pages → extract a partial.
 - A page template emitting its own `<head>` or `<html>` → use the layout.
 - Server-side templating mixing HTML and JSON responses in one handler.
+- A layout parameter named like a view field. Partial hash params become
+  block params and shadow same-named body fields on full pages (RR-0006).
