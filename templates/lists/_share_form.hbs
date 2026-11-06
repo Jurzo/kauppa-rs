@@ -1,0 +1,23 @@
+<div id="share-form-{{id}}" class="share-form">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  {{#if notice}}
+    <p class="notice" role="status">If an account uses that email, it can now open this list. Reload to see who has access.</p>
+  {{/if}}
+
+  <form class="add-product" method="post" action="/lists/{{id}}/shares"
+        hx-post="/lists/{{id}}/shares" hx-target="#share-form-{{id}}" hx-swap="outerHTML">
+    <label>Email
+      <input name="email" type="email" required autocomplete="off"
+             placeholder="name@example.com" value="{{email}}" />
+    </label>
+    <label>Access
+      <select name="role">
+        <option value="view"{{#unless edit_selected}} selected{{/unless}}>Can view</option>
+        <option value="edit"{{#if edit_selected}} selected{{/if}}>Can edit items</option>
+      </select>
+    </label>
+    <button type="submit" class="button primary">Share</button>
+  </form>
+</div>

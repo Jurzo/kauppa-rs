@@ -32,9 +32,6 @@ acceptance:
   - id: P7
     property: Grant and revoke are logged with grantor and list id and never the grantee's full email at info level or higher.
     check: cargo test -p kauppa-web routes::lists::share_audit_logging
-  - id: P8
-    property: State-changing share and revoke endpoints reject cross-origin form posts (origin check), pending the app-wide CSRF decision.
-    check: cargo test -p kauppa-web routes::lists::share_rejects_cross_origin
 context:
   - crates/kauppa-web/src/routes/lists.rs
   - crates/kauppa-web/src/routes/auth.rs
@@ -52,7 +49,6 @@ autonomy:
   escalate:
     - { when: schema change beyond the list_shares table approved in RR-0002, to: data-owner }
     - { when: the authorization predicate's scope is extended beyond lists and list-items, to: security }
-    - { when: the app has no CSRF protection to ride and P8 forces a security posture change, to: security }
     - { when: public route added or removed, to: api-owner }
   forbidden:
     - bypass or duplicate the authorization predicate outside the central helper
@@ -68,6 +64,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
 resolutions:
   - RR-0002
+  - RR-0008
 ---
 ```
 
@@ -82,9 +79,15 @@ escalation) to "owner OR grantee with sufficient role" for lists and list items.
 
 The brief's acceptance properties map one-to-one onto RR-0002's constraints 1–6
 (P1 ↔ centralized predicate, P2/P3/P4 ↔ role semantics, P5 ↔ enumeration-safe
-invites, P6 ↔ immediate revocation, P7 ↔ audit logging, P8 ↔ CSRF/origin). The
+invites, P6 ↔ immediate revocation, P7 ↔ audit logging). The
 `list_shares` schema and the authz relaxation are both covered by RR-0002, whose
 resolver (@juuso.kalliomaki) holds the data and security roles alike.
+
+**CSRF moved out (RR-0008, 2026-11-06).** This brief first had a P8: an origin
+check on share and revoke for RR-0002 constraint 6. The app had no CSRF
+mechanism to ride, so CRP-0008 asked the owner. They chose no cross-site
+protection change in this mission. P8 moved to MB-0018 (app-wide cross-site
+request protection) as its P5, and constraint 6 is met when MB-0018 merges.
 
 Depends on MB-0004 (the list / list-item model). Session identity comes from
 `actix-identity` via `routes/lists.rs::current_user`.
@@ -103,16 +106,15 @@ resolve the invite by email with a generic response regardless of match (P5).
 
 Checkpoints: the predicate and its denial paths (P1, P6) are unit-tested at the
 repo layer before any UI. Slow-mode triggers: if any list query cannot be routed
-through the central helper, stop — that is the security crux; if the app has no
-CSRF mechanism for P8 to ride, raise a consult (RR-0002 constraint 6 left the
-"should → must" promotion to the resolver) rather than inventing one here.
+through the central helper, stop — that is the security crux. CSRF protection
+is out of scope here (RR-0008 → MB-0018).
 
 ## Validation plan
 
 P1 and P6 are `kauppa-core` tests over a temp SQLite pool (non-grantee denial on
-read + every mutation; denial on the request immediately after revoke). P2–P5,
-P7, P8 are `kauppa-web` tests: role-scoped read/mutate matrices, owner-only
-administration, enumeration-safe invite responses, audit-log field assertions,
-and cross-origin rejection on the share/revoke POSTs. Evidence: named test
+read + every mutation; denial on the request immediately after revoke). P2–P5
+and P7 are `kauppa-web` tests: role-scoped read/mutate matrices, owner-only
+administration, enumeration-safe invite responses, and audit-log field
+assertions. Evidence: named test
 outputs in the scope-to-proof map, with an explicit test that fails if a query
 bypasses the central predicate.

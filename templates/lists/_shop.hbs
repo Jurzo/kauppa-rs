@@ -11,6 +11,7 @@
       <ul class="product-list">
         {{#each this.items}}
           <li class="product-row shop-row{{#if this.checked}} found{{/if}}">
+            {{#if ../../can_edit}}
             <form class="shop-check" method="post" action="/lists/{{../../id}}/shop/items/{{this.id}}/check"
                   hx-post="/lists/{{../../id}}/shop/items/{{this.id}}/check" hx-target="#shop-{{../../id}}" hx-swap="outerHTML">
               <button type="submit" class="link shop-toggle" name="checked"
@@ -24,6 +25,13 @@
                   hx-post="/lists/{{../../id}}/shop/items/{{this.id}}/remove" hx-target="#shop-{{../../id}}" hx-swap="outerHTML">
               <button type="submit" class="link" aria-label="Remove {{this.text}} — not needed">✕</button>
             </form>
+            {{else}}
+            <span class="shop-toggle">
+              <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
+              <span class="product-name">{{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}</span>
+              {{#if this.checked}}<span class="visually-hidden">(found)</span>{{/if}}
+            </span>
+            {{/if}}
           </li>
         {{/each}}
       </ul>

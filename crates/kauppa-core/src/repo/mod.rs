@@ -17,6 +17,8 @@ mod list;
 mod product;
 #[cfg(test)]
 mod recipe;
+#[cfg(test)]
+mod share;
 
 pub use sqlite::SqlitePool;
 
@@ -25,8 +27,9 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, ListGroup, ListItem, NewIngredient, Product, ProductGroup,
-    Recipe, RecipeDetail, RecipeInput, ShoppingList, User,
+    Category, Direction, HiddenProductGroup, Ingredient, ListAccess, ListGroup, ListItem,
+    ListShare, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail, RecipeInput, ShareRole,
+    SharedList, ShoppingList, User,
 };
 
 #[async_trait]
@@ -108,113 +111,168 @@ pub trait ProductRepo: Send + Sync {
     ) -> CoreResult<()>;
 
     /// Delete a product the caller owns. `NotFound` if it isn't theirs.
+    /// Recipe ingredients that use it stay, unlinked, under the product's
+    /// current name (RR-0001 constraint 4).
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
+
+    /// The owner's recipe-created (non-favorite) products, grouped like
+    /// `list_for_owner` (uncategorized last) and ordered by name within a
+    /// group, each with the number of the owner's recipes that use it
+    /// (MB-0014).
+    async fn list_hidden_with_usage(&self, owner_id: Uuid) -> CoreResult<Vec<HiddenProductGroup>>;
+
+    /// Make a recipe-created product a favorite: the same row, keeping its
+    /// name and category, appended at the end of that category. A no-op for
+    /// a favorite. `Invalid` while it has no category (RR-0001: a favorite
+    /// needs one); `NotFound` if it isn't the owner's.
+    async fn make_favorite(&self, owner_id: Uuid, id: Uuid) -> CoreResult<Product>;
 }
 
-/// Named shopping lists (MB-0007).
+/// Named shopping lists (MB-0007), shared with other users (MB-0008).
 ///
-/// Every method is owner-scoped: a list that isn't `owner_id`'s is
-/// `NotFound`. (Shared lists, MB-0008, will widen this through RR-0002's
-/// authorization predicate.)
+/// Every method that takes a list id authorizes `user_id` against that list
+/// through one central access predicate (RR-0002 constraint 1): the owner, or
+/// a `list_shares` grantee whose role is at least what the method needs.
+/// A user with no access gets `NotFound`, so a list's existence never leaks;
+/// a grantee whose role is too weak gets `Forbidden`. Access is read from the
+/// database on every call, so a revoked grant stops working at once
+/// (constraint 4).
+///
+/// Required access per method: reads (`get`, `access`, `items`,
+/// `store_view`) need any grant (`view`); item writes (`add_item`,
+/// `set_checked`, `remove_item`, `restore_item`) need `edit`; the methods
+/// that read the owner's catalog (`add_product`, `add_recipe`,
+/// `assign_category`) and administration (`rename`, `delete`, `shares`,
+/// `share`, `revoke`) are the owner's alone.
 #[async_trait]
 pub trait ShoppingListRepo: Send + Sync {
-    /// The owner's lists, most recently updated first.
-    async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ShoppingList>>;
+    /// The user's own lists, most recently updated first. Lists shared with
+    /// them are in [`ShoppingListRepo::shared_with`].
+    async fn list_for_owner(&self, user_id: Uuid) -> CoreResult<Vec<ShoppingList>>;
 
-    /// Create an empty list. Rejects an empty name (`Invalid`); names need
-    /// not be unique.
-    async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<ShoppingList>;
+    /// Lists other users shared with `user_id`, most recently updated first.
+    async fn shared_with(&self, user_id: Uuid) -> CoreResult<Vec<SharedList>>;
 
-    /// One of the owner's lists, to open and continue.
-    async fn get(&self, owner_id: Uuid, id: Uuid) -> CoreResult<ShoppingList>;
+    /// Create an empty list owned by `user_id`. Rejects an empty name
+    /// (`Invalid`); names need not be unique.
+    async fn create(&self, user_id: Uuid, name: &str) -> CoreResult<ShoppingList>;
 
-    /// Rename a list; it counts as an update, so it moves to the top of the
-    /// index. Rejects an empty name (`Invalid`).
-    async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList>;
+    /// A list the user can see, to open and continue.
+    async fn get(&self, user_id: Uuid, id: Uuid) -> CoreResult<ShoppingList>;
 
-    /// Delete a list; its items go with it (`ON DELETE CASCADE`).
-    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
+    /// What the user may do with a list (`NotFound` if nothing).
+    async fn access(&self, user_id: Uuid, id: Uuid) -> CoreResult<ListAccess>;
+
+    /// Rename a list (owner only); it counts as an update, so it moves to the
+    /// top of the index. Rejects an empty name (`Invalid`).
+    async fn rename(&self, user_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList>;
+
+    /// Delete a list (owner only); its items and shares go with it
+    /// (`ON DELETE CASCADE`).
+    async fn delete(&self, user_id: Uuid, id: Uuid) -> CoreResult<()>;
 
     /// A list's items in position order: the active ones by default
     /// (`removed_at IS NULL`, RR-0001 constraint 7), or only the removed ones.
-    async fn items(
-        &self,
-        owner_id: Uuid,
-        list_id: Uuid,
-        removed: bool,
-    ) -> CoreResult<Vec<ListItem>>;
+    async fn items(&self, user_id: Uuid, list_id: Uuid, removed: bool)
+    -> CoreResult<Vec<ListItem>>;
 
-    /// Append a free-text item. It is uncategorized until a category is
-    /// assigned (RR-0001 constraint 5). Rejects empty text (`Invalid`).
+    /// Append a free-text item (`edit`). It is uncategorized until a
+    /// category is assigned (RR-0001 constraint 5). Rejects empty text
+    /// (`Invalid`).
     async fn add_item(
         &self,
-        owner_id: Uuid,
+        user_id: Uuid,
         list_id: Uuid,
         text: &str,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem>;
 
     /// Append an item for one of the owner's products, copying its name and
-    /// category now (RR-0001 constraint 6). `Invalid` for a product that
-    /// isn't the owner's.
+    /// category now (RR-0001 constraint 6). Owner only. `Invalid` for a
+    /// product that isn't the owner's.
     async fn add_product(
         &self,
-        owner_id: Uuid,
+        user_id: Uuid,
         list_id: Uuid,
         product_id: Uuid,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem>;
 
     /// Append one item per ingredient of one of the owner's recipes, in
-    /// recipe order and atomically (MB-0005). Each item copies, at add-time,
-    /// the ingredient's product, that product's current name and category,
-    /// and the ingredient's quantity with its leading number scaled by
-    /// `multiplier` (`domain::quantity::scale`). An ingredient whose product
-    /// is gone or uncategorized becomes an uncategorized item. The recipe and
-    /// the catalog are only read. `NotFound` for a list or recipe that isn't
-    /// the owner's; `Invalid` for a recipe without ingredients or a
+    /// recipe order and atomically (MB-0005). Owner only. Each item copies,
+    /// at add-time, the ingredient's product, that product's current name
+    /// and category, and the ingredient's quantity with its leading number
+    /// scaled by `multiplier` (`domain::quantity::scale`). An ingredient
+    /// whose product is gone or uncategorized becomes an uncategorized item.
+    /// The recipe and the catalog are only read. `NotFound` for a list or
+    /// recipe that isn't the user's (`Forbidden` for a list only shared
+    /// with them); `Invalid` for a recipe without ingredients or a
     /// multiplier outside (0, 100].
     async fn add_recipe(
         &self,
-        owner_id: Uuid,
+        user_id: Uuid,
         list_id: Uuid,
         recipe_id: Uuid,
         multiplier: f64,
     ) -> CoreResult<Vec<ListItem>>;
 
-    /// Put an item in one of the owner's categories. Changes only this item,
-    /// never the catalog. `Invalid` for a category that isn't the owner's.
+    /// Put an item in one of the owner's categories. Owner only. Changes
+    /// only this item, never the catalog. `Invalid` for a category that
+    /// isn't the owner's.
     async fn assign_category(
         &self,
-        owner_id: Uuid,
+        user_id: Uuid,
         list_id: Uuid,
         item_id: Uuid,
         category_id: Uuid,
     ) -> CoreResult<ListItem>;
 
     /// A list's active items grouped for the store (MB-0006). Groups follow
-    /// the item's own (snapshotted) category, in the user's category order
-    /// with name as tiebreak; uncategorized items form one last group. Within
-    /// a group, items whose product is still in that category follow the
-    /// product's position there, and the rest follow by name, ignoring case;
-    /// position on the list breaks remaining ties. Empty groups are omitted.
-    async fn store_view(&self, owner_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>>;
+    /// the item's own (snapshotted) category, in the list owner's category
+    /// order with name as tiebreak; uncategorized items form one last group.
+    /// Within a group, items whose product is still in that category follow
+    /// the product's position there, and the rest follow by name, ignoring
+    /// case; position on the list breaks remaining ties. Empty groups are
+    /// omitted.
+    async fn store_view(&self, user_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>>;
 
-    /// Mark an active item found (`checked`) or not. Setting the state
-    /// rather than flipping it makes a repeated request harmless.
+    /// Mark an active item found (`checked`) or not (`edit`). Setting the
+    /// state rather than flipping it makes a repeated request harmless.
     async fn set_checked(
         &self,
-        owner_id: Uuid,
+        user_id: Uuid,
         list_id: Uuid,
         item_id: Uuid,
         checked: bool,
     ) -> CoreResult<ListItem>;
 
-    /// Soft-delete an active item (sets `removed_at`).
-    async fn remove_item(&self, owner_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()>;
+    /// Soft-delete an active item (sets `removed_at`; `edit`).
+    async fn remove_item(&self, user_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()>;
 
-    /// Put a removed item back on the list, in its old position.
-    async fn restore_item(&self, owner_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()>;
+    /// Put a removed item back on the list, in its old position (`edit`).
+    async fn restore_item(&self, user_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()>;
+
+    /// The list's grants, oldest first (owner only).
+    async fn shares(&self, user_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListShare>>;
+
+    /// Grant the account whose email matches `email` (ignoring ASCII case)
+    /// `role` on the list, or change an existing grant's role (owner only).
+    /// Returns the grant, or `None` when no single account other than the
+    /// owner matches: the caller must answer both the same way, so the
+    /// result never tells the owner whether an account exists (RR-0002
+    /// constraint 3). `Invalid` for an empty email.
+    async fn share(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        email: &str,
+        role: ShareRole,
+    ) -> CoreResult<Option<ListShare>>;
+
+    /// Delete a grant (owner only); the grantee loses access on their next
+    /// request. Returns the revoked grant. `NotFound` for a grant that isn't
+    /// on this list.
+    async fn revoke(&self, user_id: Uuid, list_id: Uuid, share_id: Uuid) -> CoreResult<ListShare>;
 }
 
 /// Recipes and their ingredients.

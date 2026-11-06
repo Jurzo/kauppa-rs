@@ -37,7 +37,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(lists::remove_from_shop)
                 .service(lists::assign_category)
                 .service(lists::remove_item)
-                .service(lists::restore_item),
+                .service(lists::restore_item)
+                .service(lists::sharing)
+                .service(lists::share)
+                .service(lists::revoke),
         )
         .service(
             web::scope("/recipes")
@@ -67,6 +70,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(products::rename)
                 .service(products::recategorize)
                 .service(products::move_product)
+                .service(products::make_favorite)
                 .service(products::delete),
         );
 }
