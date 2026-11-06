@@ -37,4 +37,16 @@
       <li class="product-row empty">No lists yet. Create your first one above.</li>
     {{/each}}
   </ul>
+
+  {{#if shared}}
+    <h2>Shared with you</h2>
+    <ul class="product-list">
+      {{#each shared}}
+        <li class="product-row">
+          <a class="product-name" href="/lists/{{this.id}}">{{this.name}}</a>
+          <span class="muted">{{this.owner_name}} · {{#if this.can_edit}}can edit items{{else}}view only{{/if}} · {{this.updated}}</span>
+        </li>
+      {{/each}}
+    </ul>
+  {{/if}}
 </div>

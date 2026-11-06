@@ -16,6 +16,11 @@ pub enum CoreError {
     #[error("unauthorized")]
     Unauthorized,
 
+    /// Signed in and allowed to see the resource, but not to do this to it
+    /// (e.g. a `view` grantee adding an item to a shared list, MB-0008).
+    #[error("forbidden")]
+    Forbidden,
+
     #[error("database error")]
     Database(#[from] sqlx::Error),
 

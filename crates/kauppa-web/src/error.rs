@@ -29,6 +29,7 @@ impl ResponseError for WebError {
         match self {
             Self::Core(CoreError::NotFound) => StatusCode::NOT_FOUND,
             Self::Core(CoreError::Unauthorized) => StatusCode::UNAUTHORIZED,
+            Self::Core(CoreError::Forbidden) => StatusCode::FORBIDDEN,
             Self::Core(CoreError::Conflict(_)) => StatusCode::CONFLICT,
             Self::Core(CoreError::Invalid(_)) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -43,6 +44,7 @@ impl ResponseError for WebError {
             Self::Core(CoreError::Invalid(m) | CoreError::Conflict(m)) => m.clone(),
             Self::Core(CoreError::NotFound) => "not found".to_owned(),
             Self::Core(CoreError::Unauthorized) => "unauthorized".to_owned(),
+            Self::Core(CoreError::Forbidden) => "forbidden".to_owned(),
             _ => "internal server error".to_owned(),
         };
         HttpResponse::build(status).body(safe_message)
