@@ -5,11 +5,11 @@
 id: RR-0006
 closes: CRP-0006
 mission: MB-0016
-decided_by: "<resolver>"
+decided_by: "@juuso.kalliomaki"
 role: platform
 risk_tier: low
-decided_at: <RFC3339 timestamp, quoted>
-status: <approved | rejected>
+decided_at: 2026-11-06T20:49:42Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - AGENTS.md
@@ -24,10 +24,6 @@ rolls_back_into:
 Approve CRP-0006 **Option A, sub-option A1**. The layout partial's parameters
 take a `page_` prefix: `{{#> layout page_title="…" page_signed_in=…}}`, and
 `templates/layout.hbs` reads `{{page_title}}` and `{{#if page_signed_in}}`.
-
-<!-- Resolver: choose A1 (both parameters, as drafted) or A2 (only `title` →
-`page_title`; `signed_in` unchanged). If A2, edit the sentence above, the
-constraints, and the roll-back text. -->
 
 Covers:
 
@@ -55,11 +51,9 @@ strict mode, or other template work.
   fields avoids a convention change, but the next field called `title` would
   silently break again.
 
-<!-- Resolver: confirm or edit the rationale above. -->
-
 ## Approvals and authority
 
-<Approved | Rejected> by platform-owner <resolver>
+Approved by platform-owner @juuso.kalliomaki
 
 ## Linked artifacts and evidence
 
@@ -82,11 +76,9 @@ strict mode, or other template work.
 3. **Full pages are tested, not only fragments.** A page whose body renders
    view fields has at least one test on the full-page response (MB-0016
    P1–P4). The P5 guard (`templates::layout_params_do_not_shadow_body`) stays
-   in the suite.
+   in the suite. **confirmed by platform-owner @juuso.kalliomaki**
 4. **Strict mode stays on.** It is what turns a missed rename into a render
    error rather than a silently wrong value.
-
-<!-- Resolver: confirm constraint 3; it is broader than MB-0016. -->
 
 ## Roll-back into the system (Hardened)
 
