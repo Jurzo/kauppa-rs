@@ -47,11 +47,6 @@
                hx-get="/recipes/{{recipe_id}}/ingredients/match" hx-trigger="input changed delay:300ms"
                hx-target="#ingredient-match" hx-swap="outerHTML" />
       </label>
-      <datalist id="ingredient-suggestions">
-        {{#each add.suggestions}}
-          <option value="{{this}}"></option>
-        {{/each}}
-      </datalist>
       <label>Quantity
         <input name="quantity" type="text" autocomplete="off" placeholder="optional, e.g. 5 dl"
                value="{{add.quantity}}" />

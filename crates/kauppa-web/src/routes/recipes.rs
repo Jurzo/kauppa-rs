@@ -163,6 +163,10 @@ struct NewRecipeView {
 #[derive(Debug, Serialize)]
 struct ShowView {
     title: String,
+    /// The user's product names for the ingredient name input's
+    /// `<datalist>`. Rendered once per page load, outside the `#ingredients`
+    /// fragment, so htmx edits don't re-send it.
+    suggestions: Vec<String>,
     details: DetailsView,
     ingredients: IngredientsView,
 }
@@ -201,8 +205,6 @@ struct AddIngredientView {
     name: String,
     quantity: String,
     picker: Picker,
-    /// The user's product names for the name input's `<datalist>`.
-    suggestions: Vec<String>,
     hint: MatchHint,
 }
 
@@ -341,11 +343,12 @@ async fn show_view(
         } => (name, quantity, category_id),
         _ => (String::new(), String::new(), None),
     };
-    let suggestions = ProductRepo::suggestion_names(&state.pool, user).await?;
     let hint = match_hint(state, user, &name, &categories).await?;
 
     Ok(ShowView {
         title: recipe.title.clone(),
+        // Filled in by `render_show` for the full page only.
+        suggestions: Vec::new(),
         details,
         ingredients: IngredientsView {
             recipe_id: recipe.id,
@@ -363,7 +366,6 @@ async fn show_view(
                 name,
                 quantity,
                 picker: Picker::new(&categories, category_id).optional(),
-                suggestions,
                 hint,
             },
             error: ingredients_error,
@@ -381,7 +383,7 @@ async fn render_show(
     feedback: Feedback,
 ) -> WebResult<HttpResponse> {
     let detail = RecipeRepo::get(&state.pool, user, recipe_id).await?;
-    let view = show_view(state, user, detail, feedback).await?;
+    let mut view = show_view(state, user, detail, feedback).await?;
     let body = match fragment {
         Some(Section::Details) => state
             .templates
@@ -389,7 +391,10 @@ async fn render_show(
         Some(Section::Ingredients) => state
             .templates
             .render(Section::Ingredients.template(), &view.ingredients)?,
-        None => state.templates.render("recipes/show", &view)?,
+        None => {
+            view.suggestions = ProductRepo::suggestion_names(&state.pool, user).await?;
+            state.templates.render("recipes/show", &view)?
+        }
     };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
@@ -1256,8 +1261,10 @@ fn suggestion_options(body: &str) -> Vec<String> {
 
 /// P2: the editor's ingredient name input offers the user's product names —
 /// favorites and recipe-created ones, sorted ignoring case — through a native
-/// `<datalist>` linked by `list=`, on the full page and in the htmx fragment;
-/// another user's products never appear.
+/// `<datalist>` linked by `list=`. The list is rendered once per page load,
+/// outside the `#ingredients` fragment, whose input still links to it; a
+/// product created by an ingredient is offered from the next load. Another
+/// user's products never appear.
 #[cfg(test)]
 #[actix_web::test]
 #[allow(clippy::expect_used)]
@@ -1307,7 +1314,7 @@ async fn ingredient_suggestions() {
         assert!(!body.contains(theirs), "{theirs} is another user's");
     }
 
-    // The htmx fragment after adding a new product suggests it too.
+    // The htmx fragment keeps the link but doesn't re-send the list ...
     let resp = call_service(
         &app,
         TestRequest::post()
@@ -1325,6 +1332,18 @@ async fn ingredient_suggestions() {
     let body = body_string(resp).await;
     assert!(!body.contains("<html"), "fragment only");
     assert!(body.contains(r#"list="ingredient-suggestions""#));
+    assert!(!body.contains("<datalist"), "sent once per page");
+
+    // ... and the next load offers the product the ingredient created.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("/recipes/{recipe}"))
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    let body = body_string(resp).await;
     assert_eq!(
         suggestion_options(&body),
         ["banaani", "Kaura", "Maito", "äyräs"]
