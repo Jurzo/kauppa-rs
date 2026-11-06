@@ -14,8 +14,9 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, ListGroup, ListItem, NewIngredient, Product, ProductGroup,
-    Recipe, RecipeDetail, RecipeInput, ShoppingList, User, ordering, quantity,
+    Category, Direction, HiddenProductGroup, Ingredient, ListGroup, ListItem, NewIngredient,
+    Product, ProductGroup, ProductUsage, Recipe, RecipeDetail, RecipeInput, ShoppingList, User,
+    ordering, quantity,
 };
 use crate::error::CoreError;
 use crate::repo::name_key::name_key;
@@ -307,6 +308,44 @@ impl CategoryRepo for SqlitePool {
     }
 }
 
+/// Group rows that are already sorted by category (uncategorized last) into
+/// `(category, items)` runs. Each row carries the category as `group_id`,
+/// `group_name`, `group_position`, and `group_created_at` (all NULL when
+/// uncategorized), from a join that checked the category's owner.
+fn group_by_category<T>(
+    rows: &[SqliteRow],
+    owner_id: Uuid,
+    item: impl Fn(&SqliteRow) -> CoreResult<T>,
+) -> CoreResult<Vec<(Option<Category>, Vec<T>)>> {
+    let mut groups: Vec<(Option<Category>, Vec<T>)> = Vec::new();
+    for row in rows {
+        let value = item(row)?;
+        let group_id: Option<String> = row.try_get("group_id")?;
+        let group_id = group_id.as_deref().map(parse_uuid).transpose()?;
+
+        match groups.last_mut() {
+            Some((category, items)) if category.as_ref().map(|c| c.id) == group_id => {
+                items.push(value);
+            }
+            _ => {
+                let category = group_id
+                    .map(|id| -> CoreResult<Category> {
+                        Ok(Category {
+                            id,
+                            owner_id,
+                            name: row.try_get("group_name")?,
+                            position: row.try_get("group_position")?,
+                            created_at: row.try_get("group_created_at")?,
+                        })
+                    })
+                    .transpose()?;
+                groups.push((category, vec![value]));
+            }
+        }
+    }
+    Ok(groups)
+}
+
 #[async_trait]
 impl ProductRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str, category_id: Uuid) -> CoreResult<Product> {
@@ -407,36 +446,10 @@ impl ProductRepo for SqlitePool {
         .fetch_all(&self.inner)
         .await?;
 
-        let mut groups: Vec<ProductGroup> = Vec::new();
-        for row in &rows {
-            let product = row_to_product(row)?;
-            let group_id: Option<String> = row.try_get("group_id")?;
-            let group_id = group_id.as_deref().map(parse_uuid).transpose()?;
-
-            match groups.last_mut() {
-                Some(group) if group.category.as_ref().map(|c| c.id) == group_id => {
-                    group.products.push(product);
-                }
-                _ => {
-                    let category = group_id
-                        .map(|id| -> CoreResult<Category> {
-                            Ok(Category {
-                                id,
-                                owner_id,
-                                name: row.try_get("group_name")?,
-                                position: row.try_get("group_position")?,
-                                created_at: row.try_get("group_created_at")?,
-                            })
-                        })
-                        .transpose()?;
-                    groups.push(ProductGroup {
-                        category,
-                        products: vec![product],
-                    });
-                }
-            }
-        }
-        Ok(groups)
+        Ok(group_by_category(&rows, owner_id, row_to_product)?
+            .into_iter()
+            .map(|(category, products)| ProductGroup { category, products })
+            .collect())
     }
 
     async fn find_by_name(&self, owner_id: Uuid, name: &str) -> CoreResult<Option<Product>> {
@@ -621,16 +634,126 @@ impl ProductRepo for SqlitePool {
     }
 
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
+        let owner = owner_id.to_string();
+        let id_str = id.to_string();
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+
+        // Ingredients show their product's live name and fall back to their
+        // own `text` once unlinked, so save the current name there first: the
+        // ingredients of a renamed product keep the new name (RR-0001
+        // constraint 4). Only the owner's recipes, and only their product.
+        sqlx::query(
+            r"UPDATE ingredients
+                SET text = (SELECT p.name FROM products p
+                              WHERE p.id = ?1 AND p.owner_id = ?2)
+                WHERE product_id = ?1
+                  AND recipe_id IN (SELECT r.id FROM recipes r WHERE r.owner_id = ?2)
+                  AND EXISTS (SELECT 1 FROM products p WHERE p.id = ?1 AND p.owner_id = ?2)",
+        )
+        .bind(&id_str)
+        .bind(&owner)
+        .execute(&mut *tx)
+        .await?;
+
+        // `ON DELETE SET NULL` unlinks the ingredients; nothing else goes.
         let result = sqlx::query(r"DELETE FROM products WHERE id = ?1 AND owner_id = ?2")
-            .bind(id.to_string())
-            .bind(owner_id.to_string())
-            .execute(&self.inner)
+            .bind(&id_str)
+            .bind(&owner)
+            .execute(&mut *tx)
             .await?;
 
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
         }
+        tx.commit().await?;
         Ok(())
+    }
+
+    async fn list_hidden_with_usage(&self, owner_id: Uuid) -> CoreResult<Vec<HiddenProductGroup>> {
+        // Every join checks the owner (RR-0001 constraint 9): another user's
+        // category never names a group, and only the owner's recipes count.
+        let rows = sqlx::query(
+            r"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite,
+                     p.created_at, p.updated_at,
+                     c.id AS group_id, c.name AS group_name,
+                     c.position AS group_position, c.created_at AS group_created_at,
+                     (SELECT COUNT(DISTINCT r.id)
+                        FROM ingredients i
+                        JOIN recipes r ON r.id = i.recipe_id AND r.owner_id = p.owner_id
+                        WHERE i.product_id = p.id) AS recipe_count
+                FROM products p
+                LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
+                WHERE p.owner_id = ?1 AND p.is_favorite = 0
+                ORDER BY c.id IS NULL, c.position, c.name, p.name_key, p.name",
+        )
+        .bind(owner_id.to_string())
+        .fetch_all(&self.inner)
+        .await?;
+
+        Ok(group_by_category(&rows, owner_id, |row| {
+            Ok(ProductUsage {
+                product: row_to_product(row)?,
+                recipe_count: row.try_get("recipe_count")?,
+            })
+        })?
+        .into_iter()
+        .map(|(category, products)| HiddenProductGroup { category, products })
+        .collect())
+    }
+
+    async fn make_favorite(&self, owner_id: Uuid, id: Uuid) -> CoreResult<Product> {
+        let owner = owner_id.to_string();
+        let id_str = id.to_string();
+        // IMMEDIATE: the category check and the append can't race another
+        // writer.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+
+        // The category counts only if it is the owner's (RR-0001 constraint 9).
+        let row = sqlx::query(
+            r"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite,
+                     p.created_at, p.updated_at, c.id AS owned_category
+                FROM products p
+                LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
+                WHERE p.id = ?1 AND p.owner_id = ?2",
+        )
+        .bind(&id_str)
+        .bind(&owner)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+        let product = row_to_product(&row)?;
+        if product.is_favorite {
+            return Ok(product);
+        }
+        let owned_category: Option<String> = row.try_get("owned_category")?;
+        let Some(category) = owned_category else {
+            return Err(CoreError::Invalid(format!(
+                "choose a category for {} before making it a favorite",
+                product.name
+            )));
+        };
+
+        let row = sqlx::query(
+            r"UPDATE products
+                SET is_favorite = 1,
+                    position = (SELECT COALESCE(MAX(p.position), -1) + 1
+                                  FROM products p
+                                  WHERE p.owner_id = ?2 AND p.category_id = ?1),
+                    updated_at = ?3
+                WHERE id = ?4 AND owner_id = ?2 AND category_id = ?1
+              RETURNING id, owner_id, name, category_id, position, is_favorite,
+                        created_at, updated_at",
+        )
+        .bind(&category)
+        .bind(&owner)
+        .bind(Utc::now())
+        .bind(&id_str)
+        .fetch_one(&mut *tx)
+        .await?;
+        let product = row_to_product(&row)?;
+
+        tx.commit().await?;
+        Ok(product)
     }
 }
 
