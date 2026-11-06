@@ -567,10 +567,8 @@ async fn suggestion_names() {
         ["Aprikoosi", "maito", "Salaatti", "Zucchini"]
     );
     let nobody = make_user(&pool, "nobody@example.com").await;
-    assert!(
-        ProductRepo::suggestion_names(&pool, nobody)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        ProductRepo::suggestion_names(&pool, nobody).await.unwrap(),
+        Vec::<String>::new()
     );
 }

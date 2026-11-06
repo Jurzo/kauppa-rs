@@ -11,6 +11,11 @@
 //! nullable (deleting a category un-categorizes its products), so the rule
 //! lives here, in `check_ingredient`. A new product takes the category chosen
 //! in the form; an existing one keeps its own.
+//!
+//! MB-0013: the add form suggests the user's product names (a `<datalist>`)
+//! and hints, as the name is typed, which category it will get
+//! (`GET /recipes/{id}/ingredients/match`). Both are display hints only;
+//! `check_ingredient` stays the one enforcement.
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -18,7 +23,7 @@ use actix_web::{HttpRequest, HttpResponse, get, post, web};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use kauppa_core::domain::{Direction, NewIngredient, Recipe, RecipeDetail, RecipeInput};
+use kauppa_core::domain::{Category, Direction, NewIngredient, Recipe, RecipeDetail, RecipeInput};
 use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo};
 use kauppa_core::{CoreError, CoreResult};
 
@@ -46,6 +51,13 @@ struct IngredientForm {
     category_id: String,
 }
 
+/// The name typed so far, for the match hint.
+#[derive(Debug, Deserialize)]
+struct MatchQuery {
+    #[serde(default)]
+    name: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct QuantityForm {
     #[serde(default)]
@@ -66,6 +78,12 @@ fn current_user(id: &Identity) -> WebResult<Uuid> {
 
 fn is_hx(req: &HttpRequest) -> bool {
     req.headers().get("HX-Request").is_some_and(|v| v == "true")
+}
+
+/// An htmx request for part of a page, not boosted navigation (which wants
+/// the whole page).
+fn is_fragment(req: &HttpRequest) -> bool {
+    is_hx(req) && req.headers().get("HX-Boosted").is_none()
 }
 
 /// Parse the details form. Servings is optional; anything but a whole number
@@ -183,6 +201,55 @@ struct AddIngredientView {
     name: String,
     quantity: String,
     picker: Picker,
+    /// The user's product names for the name input's `<datalist>`.
+    suggestions: Vec<String>,
+    hint: MatchHint,
+}
+
+/// What the typed ingredient name will do (`recipes/_match_hint`), mirroring
+/// `check_ingredient`: an existing product brings its own `category`, an
+/// existing product without one (`uncategorized`, its name) can't be added,
+/// and a `new_product` needs the picker. All empty for a blank name.
+#[derive(Debug, Default, Serialize)]
+struct MatchHint {
+    category: Option<String>,
+    uncategorized: Option<String>,
+    new_product: bool,
+}
+
+/// The match hint for `name`, looked up through `ProductRepo::find_by_name`
+/// (`name_key`, RR-0003). `categories` are the user's, to name the match's.
+async fn match_hint(
+    state: &AppState,
+    user: Uuid,
+    name: &str,
+    categories: &[Category],
+) -> CoreResult<MatchHint> {
+    if name.trim().is_empty() {
+        return Ok(MatchHint::default());
+    }
+    let hint = match ProductRepo::find_by_name(&state.pool, user, name).await? {
+        None => MatchHint {
+            new_product: true,
+            ..MatchHint::default()
+        },
+        Some(product) => match product.category_id {
+            None => MatchHint {
+                uncategorized: Some(product.name),
+                ..MatchHint::default()
+            },
+            // A category id that isn't among the user's can't happen (owner-
+            // checked writes, `ON DELETE SET NULL`); it shows no hint.
+            Some(id) => MatchHint {
+                category: categories
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| c.name.clone()),
+                ..MatchHint::default()
+            },
+        },
+    };
+    Ok(hint)
 }
 
 /// What a form shows after a rejected submission: the typed values, for
@@ -274,6 +341,8 @@ async fn show_view(
         } => (name, quantity, category_id),
         _ => (String::new(), String::new(), None),
     };
+    let suggestions = ProductRepo::suggestion_names(&state.pool, user).await?;
+    let hint = match_hint(state, user, &name, &categories).await?;
 
     Ok(ShowView {
         title: recipe.title.clone(),
@@ -294,6 +363,8 @@ async fn show_view(
                 name,
                 quantity,
                 picker: Picker::new(&categories, category_id).optional(),
+                suggestions,
+                hint,
             },
             error: ingredients_error,
         },
@@ -535,6 +606,31 @@ pub async fn add_ingredient(
         draft,
     )
     .await
+}
+
+/// The match hint for the name typed into the add form, as a fragment for
+/// htmx; otherwise a 303 back to the editor. Owner-scoped like the rest of
+/// `/recipes/{id}`: another user's recipe is a 404.
+#[get("/{id}/ingredients/match")]
+pub async fn ingredient_match(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<Uuid>,
+    query: web::Query<MatchQuery>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let recipe_id = path.into_inner();
+    RecipeRepo::get(&state.pool, user, recipe_id).await?;
+    if !is_fragment(&req) {
+        return Ok(HttpResponse::SeeOther()
+            .append_header((header::LOCATION, format!("/recipes/{recipe_id}")))
+            .finish());
+    }
+    let categories = CategoryRepo::list_for_owner(&state.pool, user).await?;
+    let hint = match_hint(&state, user, &query.name, &categories).await?;
+    let body = state.templates.render("recipes/_match_hint", &hint)?;
+    Ok(HttpResponse::Ok().content_type("text/html").body(body))
 }
 
 #[post("/{id}/ingredients/{ingredient}/quantity")]
@@ -1118,4 +1214,333 @@ async fn details_draft_survives_rejection() {
         "Pannukakku",
         "nothing saved"
     );
+}
+
+// MB-0013 acceptance tests (P2, P3), at module level for the brief's
+// `cargo test -p kauppa-web routes::recipes::<name>` checks.
+
+/// A recipe-created (hidden) product, through a scratch recipe.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+async fn make_hidden(state: &AppState, user: Uuid, name: &str, category: Uuid) {
+    let scratch = make_recipe(state, user, "Luonnos").await;
+    RecipeRepo::add_ingredient(
+        &state.pool,
+        user,
+        scratch,
+        &NewIngredient {
+            product_name: name.to_owned(),
+            quantity: None,
+            category_id: Some(category),
+        },
+    )
+    .await
+    .expect("create hidden product");
+}
+
+/// The `value`s of the ingredient-name `<datalist>`'s options, in order.
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+fn suggestion_options(body: &str) -> Vec<String> {
+    let start = body
+        .find(r#"<datalist id="ingredient-suggestions">"#)
+        .expect("datalist");
+    let end = start + body[start..].find("</datalist>").expect("closed");
+    body[start..end]
+        .split(r#"<option value=""#)
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// P2: the editor's ingredient name input offers the user's product names —
+/// favorites and recipe-created ones, sorted ignoring case — through a native
+/// `<datalist>` linked by `list=`, on the full page and in the htmx fragment;
+/// another user's products never appear.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn ingredient_suggestions() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    let theirs = make_category(&state, other, "Hevi").await;
+    ProductRepo::create(&state.pool, user, "Maito", kylma)
+        .await
+        .expect("create favorite");
+    ProductRepo::create(&state.pool, user, "äyräs", hevi)
+        .await
+        .expect("create favorite");
+    make_hidden(&state, user, "Kaura", hevi).await;
+    ProductRepo::create(&state.pool, other, "Salaatti", theirs)
+        .await
+        .expect("create their favorite");
+    make_hidden(&state, other, "Zucchini", theirs).await;
+    let recipe = make_recipe(&state, user, "Puuro").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("/recipes/{recipe}"))
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(body.contains(r#"list="ingredient-suggestions""#), "linked");
+    assert_eq!(suggestion_options(&body), ["Kaura", "Maito", "äyräs"]);
+    for theirs in ["Salaatti", "Zucchini"] {
+        assert!(!body.contains(theirs), "{theirs} is another user's");
+    }
+
+    // The htmx fragment after adding a new product suggests it too.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("/recipes/{recipe}/ingredients"))
+            .cookie(session.clone())
+            .insert_header(("HX-Request", "true"))
+            .set_form([
+                ("name", "banaani".to_owned()),
+                ("category_id", hevi.to_string()),
+            ])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(!body.contains("<html"), "fragment only");
+    assert!(body.contains(r#"list="ingredient-suggestions""#));
+    assert_eq!(
+        suggestion_options(&body),
+        ["banaani", "Kaura", "Maito", "äyräs"]
+    );
+    assert!(!body.contains("Salaatti") && !body.contains("Zucchini"));
+
+    // The other user's editor suggests only their own products.
+    let their_recipe = make_recipe(&state, other, "Keitto").await;
+    let intruder =
+        session_cookie(&call_service(&app, login_request("other@example.com").to_request()).await);
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("/recipes/{their_recipe}"))
+            .cookie(intruder)
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert_eq!(suggestion_options(&body), ["Salaatti", "Zucchini"]);
+    // ("Maito" is also the input placeholder, so check the others.)
+    for mine in ["Kaura", "äyräs", "banaani"] {
+        assert!(!body.contains(mine), "{mine} is another user's");
+    }
+}
+
+/// Percent-encode a query value (tests only; every non-alphanumeric byte).
+#[cfg(test)]
+fn query_value(raw: &str) -> String {
+    use std::fmt::Write;
+
+    raw.bytes().fold(String::new(), |mut out, b| {
+        if b.is_ascii_alphanumeric() {
+            out.push(char::from(b));
+        } else {
+            let _ = write!(out, "%{b:02X}");
+        }
+        out
+    })
+}
+
+/// P3: the match hint names an existing product's category (any case, hidden
+/// products too) and says the picker won't apply, asks a new name for a
+/// category, flags an uncategorized product, and is empty for a blank name.
+/// It is an htmx fragment wired to the name input; without htmx it is a 303
+/// to the editor, and another user's recipe is a 404. Without JavaScript the
+/// form still submits and is validated as before, and the full page shows the
+/// hint for the typed name after a rejection.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn ingredient_match_hint() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    const EMPTY_HINT: &str =
+        r#"<p id="ingredient-match" class="match-hint" aria-live="polite"></p>"#;
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    let gone = make_category(&state, user, "Poistuva").await;
+    let theirs = make_category(&state, other, "Pakasteet").await;
+    ProductRepo::create(&state.pool, user, "Maito", kylma)
+        .await
+        .expect("create favorite");
+    make_hidden(&state, user, "Kaura", hevi).await;
+    ProductRepo::create(&state.pool, user, "Kahvi", gone)
+        .await
+        .expect("create favorite");
+    CategoryRepo::delete(&state.pool, user, gone)
+        .await
+        .expect("delete category");
+    ProductRepo::create(&state.pool, other, "Herne", theirs)
+        .await
+        .expect("create their favorite");
+    let recipe = make_recipe(&state, user, "Puuro").await;
+    let their_recipe = make_recipe(&state, other, "Hernekeitto").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let hint_uri = |recipe: Uuid, name: &str| {
+        format!(
+            "/recipes/{recipe}/ingredients/match?name={}",
+            query_value(name)
+        )
+    };
+    let hint = |uri: String| {
+        TestRequest::get()
+            .uri(&uri)
+            .cookie(session.clone())
+            .insert_header(("HX-Request", "true"))
+    };
+
+    // The editor wires the name input to the hint, which starts empty.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("/recipes/{recipe}"))
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    for attr in [
+        format!(r#"hx-get="/recipes/{recipe}/ingredients/match""#),
+        r#"hx-trigger="input changed delay:300ms""#.to_owned(),
+        r##"hx-target="#ingredient-match" hx-swap="outerHTML""##.to_owned(),
+        EMPTY_HINT.to_owned(),
+    ] {
+        assert!(body.contains(&attr), "editor should carry {attr}");
+    }
+
+    let cases = [
+        ("maito", "Uses Kylmä — the category picker doesn't apply"),
+        ("  MAITO ", "Uses Kylmä"),
+        ("kAURA", "Uses Hevi"),
+        ("kahvi", "Kahvi has no category"),
+        ("Kaurajuoma", "New product — choose a category"),
+        ("Herne", "New product — choose a category"),
+    ];
+    for (name, expected) in cases {
+        let resp = call_service(&app, hint(hint_uri(recipe, name)).to_request()).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{name:?}");
+        let body = body_string(resp).await;
+        assert!(!body.contains("<html"), "fragment only");
+        assert!(body.starts_with(r#"<p id="ingredient-match""#), "{body}");
+        assert!(body.contains(expected), "{name:?} should say {expected:?}");
+        assert!(!body.contains("Pakasteet"), "never another user's category");
+    }
+    for blank in ["", "   "] {
+        let resp = call_service(&app, hint(hint_uri(recipe, blank)).to_request()).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(body_string(resp).await.trim_end(), EMPTY_HINT);
+    }
+
+    // Without htmx: back to the editor.
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&hint_uri(recipe, "maito"))
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(header::LOCATION).expect("location"),
+        format!("/recipes/{recipe}").as_str()
+    );
+
+    // Another user's recipe is a 404, with or without htmx; signed out, 401.
+    for hx in [false, true] {
+        let mut req = TestRequest::get()
+            .uri(&hint_uri(their_recipe, "Herne"))
+            .cookie(session.clone());
+        if hx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        let resp = call_service(&app, req.to_request()).await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "htmx: {hx}");
+    }
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&hint_uri(recipe, "maito"))
+            .insert_header(("HX-Request", "true"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+    // Without JavaScript the form still submits, validated as before: an
+    // existing product ignores the picker and keeps its category ...
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("/recipes/{recipe}/ingredients"))
+            .cookie(session.clone())
+            .set_form([
+                ("name", "MAITO".to_owned()),
+                ("category_id", hevi.to_string()),
+            ])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(ingredient_names(&state, user, recipe).await, ["Maito"]);
+    let maito = ProductRepo::find_by_name(&state.pool, user, "maito")
+        .await
+        .expect("lookup")
+        .expect("exists");
+    assert_eq!(maito.category_id, Some(kylma), "the picker didn't apply");
+
+    // ... and a rejected new name re-renders the full page with its hint.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("/recipes/{recipe}/ingredients"))
+            .cookie(session.clone())
+            .set_form([("name", "Kaurajuoma")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_string(resp).await;
+    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(body.contains("choose a category for the new product Kaurajuoma"));
+    assert!(body.contains("New product — choose a category for it."));
+    assert_eq!(ingredient_names(&state, user, recipe).await, ["Maito"]);
 }

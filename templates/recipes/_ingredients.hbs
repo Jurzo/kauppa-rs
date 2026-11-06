@@ -42,8 +42,16 @@
           hx-post="/recipes/{{recipe_id}}/ingredients" hx-target="#ingredients" hx-swap="outerHTML">
       <label>Ingredient
         <input id="new-ingredient-name" name="name" type="text" required
-               autocomplete="off" placeholder="e.g. Maito" value="{{add.name}}" />
+               autocomplete="off" placeholder="e.g. Maito" value="{{add.name}}"
+               list="ingredient-suggestions" aria-describedby="ingredient-match"
+               hx-get="/recipes/{{recipe_id}}/ingredients/match" hx-trigger="input changed delay:300ms"
+               hx-target="#ingredient-match" hx-swap="outerHTML" />
       </label>
+      <datalist id="ingredient-suggestions">
+        {{#each add.suggestions}}
+          <option value="{{this}}"></option>
+        {{/each}}
+      </datalist>
       <label>Quantity
         <input name="quantity" type="text" autocomplete="off" placeholder="optional, e.g. 5 dl"
                value="{{add.quantity}}" />
@@ -52,6 +60,7 @@
         {{> products/_category_picker add.picker }}
       </label>
       <button type="submit" class="button primary">Add</button>
+      {{> recipes/_match_hint add.hint }}
     </form>
   {{else}}
     <p class="empty">Ingredients are grouped by category —
