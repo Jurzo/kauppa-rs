@@ -1,0 +1,29 @@
+<div id="add-to-list" class="add-to-list">
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  {{#if added}}
+    <p role="status">Added {{added.items}} to {{added.list_name}} — <a href="/lists/{{added.list_id}}">open list</a></p>
+  {{/if}}
+
+  {{#if has_lists}}
+    <form class="add-product" method="post" action="/recipes/{{recipe_id}}/add-to-list"
+          hx-post="/recipes/{{recipe_id}}/add-to-list" hx-target="#add-to-list" hx-swap="outerHTML">
+      <label>List
+        <select name="list_id" required>
+          <option value="" disabled{{#unless has_selection}} selected{{/unless}}>Choose a list</option>
+          {{#each lists}}
+            <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
+          {{/each}}
+        </select>
+      </label>
+      <label>Times
+        <input name="multiplier" type="text" inputmode="decimal" autocomplete="off"
+               value="{{#if multiplier}}{{multiplier}}{{else}}1{{/if}}" />
+      </label>
+      <button type="submit" class="button">Add ingredients</button>
+    </form>
+  {{else}}
+    <p class="empty">No shopping lists yet — <a href="/lists">create a list</a> first.</p>
+  {{/if}}
+</div>
