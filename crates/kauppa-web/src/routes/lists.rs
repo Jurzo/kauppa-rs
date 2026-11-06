@@ -2088,3 +2088,56 @@ async fn view_htmx_and_auth() {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }
+
+// MB-0016 acceptance test (P1), at module level for the brief's
+// `cargo test -p kauppa-web routes::lists::<name>` check.
+
+/// MB-0016 P1: on the full-page load of a list, the recipe picker names each
+/// recipe by its own title, as the htmx fragment does, while the page title
+/// stays the list's name.
+#[cfg(test)]
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn recipe_picker_shows_titles() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let pancakes = make_recipe(&state, user, "Pannukakku", kylma, &[]).await;
+    let porridge = make_recipe(&state, user, "Puuro", kylma, &[]).await;
+    let list = ShoppingListRepo::create(&state.pool, user, "Viikonloppu")
+        .await
+        .expect("list")
+        .id;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let options = [
+        format!(r#"<option value="{pancakes}">Pannukakku</option>"#),
+        format!(r#"<option value="{porridge}">Puuro</option>"#),
+    ];
+
+    for htmx in [false, true] {
+        let mut req = TestRequest::get()
+            .uri(&format!("/lists/{list}"))
+            .cookie(session.clone());
+        if htmx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        let resp = call_service(&app, req.to_request()).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_string(resp).await;
+        assert_eq!(body.contains("<html"), !htmx, "htmx={htmx}");
+        if !htmx {
+            assert!(body.contains("<title>Viikonloppu — kauppa</title>"));
+        }
+        for option in &options {
+            assert!(body.contains(option.as_str()), "htmx={htmx}: {option}");
+        }
+    }
+}
