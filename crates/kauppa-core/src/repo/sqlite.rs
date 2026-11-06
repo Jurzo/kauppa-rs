@@ -1656,6 +1656,21 @@ impl RecipeRepo for SqlitePool {
             .ok_or(CoreError::NotFound)
     }
 
+    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
+        // `ingredients.recipe_id` cascades (0001); `ingredients.product_id`
+        // points the other way, so no product is touched.
+        let result = sqlx::query(r"DELETE FROM recipes WHERE id = ?1 AND owner_id = ?2")
+            .bind(id.to_string())
+            .bind(owner_id.to_string())
+            .execute(&self.inner)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+        Ok(())
+    }
+
     async fn add_ingredient(
         &self,
         owner_id: Uuid,
