@@ -85,6 +85,11 @@ pub trait ProductRepo: Send + Sync {
     /// ignoring case (RR-0003), if any. Rejects empty names (`Invalid`).
     async fn find_by_name(&self, owner_id: Uuid, name: &str) -> CoreResult<Option<Product>>;
 
+    /// The names of all the owner's products, favorites and hidden alike, for
+    /// suggesting while typing (MB-0013). Sorted by name ignoring case: by the
+    /// `name_key` (RR-0003), with the stored name as tiebreak.
+    async fn suggestion_names(&self, owner_id: Uuid) -> CoreResult<Vec<String>>;
+
     /// Rename a product the caller owns. `NotFound` if it isn't theirs.
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product>;
 

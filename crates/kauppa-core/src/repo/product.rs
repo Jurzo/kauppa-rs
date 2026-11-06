@@ -1,5 +1,5 @@
 //! MB-0002 acceptance tests for the product repository (P2–P5), plus the
-//! repo-level half of P1, MB-0010 P2 and P3, and MB-0003's favorites rules. Test-only module: `ProductRepo` lives in `repo` and
+//! repo-level half of P1, MB-0010 P2 and P3, MB-0003's favorites rules, and MB-0013 P1. Test-only module: `ProductRepo` lives in `repo` and
 //! its SQLite impl in `repo::sqlite`; this module exists so the brief's
 //! `cargo test -p kauppa-core repo::product::<name>` checks select these tests.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -516,5 +516,61 @@ async fn move_skips_hidden_products() {
     assert_eq!(
         shape(&ProductRepo::list_for_owner(&pool, u).await.unwrap()),
         [(Some("Hevi"), vec!["Porkkana", "Omena"])]
+    );
+}
+
+/// MB-0013 P1: suggestion names are all of the owner's products — favorites
+/// and recipe-created ones alike, categorized or not — as stored, sorted by
+/// name ignoring case, and never another user's. The order is `name_key`
+/// order, so Å/Ä/Ö fold like ASCII and sort after z by code point.
+#[tokio::test]
+async fn suggestion_names() {
+    let pool = test_pool().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let other = make_user(&pool, "other@example.com").await;
+    let hevi = make_category(&pool, u, "Hevi").await;
+    let kylma = make_category(&pool, u, "Kylmä").await;
+    let theirs = make_category(&pool, other, "Hevi").await;
+
+    for name in ["Omena", "äyräs", "banaani", "Åkerbär"] {
+        ProductRepo::create(&pool, u, name, hevi).await.unwrap();
+    }
+    ProductRepo::create(&pool, u, "MAITO", kylma).await.unwrap();
+    make_hidden(&pool, u, "Ölut", kylma).await;
+    make_hidden(&pool, u, "kaura", hevi).await;
+    let gone = make_category(&pool, u, "Poistuva").await;
+    ProductRepo::create(&pool, u, "Lanttu", gone).await.unwrap();
+    CategoryRepo::delete(&pool, u, gone).await.unwrap();
+
+    for name in ["Aprikoosi", "Salaatti", "maito"] {
+        ProductRepo::create(&pool, other, name, theirs)
+            .await
+            .unwrap();
+    }
+    make_hidden(&pool, other, "Zucchini", theirs).await;
+
+    assert_eq!(
+        ProductRepo::suggestion_names(&pool, u).await.unwrap(),
+        [
+            "banaani",
+            "kaura",
+            "Lanttu",
+            "MAITO",
+            "Omena",
+            "äyräs",
+            "Åkerbär",
+            "Ölut"
+        ]
+    );
+    assert_eq!(
+        ProductRepo::suggestion_names(&pool, other).await.unwrap(),
+        ["Aprikoosi", "maito", "Salaatti", "Zucchini"]
+    );
+    let nobody = make_user(&pool, "nobody@example.com").await;
+    assert!(
+        ProductRepo::suggestion_names(&pool, nobody)
+            .await
+            .unwrap()
+            .is_empty()
     );
 }
