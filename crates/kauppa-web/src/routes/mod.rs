@@ -69,6 +69,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(products::rename)
                 .service(products::recategorize)
                 .service(products::move_product)
+                .service(products::make_favorite)
                 .service(products::delete),
         );
 }

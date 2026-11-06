@@ -27,9 +27,9 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, Ingredient, ListAccess, ListGroup, ListItem, ListShare, NewIngredient,
-    Product, ProductGroup, Recipe, RecipeDetail, RecipeInput, ShareRole, SharedList, ShoppingList,
-    User,
+    Category, Direction, HiddenProductGroup, Ingredient, ListAccess, ListGroup, ListItem,
+    ListShare, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail, RecipeInput, ShareRole,
+    SharedList, ShoppingList, User,
 };
 
 #[async_trait]
@@ -111,7 +111,21 @@ pub trait ProductRepo: Send + Sync {
     ) -> CoreResult<()>;
 
     /// Delete a product the caller owns. `NotFound` if it isn't theirs.
+    /// Recipe ingredients that use it stay, unlinked, under the product's
+    /// current name (RR-0001 constraint 4).
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
+
+    /// The owner's recipe-created (non-favorite) products, grouped like
+    /// `list_for_owner` (uncategorized last) and ordered by name within a
+    /// group, each with the number of the owner's recipes that use it
+    /// (MB-0014).
+    async fn list_hidden_with_usage(&self, owner_id: Uuid) -> CoreResult<Vec<HiddenProductGroup>>;
+
+    /// Make a recipe-created product a favorite: the same row, keeping its
+    /// name and category, appended at the end of that category. A no-op for
+    /// a favorite. `Invalid` while it has no category (RR-0001: a favorite
+    /// needs one); `NotFound` if it isn't the owner's.
+    async fn make_favorite(&self, owner_id: Uuid, id: Uuid) -> CoreResult<Product>;
 }
 
 /// Named shopping lists (MB-0007), shared with other users (MB-0008).
