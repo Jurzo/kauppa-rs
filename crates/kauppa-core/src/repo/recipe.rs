@@ -1,7 +1,8 @@
 //! MB-0003 acceptance tests for the recipe repository (P1, P3, P4, P5), plus
-//! owner scoping. Test-only module: `RecipeRepo` lives in `repo` and its SQLite
-//! impl in `repo::sqlite`; this module exists so the brief's
-//! `cargo test -p kauppa-core repo::recipe::<name>` checks select these tests.
+//! owner scoping, and MB-0012's for deleting a recipe (P1, P2). Test-only
+//! module: `RecipeRepo` lives in `repo` and its SQLite impl in `repo::sqlite`;
+//! this module exists so the briefs' `cargo test -p kauppa-core
+//! repo::recipe::<name>` checks select these tests.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use uuid::Uuid;
@@ -12,13 +13,32 @@ use crate::repo::{CategoryRepo, ProductRepo, RecipeRepo, SqlitePool, UserRepo};
 
 /// A fresh, isolated in-memory database with migrations applied.
 async fn test_pool() -> SqlitePool {
+    test_pool_with_raw().await.0
+}
+
+/// Like `test_pool`, plus a raw `sqlx` pool on the same database, for
+/// asserting on rows that no repo method reads (a deleted recipe's
+/// ingredients).
+async fn test_pool_with_raw() -> (SqlitePool, sqlx::SqlitePool) {
     let url = format!(
         "sqlite:file:recipe-{}?mode=memory&cache=shared",
         Uuid::new_v4()
     );
     let pool = SqlitePool::connect(&url).await.expect("connect test pool");
     pool.run_migrations().await.expect("run migrations");
-    pool
+    let raw = sqlx::SqlitePool::connect(&url)
+        .await
+        .expect("connect raw pool");
+    (pool, raw)
+}
+
+/// How many ingredient rows point at `recipe`, whoever owns it.
+async fn ingredient_rows(raw: &sqlx::SqlitePool, recipe: Uuid) -> i64 {
+    sqlx::query_scalar("SELECT COUNT(*) FROM ingredients WHERE recipe_id = ?1")
+        .bind(recipe.to_string())
+        .fetch_one(raw)
+        .await
+        .expect("count ingredients")
 }
 
 async fn make_user(pool: &SqlitePool, email: &str) -> Uuid {
@@ -475,4 +495,131 @@ async fn deleted_product_keeps_ingredient() {
     assert_eq!(unlinked.product_id, None);
     assert!(unlinked.category.is_none());
     assert_eq!(unlinked.quantity.as_deref(), Some("5 dl"));
+}
+
+// MB-0012 acceptance tests (P1, P2): deleting a recipe.
+
+/// A product's full state, for "unchanged" comparisons (`Product` has no
+/// `PartialEq`).
+async fn product_state(pool: &SqlitePool, owner: Uuid, name: &str) -> String {
+    let product = ProductRepo::find_by_name(pool, owner, name)
+        .await
+        .unwrap()
+        .expect("product exists");
+    format!("{product:?}")
+}
+
+/// MB-0012 P1: deleting a recipe removes it and its ingredients; every product
+/// its ingredients referenced, favorite or recipe-created, is still in the
+/// catalog unchanged.
+#[tokio::test]
+async fn delete_keeps_products() {
+    let (pool, raw) = test_pool_with_raw().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let kylma = make_category(&pool, u, "Kylmä").await;
+    let leivonta = make_category(&pool, u, "Leivonta").await;
+    let kahvi = ProductRepo::create(&pool, u, "Kahvi", kylma).await.unwrap();
+    let recipe = make_recipe(&pool, u, "Pannukakku").await;
+    let kept = make_recipe(&pool, u, "Puuro").await;
+    add(&pool, u, recipe, ingredient("Kahvi", Some("1 kuppi"), None)).await;
+    add(
+        &pool,
+        u,
+        recipe,
+        ingredient("Vehnäjauho", Some("2½ dl"), Some(leivonta)),
+    )
+    .await;
+    add(&pool, u, kept, ingredient("Vehnäjauho", None, None)).await;
+
+    let before = [
+        product_state(&pool, u, "Kahvi").await,
+        product_state(&pool, u, "Vehnäjauho").await,
+    ];
+    assert!(before[0].contains("is_favorite: true"), "{}", before[0]);
+    assert!(before[1].contains("is_favorite: false"), "{}", before[1]);
+    assert_eq!(ingredient_rows(&raw, recipe).await, 2);
+
+    RecipeRepo::delete(&pool, u, recipe).await.unwrap();
+
+    assert!(matches!(
+        RecipeRepo::get(&pool, u, recipe).await,
+        Err(CoreError::NotFound)
+    ));
+    assert_eq!(
+        ingredient_rows(&raw, recipe).await,
+        0,
+        "ingredients cascade"
+    );
+    let listed: Vec<_> = RecipeRepo::list_for_owner(&pool, u)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| r.title)
+        .collect();
+    assert_eq!(listed, ["Puuro"]);
+    let after = [
+        product_state(&pool, u, "Kahvi").await,
+        product_state(&pool, u, "Vehnäjauho").await,
+    ];
+    assert_eq!(after, before, "products unchanged");
+    let favorites = ProductRepo::list_for_owner(&pool, u).await.unwrap();
+    assert!(
+        favorites
+            .iter()
+            .flat_map(|g| &g.products)
+            .any(|p| p.id == kahvi.id),
+        "the favorite is still listed"
+    );
+
+    // Another recipe using the same product is untouched.
+    assert_eq!(
+        names(&RecipeRepo::get(&pool, u, kept).await.unwrap()),
+        ["Vehnäjauho"]
+    );
+}
+
+/// MB-0012 P2: deleting another user's recipe, or one that doesn't exist, is
+/// `NotFound` and changes nothing.
+#[tokio::test]
+async fn delete_owner_scoped() {
+    let (pool, raw) = test_pool_with_raw().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let other = make_user(&pool, "other@example.com").await;
+    let theirs_hevi = make_category(&pool, other, "Hevi").await;
+    let mine = make_recipe(&pool, u, "Keitto").await;
+    let theirs = make_recipe(&pool, other, "Piirakka").await;
+    add(
+        &pool,
+        other,
+        theirs,
+        ingredient("Omena", Some("4"), Some(theirs_hevi)),
+    )
+    .await;
+    let apple = product_state(&pool, other, "Omena").await;
+
+    for id in [theirs, Uuid::new_v4()] {
+        assert!(matches!(
+            RecipeRepo::delete(&pool, u, id).await,
+            Err(CoreError::NotFound)
+        ));
+    }
+
+    let detail = RecipeRepo::get(&pool, other, theirs).await.unwrap();
+    assert_eq!(detail.recipe.title, "Piirakka");
+    assert_eq!(names(&detail), ["Omena"]);
+    assert_eq!(detail.ingredients[0].quantity.as_deref(), Some("4"));
+    assert_eq!(ingredient_rows(&raw, theirs).await, 1);
+    assert_eq!(product_state(&pool, other, "Omena").await, apple);
+    assert_eq!(
+        RecipeRepo::get(&pool, u, mine).await.unwrap().recipe.title,
+        "Keitto",
+        "the acting user's own recipe is untouched"
+    );
+
+    // Deleting twice: the second is `NotFound`.
+    RecipeRepo::delete(&pool, u, mine).await.unwrap();
+    assert!(matches!(
+        RecipeRepo::delete(&pool, u, mine).await,
+        Err(CoreError::NotFound)
+    ));
 }

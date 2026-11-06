@@ -237,6 +237,10 @@ pub trait RecipeRepo: Send + Sync {
     /// `create`.
     async fn update(&self, owner_id: Uuid, id: Uuid, input: &RecipeInput) -> CoreResult<Recipe>;
 
+    /// Delete a recipe and, by cascade, its ingredients. The products those
+    /// ingredients used stay in the catalog unchanged (RR-0001 constraint 4).
+    async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
+
     /// Append an ingredient, atomically. Its product is the owner's product
     /// matching `product_name` ignoring case; if there is none, one is created
     /// in `category_id`, hidden from favorites. `Invalid` for an empty name, a
