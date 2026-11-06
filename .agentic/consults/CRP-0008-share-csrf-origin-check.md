@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: high
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0008 autonomy.escalate (\"the app has no CSRF protection to ride and P8 forces a security posture change\"); RR-0002 constraint 6 (resolver to confirm whether sharing promotes the security.md CSRF \"should\" to a merge-blocking \"must\"); feature.md escalation paths \"Session middleware in crates/kauppa-web/src/main.rs\" and \"Shared-list authorization in crates/kauppa-web/src/routes/lists.rs\""
 ---
 ```
