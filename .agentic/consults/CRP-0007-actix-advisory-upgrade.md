@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: high
-state: open
+state: answered
 runbook_trigger: ".agentic/runbooks/dependency-bump.md (\"Bumping a crate across a major version\": actix-files 0.6 → 0.7; entry gate 2–3: CRP open, RR approved before the PR); CI trigger path `Cargo.toml`; MB-0017 autonomy.escalate (any version change in Cargo.toml)"
 ---
 ```
