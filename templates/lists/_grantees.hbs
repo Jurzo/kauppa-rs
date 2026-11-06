@@ -1,0 +1,20 @@
+<div id="grantees-{{id}}" class="grantees">
+  <h2>People with access ({{count}})</h2>
+  <ul class="product-list">
+    {{#each shares}}
+      <li class="product-row">
+        <span class="product-name">
+          {{this.name}}
+          <span class="muted">{{this.email}} · {{#if this.can_edit}}can edit items{{else}}can view{{/if}}</span>
+        </span>
+        <form class="row-actions" method="post" action="/lists/{{../id}}/shares/{{this.id}}/revoke"
+              hx-post="/lists/{{../id}}/shares/{{this.id}}/revoke" hx-target="#grantees-{{../id}}" hx-swap="outerHTML"
+              hx-confirm="Stop sharing this list with {{this.name}}?">
+          <button type="submit" class="link danger">Revoke<span class="visually-hidden"> {{this.name}}</span></button>
+        </form>
+      </li>
+    {{else}}
+      <li class="product-row empty">Not shared with anyone.</li>
+    {{/each}}
+  </ul>
+</div>
