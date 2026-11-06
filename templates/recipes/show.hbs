@@ -9,6 +9,13 @@
 
   <h2>Ingredients</h2>
   {{> recipes/_ingredients ingredients }}
+  {{!-- MB-0013: the ingredient name input's suggestions (list="…"). Outside
+        #ingredients so htmx edits of that section don't re-send them. --}}
+  <datalist id="ingredient-suggestions">
+    {{#each suggestions}}
+      <option value="{{this}}"></option>
+    {{/each}}
+  </datalist>
 
   <h2>Add to a list</h2>
   {{> recipes/_add_to_list add_to_list }}

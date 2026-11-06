@@ -50,6 +50,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .service(recipes::update)
                 .service(recipes::delete)
                 .service(recipes::add_ingredient)
+                .service(recipes::ingredient_match)
                 .service(recipes::set_quantity)
                 .service(recipes::move_ingredient)
                 .service(recipes::remove_ingredient)

@@ -468,6 +468,21 @@ impl ProductRepo for SqlitePool {
         row.as_ref().map(row_to_product).transpose()
     }
 
+    async fn suggestion_names(&self, owner_id: Uuid) -> CoreResult<Vec<String>> {
+        let rows = sqlx::query(
+            r"SELECT name FROM products
+                WHERE owner_id = ?1
+                ORDER BY name_key, name",
+        )
+        .bind(owner_id.to_string())
+        .fetch_all(&self.inner)
+        .await?;
+
+        rows.iter()
+            .map(|row| row.try_get("name").map_err(CoreError::from))
+            .collect()
+    }
+
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product> {
         let name = clean_name("product", name)?;
 
