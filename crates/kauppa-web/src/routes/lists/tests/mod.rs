@@ -202,37 +202,6 @@ async fn list_snapshot(state: &AppState, s: &Shared) -> String {
     format!("{} {active:?} {removed:?} {shares:?}", list.name)
 }
 
-/// A `tracing` writer that keeps everything written to it.
-#[derive(Debug, Clone, Default)]
-struct LogCapture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-
-impl LogCapture {
-    #[allow(clippy::expect_used)]
-    fn text(&self) -> String {
-        String::from_utf8(self.0.lock().expect("log lock").clone()).expect("utf-8 log")
-    }
-}
-
-impl std::io::Write for LogCapture {
-    #[allow(clippy::expect_used)]
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.0.lock().expect("log lock").extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
-impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
-    type Writer = Self;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        self.clone()
-    }
-}
-
 /// `(text, category)` of a list's active items, in order.
 #[allow(clippy::expect_used)]
 async fn item_shape(state: &AppState, user: Uuid, list: Uuid) -> Vec<(String, Option<String>)> {
