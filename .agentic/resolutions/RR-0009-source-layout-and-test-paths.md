@@ -8,7 +8,7 @@ mission: MB-0019
 decided_by: "@juuso.kalliomaki"
 role: platform
 risk_tier: medium
-decided_at: 2026-11-07T9:32:00Z
+decided_at: 2026-11-07T09:32:00Z
 status: approved
 superseded_by: null
 rolls_back_into:
