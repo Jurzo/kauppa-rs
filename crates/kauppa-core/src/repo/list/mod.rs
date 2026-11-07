@@ -1,6 +1,6 @@
 //! MB-0007 acceptance tests for the shopping-list repository (P1, P2, P4) and
 //! MB-0004's for list items (P1–P4), MB-0005's for adding a recipe (P1–P4),
-//! and MB-0006's store-view order (P2).
+//! MB-0006's store-view order (P2), and MB-0021's quantity edit (P1).
 //! Test-only module: `ShoppingListRepo` lives in `repo` and its SQLite impl in
 //! `repo::sqlite`; this module exists so the brief's
 //! `cargo test -p kauppa-core repo::list::<area>::<name>` checks select these tests.
