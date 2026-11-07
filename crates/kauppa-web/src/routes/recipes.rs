@@ -35,9 +35,12 @@ use kauppa_core::domain::{
 use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
-use crate::error::{WebError, WebResult};
+use crate::error::WebResult;
 use crate::routes::lists::parse_multiplier;
 use crate::routes::products::{Picker, parse_category};
+use crate::routes::request::{current_user, is_hx, wants_fragment};
+#[cfg(test)]
+use crate::routes::test_support::{make_list, make_recipe, make_recipe_with};
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -85,24 +88,6 @@ struct AddToListForm {
     list_id: String,
     #[serde(default)]
     multiplier: String,
-}
-
-fn current_user(id: &Identity) -> WebResult<Uuid> {
-    let raw = id
-        .id()
-        .map_err(|_| WebError::Core(CoreError::Unauthorized))?;
-    Uuid::parse_str(&raw).map_err(|_| WebError::Core(CoreError::Unauthorized))
-}
-
-fn is_hx(req: &HttpRequest) -> bool {
-    req.headers().get("HX-Request").is_some_and(|v| v == "true")
-}
-
-/// An htmx request for part of a page. Boosted navigation (`hx-boost` on
-/// `<body>`) also sends `HX-Request`, but swaps the whole body, so it gets the
-/// full page (or follows the redirect).
-fn wants_fragment(req: &HttpRequest) -> bool {
-    is_hx(req) && req.headers().get("HX-Boosted").is_none()
 }
 
 /// The list chosen in the "Add to a list" form. Whether it is the user's is
@@ -954,19 +939,6 @@ async fn ingredient_names(state: &AppState, user: Uuid, recipe: Uuid) -> Vec<Str
         .collect()
 }
 
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-async fn make_recipe(state: &AppState, user: Uuid, title: &str) -> Uuid {
-    let input = RecipeInput {
-        title: title.to_owned(),
-        ..RecipeInput::default()
-    };
-    RecipeRepo::create(&state.pool, user, &input)
-        .await
-        .expect("create recipe")
-        .id
-}
-
 /// P2: the server refuses an ingredient whose product has no category — an
 /// existing product left uncategorized by a category deletion, or a new name
 /// without a chosen category — even when a client skips the form, and adds
@@ -1447,31 +1419,6 @@ async fn details_draft_survives_rejection() {
 // `cargo test -p kauppa-web routes::recipes::<name>` checks. As a filter,
 // `routes::recipes::add_to_list` also selects the other two.
 
-/// A recipe with one ingredient per `(product name, quantity)`, all in
-/// `category`.
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-async fn make_recipe_with(
-    state: &AppState,
-    owner: Uuid,
-    title: &str,
-    category: Uuid,
-    ingredients: &[(&str, Option<&str>)],
-) -> Uuid {
-    let recipe = make_recipe(state, owner, title).await;
-    for &(name, quantity) in ingredients {
-        let new = NewIngredient {
-            product_name: name.to_owned(),
-            quantity: quantity.map(str::to_owned),
-            category_id: Some(category),
-        };
-        RecipeRepo::add_ingredient(&state.pool, owner, recipe, &new)
-            .await
-            .expect("add ingredient");
-    }
-    recipe
-}
-
 /// A list's active items as `(text, quantity, product, category)`.
 #[cfg(test)]
 #[allow(clippy::expect_used)]
@@ -1486,15 +1433,6 @@ async fn list_shape(
         .into_iter()
         .map(|i| (i.text, i.quantity, i.product_id, i.category.map(|c| c.id)))
         .collect()
-}
-
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-async fn make_list(state: &AppState, owner: Uuid, name: &str) -> Uuid {
-    ShoppingListRepo::create(&state.pool, owner, name)
-        .await
-        .expect("create list")
-        .id
 }
 
 /// MB-0015 P1: the recipe page offers the user's own lists, most recently

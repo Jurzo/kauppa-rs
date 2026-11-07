@@ -15,7 +15,8 @@ use kauppa_core::domain::{Category, Direction, ordering};
 use kauppa_core::repo::CategoryRepo;
 use kauppa_core::{CoreError, CoreResult};
 
-use crate::error::{WebError, WebResult};
+use crate::error::WebResult;
+use crate::routes::request::{current_user, is_hx};
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -26,17 +27,6 @@ struct NameForm {
 #[derive(Debug, Deserialize)]
 struct MoveForm {
     dir: Direction,
-}
-
-fn current_user(id: &Identity) -> WebResult<Uuid> {
-    let raw = id
-        .id()
-        .map_err(|_| WebError::Core(CoreError::Unauthorized))?;
-    Uuid::parse_str(&raw).map_err(|_| WebError::Core(CoreError::Unauthorized))
-}
-
-fn is_hx(req: &HttpRequest) -> bool {
-    req.headers().get("HX-Request").is_some_and(|v| v == "true")
 }
 
 #[derive(Debug, Serialize)]

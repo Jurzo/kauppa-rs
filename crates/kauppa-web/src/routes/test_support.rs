@@ -10,8 +10,9 @@ use actix_web::dev::ServiceResponse;
 use actix_web::{test, web};
 use uuid::Uuid;
 
+use kauppa_core::domain::{NewIngredient, RecipeInput};
 use kauppa_core::password;
-use kauppa_core::repo::{CategoryRepo, SqlitePool, UserRepo};
+use kauppa_core::repo::{CategoryRepo, RecipeRepo, ShoppingListRepo, SqlitePool, UserRepo};
 
 use crate::state::AppState;
 use crate::templates;
@@ -48,6 +49,48 @@ pub async fn make_category(state: &AppState, owner: Uuid, name: &str) -> Uuid {
     CategoryRepo::create(&state.pool, owner, name)
         .await
         .expect("create category")
+        .id
+}
+
+/// A recipe titled `title` with no ingredients; returns its id.
+pub async fn make_recipe(state: &AppState, owner: Uuid, title: &str) -> Uuid {
+    let input = RecipeInput {
+        title: title.to_owned(),
+        ..RecipeInput::default()
+    };
+    RecipeRepo::create(&state.pool, owner, &input)
+        .await
+        .expect("create recipe")
+        .id
+}
+
+/// A recipe with one ingredient per `(product name, quantity)`; new products
+/// go to `category`.
+pub async fn make_recipe_with(
+    state: &AppState,
+    owner: Uuid,
+    title: &str,
+    category: Uuid,
+    ingredients: &[(&str, Option<&str>)],
+) -> Uuid {
+    let recipe = make_recipe(state, owner, title).await;
+    for &(name, quantity) in ingredients {
+        let new = NewIngredient {
+            product_name: name.to_owned(),
+            quantity: quantity.map(str::to_owned),
+            category_id: Some(category),
+        };
+        RecipeRepo::add_ingredient(&state.pool, owner, recipe, &new)
+            .await
+            .expect("add ingredient");
+    }
+    recipe
+}
+
+pub async fn make_list(state: &AppState, owner: Uuid, name: &str) -> Uuid {
+    ShoppingListRepo::create(&state.pool, owner, name)
+        .await
+        .expect("create list")
         .id
 }
 

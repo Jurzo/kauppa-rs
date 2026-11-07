@@ -44,8 +44,11 @@ use kauppa_core::domain::{
 use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
-use crate::error::{WebError, WebResult};
+use crate::error::WebResult;
 use crate::routes::products::{Picker, parse_category};
+use crate::routes::request::{current_user, is_hx, wants_fragment};
+#[cfg(test)]
+use crate::routes::test_support::make_recipe_with;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -88,24 +91,6 @@ struct CheckForm {
 struct CategoryForm {
     #[serde(default)]
     category_id: String,
-}
-
-fn current_user(id: &Identity) -> WebResult<Uuid> {
-    let raw = id
-        .id()
-        .map_err(|_| WebError::Core(CoreError::Unauthorized))?;
-    Uuid::parse_str(&raw).map_err(|_| WebError::Core(CoreError::Unauthorized))
-}
-
-fn is_hx(req: &HttpRequest) -> bool {
-    req.headers().get("HX-Request").is_some_and(|v| v == "true")
-}
-
-/// An htmx request for part of a page. Boosted navigation (`hx-boost` on
-/// `<body>`) also sends `HX-Request`, but swaps the whole body, so it gets the
-/// full page.
-fn wants_fragment(req: &HttpRequest) -> bool {
-    is_hx(req) && req.headers().get("HX-Boosted").is_none()
 }
 
 #[derive(Debug, Serialize)]
@@ -1641,43 +1626,6 @@ async fn htmx_fragments() {
 // MB-0005 acceptance tests (P5, P6), at module level for the brief's
 // `cargo test -p kauppa-web routes::lists::<name>` checks.
 
-/// A recipe with one ingredient per `(product name, quantity)`, all in
-/// `category`.
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-async fn make_recipe(
-    state: &AppState,
-    owner: Uuid,
-    title: &str,
-    category: Uuid,
-    ingredients: &[(&str, Option<&str>)],
-) -> Uuid {
-    use kauppa_core::domain::{NewIngredient, RecipeInput};
-
-    let recipe = RecipeRepo::create(
-        &state.pool,
-        owner,
-        &RecipeInput {
-            title: title.to_owned(),
-            ..RecipeInput::default()
-        },
-    )
-    .await
-    .expect("create recipe")
-    .id;
-    for &(name, quantity) in ingredients {
-        let new = NewIngredient {
-            product_name: name.to_owned(),
-            quantity: quantity.map(str::to_owned),
-            category_id: Some(category),
-        };
-        RecipeRepo::add_ingredient(&state.pool, owner, recipe, &new)
-            .await
-            .expect("add ingredient");
-    }
-    recipe
-}
-
 /// MB-0005 P5: a user can't add from another user's recipe, nor onto another
 /// user's list — over htmx or not — and nothing is added anywhere.
 #[cfg(test)]
@@ -1696,8 +1644,8 @@ async fn add_recipe_owner_isolation() {
     let other = make_user(&state, "other@example.com").await;
     let mine = make_category(&state, user, "Kylmä").await;
     let theirs = make_category(&state, other, "Kylmä").await;
-    let my_recipe = make_recipe(&state, user, "Puuro", mine, &[("Maito", Some("5 dl"))]).await;
-    let their_recipe = make_recipe(
+    let my_recipe = make_recipe_with(&state, user, "Puuro", mine, &[("Maito", Some("5 dl"))]).await;
+    let their_recipe = make_recipe_with(
         &state,
         other,
         "Salaatti",
@@ -1777,7 +1725,7 @@ async fn add_recipe_htmx() {
     let app = test_app!(state);
     let user = make_user(&state, "u@example.com").await;
     let kylma = make_category(&state, user, "Kylmä").await;
-    let pancakes = make_recipe(
+    let pancakes = make_recipe_with(
         &state,
         user,
         "Pannukakku",
@@ -1785,7 +1733,7 @@ async fn add_recipe_htmx() {
         &[("Maito", Some("5 dl")), ("Kananmuna", Some("2"))],
     )
     .await;
-    let empty = make_recipe(&state, user, "Tyhjä", kylma, &[]).await;
+    let empty = make_recipe_with(&state, user, "Tyhjä", kylma, &[]).await;
     let list = ShoppingListRepo::create(&state.pool, user, "Viikko")
         .await
         .expect("list")
@@ -2423,8 +2371,8 @@ async fn recipe_picker_shows_titles() {
     let app = test_app!(state);
     let user = make_user(&state, "u@example.com").await;
     let kylma = make_category(&state, user, "Kylmä").await;
-    let pancakes = make_recipe(&state, user, "Pannukakku", kylma, &[]).await;
-    let porridge = make_recipe(&state, user, "Puuro", kylma, &[]).await;
+    let pancakes = make_recipe_with(&state, user, "Pannukakku", kylma, &[]).await;
+    let porridge = make_recipe_with(&state, user, "Puuro", kylma, &[]).await;
     let list = ShoppingListRepo::create(&state.pool, user, "Viikonloppu")
         .await
         .expect("list")
@@ -2491,7 +2439,8 @@ async fn shared_list(state: &AppState) -> Shared {
         .await
         .expect("favorite")
         .id;
-    let recipe = make_recipe(state, owner, "Puuro", category, &[("Kaura", Some("2 dl"))]).await;
+    let recipe =
+        make_recipe_with(state, owner, "Puuro", category, &[("Kaura", Some("2 dl"))]).await;
     let list = ShoppingListRepo::create(&state.pool, owner, "Kauppa")
         .await
         .expect("list")

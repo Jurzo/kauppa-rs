@@ -25,7 +25,10 @@ use kauppa_core::domain::{Category, Direction, HiddenProductGroup, Product, Prod
 use kauppa_core::repo::{CategoryRepo, ProductRepo};
 use kauppa_core::{CoreError, CoreResult};
 
-use crate::error::{WebError, WebResult};
+use crate::error::WebResult;
+use crate::routes::request::{current_user, is_hx};
+#[cfg(test)]
+use crate::routes::test_support::make_recipe_with;
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -52,17 +55,6 @@ struct CategoryForm {
 #[derive(Debug, Deserialize)]
 struct MoveForm {
     dir: Direction,
-}
-
-fn current_user(id: &Identity) -> WebResult<Uuid> {
-    let raw = id
-        .id()
-        .map_err(|_| WebError::Core(CoreError::Unauthorized))?;
-    Uuid::parse_str(&raw).map_err(|_| WebError::Core(CoreError::Unauthorized))
-}
-
-fn is_hx(req: &HttpRequest) -> bool {
-    req.headers().get("HX-Request").is_some_and(|v| v == "true")
 }
 
 /// Enforce "a favorite must have a category" (RR-0001) on the submitted id.
@@ -818,48 +810,6 @@ async fn case_duplicate_rejected() {
 
 // MB-0014 acceptance tests (P3–P5), at module level like the ones above.
 
-/// A recipe titled `title` with one ingredient per `(name, quantity)`; new
-/// products are created in `category`, hidden from favorites (MB-0003).
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-async fn make_recipe_with(
-    state: &AppState,
-    user: Uuid,
-    title: &str,
-    ingredients: &[(&str, Option<&str>)],
-    category: Uuid,
-) -> Uuid {
-    use kauppa_core::domain::{NewIngredient, RecipeInput};
-    use kauppa_core::repo::RecipeRepo;
-
-    let recipe = RecipeRepo::create(
-        &state.pool,
-        user,
-        &RecipeInput {
-            title: title.to_owned(),
-            ..RecipeInput::default()
-        },
-    )
-    .await
-    .expect("create recipe")
-    .id;
-    for (name, quantity) in ingredients {
-        RecipeRepo::add_ingredient(
-            &state.pool,
-            user,
-            recipe,
-            &NewIngredient {
-                product_name: (*name).to_owned(),
-                quantity: quantity.map(str::to_owned),
-                category_id: Some(category),
-            },
-        )
-        .await
-        .expect("add ingredient");
-    }
-    recipe
-}
-
 /// `(group name, [product names])` of the user's recipe-created products;
 /// `None` is uncategorized.
 #[cfg(test)]
@@ -935,20 +885,20 @@ async fn hidden_products_section() {
         &state,
         user,
         "Salaatti",
-        &[("Kurkku", None), ("Tomaatti", None)],
         hevi,
+        &[("Kurkku", None), ("Tomaatti", None)],
     )
     .await;
-    make_recipe_with(&state, user, "Tzatziki", &[("Kurkku", None)], hevi).await;
+    make_recipe_with(&state, user, "Tzatziki", hevi, &[("Kurkku", None)]).await;
     make_recipe_with(
         &state,
         user,
         "Pannukakku",
-        &[("Maito", Some("5 dl")), ("Kerma", None), ("Voi", None)],
         kylma,
+        &[("Maito", Some("5 dl")), ("Kerma", None), ("Voi", None)],
     )
     .await;
-    make_recipe_with(&state, other, "Heidän", &[("Salainen", None)], theirs).await;
+    make_recipe_with(&state, other, "Heidän", theirs, &[("Salainen", None)]).await;
     let secret = any_product_id(&state, other, "Salainen").await;
 
     let session =
@@ -1154,12 +1104,12 @@ async fn hidden_uncategorized_fixable() {
     let user = make_user(&state, "u@example.com").await;
     let hevi = make_category(&state, user, "Hevi").await;
     let juomat = make_category(&state, user, "Juomat").await;
-    make_recipe_with(&state, user, "Aamiainen", &[("Mehu", None)], juomat).await;
+    make_recipe_with(&state, user, "Aamiainen", juomat, &[("Mehu", None)]).await;
     CategoryRepo::delete(&state.pool, user, juomat)
         .await
         .expect("delete category");
     let mehu = any_product_id(&state, user, "Mehu").await;
-    let recipe = make_recipe_with(&state, user, "Smoothie", &[], hevi).await;
+    let recipe = make_recipe_with(&state, user, "Smoothie", hevi, &[]).await;
     let session =
         session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
     let post = |uri: &str, form: &[(&str, &str)]| {
@@ -1276,12 +1226,12 @@ async fn delete_used_product_warns() {
         &state,
         user,
         "Salaatti",
-        &[("Tomaatti", Some("2")), ("Kurkku", Some("1 kpl"))],
         hevi,
+        &[("Tomaatti", Some("2")), ("Kurkku", Some("1 kpl"))],
     )
     .await;
-    let tzatziki = make_recipe_with(&state, user, "Tzatziki", &[("Kurkku", Some("½"))], hevi).await;
-    let scratch = make_recipe_with(&state, user, "Luonnos", &[("Kerma", None)], hevi).await;
+    let tzatziki = make_recipe_with(&state, user, "Tzatziki", hevi, &[("Kurkku", Some("½"))]).await;
+    let scratch = make_recipe_with(&state, user, "Luonnos", hevi, &[("Kerma", None)]).await;
     let kerma_ingredient = RecipeRepo::get(&state.pool, user, scratch)
         .await
         .expect("get recipe")
