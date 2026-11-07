@@ -62,7 +62,8 @@ mentorship:
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/persistence.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions:
+  - RR-0009
 ---
 ```
 

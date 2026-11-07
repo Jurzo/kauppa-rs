@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0019 autonomy.escalate (test layout and check-path rewrite; bypass guard change → security); feature.md escalation trigger `.agentic/{mentorship,runbooks,resolutions}/**` (the trigger-path row and the test-layout convention change); AGENTS.md → Agent role (Mentorship Pack and Runbook changes need explicit approval)"
 ---
 ```
