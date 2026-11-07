@@ -576,7 +576,16 @@ async fn share_by_email() {
 // The structural half of P1: a test that fails if a list or list-item query
 // goes around the central predicate. It reads the SQLite repo's source.
 
-const SQLITE_RS: &str = include_str!("sqlite.rs");
+// The list repo, and every other SQLite repo file (RR-0009 constraint 3:
+// only `sqlite/list.rs` may name a list table).
+const LIST_RS: &str = include_str!("sqlite/list.rs");
+const OTHER_SQLITE_RS: [(&str, &str); 5] = [
+    ("sqlite/mod.rs", include_str!("sqlite/mod.rs")),
+    ("sqlite/user.rs", include_str!("sqlite/user.rs")),
+    ("sqlite/category.rs", include_str!("sqlite/category.rs")),
+    ("sqlite/product.rs", include_str!("sqlite/product.rs")),
+    ("sqlite/recipe.rs", include_str!("sqlite/recipe.rs")),
+];
 const MOD_RS: &str = include_str!("mod.rs");
 
 /// The text from `header` to the end of its top-level block.
@@ -620,7 +629,8 @@ fn items(src: &str) -> Vec<(&str, String)> {
 ///   `begin_write` or call `accessible_lists`, or runs a query before that;
 /// - the trait gains a method this check didn't see;
 /// - any code outside that impl and the grant-taking helpers mentions a list
-///   table (`shopping_lists`, `list_items`, `list_shares`).
+///   table (`shopping_lists`, `list_items`, `list_shares`);
+/// - any SQLite repo file other than `sqlite/list.rs` mentions one (RR-0009).
 #[test]
 fn list_queries_route_through_central_predicate() {
     const GATES: [&str; 3] = ["self.begin_read(", "self.begin_write(", "accessible_lists("];
@@ -635,7 +645,7 @@ fn list_queries_route_through_central_predicate() {
         "async fn fetch_items",
         "impl ShoppingListRepo for SqlitePool",
     ];
-    let repo = block(SQLITE_RS, "impl ShoppingListRepo for SqlitePool {");
+    let repo = block(LIST_RS, "impl ShoppingListRepo for SqlitePool {");
     let mut seen = 0;
     for method in repo.split("\n    async fn ").skip(1) {
         seen += 1;
@@ -663,7 +673,7 @@ fn list_queries_route_through_central_predicate() {
         .count();
     assert_eq!(seen, declared, "every trait method was checked");
 
-    for (header, text) in items(SQLITE_RS) {
+    for (header, text) in items(LIST_RS) {
         let code: String = text
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -686,6 +696,31 @@ fn list_queries_route_through_central_predicate() {
             assert!(
                 code.contains("grant: &ListGrant"),
                 "`{header}` must take a `&ListGrant`"
+            );
+        }
+    }
+
+    for (file, src) in OTHER_SQLITE_RS {
+        let code: String = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for table in ["shopping_lists", "list_items", "list_shares"] {
+            assert!(
+                !code.contains(table),
+                "{file} names `{table}`; list SQL belongs in sqlite/list.rs"
+            );
+        }
+        for select in [
+            "ACCESS_SELECT",
+            "ITEM_SELECT)",
+            "STORE_VIEW_SELECT",
+            "SHARE_SELECT",
+        ] {
+            assert!(
+                !code.contains(select),
+                "{file} uses `{select}` outside sqlite/list.rs"
             );
         }
     }
