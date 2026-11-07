@@ -444,3 +444,122 @@ async fn owner_only_administration() {
             .is_empty()
     );
 }
+
+/// MB-0021 P3: changing an item's quantity follows the list's roles through
+/// the central access predicate. The owner and an `edit` grantee can (plain
+/// 303, htmx fragment) and see the form; a `view` grantee gets 403 and a
+/// stranger 404, over htmx or not, and the quantity is unchanged.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn quantity_follows_roles() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    make_user(&state, "stranger@example.com").await;
+    let login = |email: &'static str| {
+        let app = &app;
+        async move { session_cookie(&call_service(app, login_request(email).to_request()).await) }
+    };
+    let owner = login("owner@example.com").await;
+    let editor = login("editor@example.com").await;
+    let viewer = login("viewer@example.com").await;
+    let stranger = login("stranger@example.com").await;
+    let base = format!("/lists/{}", s.list);
+    let uri = format!("{base}/items/{}/quantity", s.bread);
+    let quantity = || async {
+        ShoppingListRepo::items(&state.pool, s.owner, s.list, false)
+            .await
+            .expect("items")
+            .into_iter()
+            .find(|i| i.id == s.bread)
+            .expect("bread")
+            .quantity
+    };
+
+    // The owner and the editor see the form; the viewer doesn't.
+    for (who, session, offered) in [
+        ("owner", &owner, true),
+        ("editor", &editor, true),
+        ("viewer", &viewer, false),
+    ] {
+        for htmx in [false, true] {
+            let mut req = TestRequest::get().uri(&base).cookie(session.clone());
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let body = body_string(call_service(&app, req.to_request()).await).await;
+            assert_eq!(
+                body.contains(&format!(r#"action="{uri}""#)),
+                offered,
+                "{who} htmx={htmx}"
+            );
+        }
+    }
+
+    // The owner and the editor can change it, plain and over htmx.
+    for (who, session, plain, hx) in [
+        ("owner", &owner, "2", "3 kpl"),
+        ("editor", &editor, "4", "5 kpl"),
+    ] {
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(&uri)
+                .cookie(session.clone())
+                .set_form([("quantity", plain)])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{who}");
+        assert_eq!(quantity().await.as_deref(), Some(plain), "{who}");
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(&uri)
+                .cookie(session.clone())
+                .insert_header(("HX-Request", "true"))
+                .set_form([("quantity", hx)])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK, "{who} htmx");
+        let body = body_string(resp).await;
+        assert!(body.contains(&format!(r#"id="list-{}""#, s.list)), "{who}");
+        assert!(body.contains(hx), "{who}");
+        assert_eq!(quantity().await.as_deref(), Some(hx), "{who} htmx");
+    }
+
+    // A viewer is refused (403) and a stranger doesn't see the list (404);
+    // nothing changes.
+    let before = (quantity().await, list_snapshot(&state, &s).await);
+    for (who, session, status) in [
+        ("viewer", &viewer, StatusCode::FORBIDDEN),
+        ("stranger", &stranger, StatusCode::NOT_FOUND),
+    ] {
+        for htmx in [false, true] {
+            for value in ["9", ""] {
+                let mut req = TestRequest::post()
+                    .uri(&uri)
+                    .cookie(session.clone())
+                    .set_form([("quantity", value)]);
+                if htmx {
+                    req = req.insert_header(("HX-Request", "true"));
+                }
+                let resp = call_service(&app, req.to_request()).await;
+                assert_eq!(resp.status(), status, "{who} htmx={htmx} {value:?}");
+            }
+        }
+    }
+    assert_eq!(
+        (quantity().await, list_snapshot(&state, &s).await),
+        before,
+        "nothing changed"
+    );
+    assert_eq!(before.0.as_deref(), Some("5 kpl"));
+}

@@ -1,4 +1,4 @@
-//! Item handlers on the list page (MB-0004, MB-0005): add free text, a favorite or a recipe; assign a category; remove and restore.
+//! Item handlers on the list page (MB-0004, MB-0005, MB-0021): add free text, a favorite or a recipe; assign a category; edit a quantity; remove and restore.
 
 use actix_identity::Identity;
 use actix_web::{HttpRequest, HttpResponse, post, web};
@@ -38,6 +38,13 @@ struct RecipeForm {
     recipe_id: String,
     #[serde(default)]
     multiplier: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct QuantityForm {
+    // Missing and empty both clear the quantity.
+    #[serde(default)]
+    quantity: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,6 +162,29 @@ pub async fn assign_category(
         }
         Err(e) => Err(e),
     };
+    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+}
+
+/// Set or clear (blank) an item's quantity (MB-0021). The owner and `edit`
+/// grantees may; the repo's access predicate decides.
+#[post("/{id}/items/{item}/quantity")]
+pub async fn set_item_quantity(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+    form: web::Form<QuantityForm>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (list_id, item_id) = path.into_inner();
+    let outcome = ShoppingListRepo::set_item_quantity(
+        &state.pool,
+        user,
+        list_id,
+        item_id,
+        Some(&form.quantity),
+    )
+    .await;
     respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
