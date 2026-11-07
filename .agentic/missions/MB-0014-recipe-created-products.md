@@ -13,10 +13,10 @@ non_goals:
 acceptance:
   - id: P1
     property: The repo lists the owner's recipe-created (non-favorite) products grouped by category like favorites (uncategorized last), each with the number of the owner's recipes that use it; never another user's.
-    check: cargo test -p kauppa-core repo::product::list_hidden_with_usage
+    check: cargo test -p kauppa-core repo::product::hidden::list_hidden_with_usage
   - id: P2
     property: Making a recipe-created product a favorite keeps its id, name, and category, and appends it at the end of that category's favorites; one without a category is refused (`Invalid`, RR-0001 — a favorite needs a category) until a category is set.
-    check: cargo test -p kauppa-core repo::product::make_favorite
+    check: cargo test -p kauppa-core repo::product::hidden::make_favorite
   - id: P3
     property: /favorites shows these products in their own section below the favorites, with category and usage count, and every action (make favorite, rename, change category, delete) works over htmx and without it. Another user's products never appear.
     check: cargo test -p kauppa-web routes::products::hidden_products_section
@@ -60,6 +60,8 @@ resolutions:
   - RR-0001
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

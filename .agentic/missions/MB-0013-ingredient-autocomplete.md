@@ -13,7 +13,7 @@ non_goals:
 acceptance:
   - id: P1
     property: The repo returns the owner's product names for suggestions — favorites and recipe-created products alike — sorted by name ignoring case, and never another user's.
-    check: cargo test -p kauppa-core repo::product::suggestion_names
+    check: cargo test -p kauppa-core repo::product::suggestions::suggestion_names
   - id: P2
     property: "The recipe editor's ingredient name input offers those names through a native `<datalist>` (`list=` on the input), so it works on mobile keyboards and without JavaScript; another user's products never appear."
     check: cargo test -p kauppa-web routes::recipes::ingredient_suggestions
@@ -50,6 +50,8 @@ resolutions:
   - RR-0003
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

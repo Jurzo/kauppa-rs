@@ -13,16 +13,16 @@ non_goals:
 acceptance:
   - id: P1
     property: Adding a recipe to a list appends one list item per recipe ingredient, each snapshotting the ingredient's product, category, and quantity at add-time.
-    check: cargo test -p kauppa-core repo::list::add_recipe_snapshots_ingredients
+    check: cargo test -p kauppa-core repo::list::recipes::add_recipe_snapshots_ingredients
   - id: P2
     property: Adding a recipe never mutates the recipe or the catalog — it only inserts list items, so re-adding or editing the taxonomy later leaves existing items unchanged.
-    check: cargo test -p kauppa-core repo::list::add_recipe_is_nondestructive
+    check: cargo test -p kauppa-core repo::list::recipes::add_recipe_is_nondestructive
   - id: P3
     property: With multiplier N, an ingredient quantity that has a parseable leading number is scaled by N; a quantity with no parseable number is carried through unchanged (nice-to-have multiplier delivered).
-    check: cargo test -p kauppa-core repo::list::add_recipe_quantity_multiplier
+    check: cargo test -p kauppa-core repo::list::recipes::add_recipe_quantity_multiplier
   - id: P4
     property: An ingredient whose product is uncategorized adds as an uncategorized list item (category_id NULL) rather than being dropped.
-    check: cargo test -p kauppa-core repo::list::add_recipe_handles_uncategorized
+    check: cargo test -p kauppa-core repo::list::recipes::add_recipe_handles_uncategorized
   - id: P5
     property: A user cannot add from a recipe they do not own, nor onto a list they do not own.
     check: cargo test -p kauppa-web routes::lists::add_recipe_owner_isolation
@@ -57,6 +57,8 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

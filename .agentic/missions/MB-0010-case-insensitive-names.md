@@ -17,7 +17,7 @@ acceptance:
     check: cargo test -p kauppa-core repo::category::unique_ignoring_case
   - id: P2
     property: The same holds for product names, on create and on rename.
-    check: cargo test -p kauppa-core repo::product::unique_ignoring_case
+    check: cargo test -p kauppa-core repo::product::names::unique_ignoring_case
   - id: P3
     property: Names are stored and displayed exactly as typed (trimmed); only matching ignores case. Renaming a row to a different casing of its own name ("maito" → "Maito") succeeds.
     check: cargo test -p kauppa-core case_only_rename
@@ -67,6 +67,8 @@ resolutions:
   - RR-0001
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

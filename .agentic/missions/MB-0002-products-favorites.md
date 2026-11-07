@@ -15,16 +15,16 @@ acceptance:
     check: cargo test -p kauppa-web routes::products::create_requires_owned_category
   - id: P2
     property: Product names are unique per owner and non-empty; duplicates and empty names are rejected.
-    check: cargo test -p kauppa-core repo::product::unique_nonempty_name
+    check: cargo test -p kauppa-core repo::product::catalog::unique_nonempty_name
   - id: P3
     property: list_for_owner returns products grouped by category and ordered by position within each category (nice-to-have position delivered).
-    check: cargo test -p kauppa-core repo::product::grouped_ordered
+    check: cargo test -p kauppa-core repo::product::catalog::grouped_ordered
   - id: P4
     property: Deleting a category sets its products' category_id to NULL (uncategorized) and never deletes the product row.
-    check: cargo test -p kauppa-core repo::product::category_delete_sets_null
+    check: cargo test -p kauppa-core repo::product::catalog::category_delete_sets_null
   - id: P5
     property: A product can be renamed, recategorized, repositioned within a category, and deleted.
-    check: cargo test -p kauppa-core repo::product::mutations
+    check: cargo test -p kauppa-core repo::product::catalog::mutations
   - id: P6
     property: GET /favorites renders the catalog grouped by category; create/edit/delete return HTML fragments on HX-Request and full pages otherwise; unauthenticated requests are rejected.
     check: cargo test -p kauppa-web routes::products::crud_and_auth
@@ -58,6 +58,8 @@ resolutions:
   - RR-0001
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

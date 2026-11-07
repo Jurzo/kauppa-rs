@@ -16,7 +16,7 @@ acceptance:
     check: cargo test -p kauppa-web routes::lists::view_groups_by_category
   - id: P2
     property: Within a category, items are ordered by the user-defined product position with alphabetical name as a deterministic fallback.
-    check: cargo test -p kauppa-core repo::list::view_order_within_category
+    check: cargo test -p kauppa-core repo::list::store::view_order_within_category
   - id: P3
     property: Toggling an item as found flips and persists its checked state; the toggle returns an HTML fragment on HX-Request.
     check: cargo test -p kauppa-web routes::lists::toggle_found
@@ -56,6 +56,8 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 
