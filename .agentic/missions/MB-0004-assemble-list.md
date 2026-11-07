@@ -24,10 +24,10 @@ acceptance:
     check: cargo test -p kauppa-core repo::list::items::snapshot_is_stable
   - id: P5
     property: List items are owner-isolated via their parent list — a user cannot add to or read another user's list.
-    check: cargo test -p kauppa-web routes::lists::owner_isolation
+    check: cargo test -p kauppa-web routes::lists::tests::items::owner_isolation
   - id: P6
     property: add-item, add-favorite, assign-category, and remove return HTML fragments on HX-Request and full pages otherwise.
-    check: cargo test -p kauppa-web routes::lists::htmx_fragments
+    check: cargo test -p kauppa-web routes::lists::tests::items::htmx_fragments
 context:
   - crates/kauppa-core/src/domain/shopping_list.rs
   - crates/kauppa-core/src/repo/mod.rs

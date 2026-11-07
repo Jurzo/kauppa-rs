@@ -13,22 +13,22 @@ non_goals:
 acceptance:
   - id: P1
     property: The view groups active (non-removed) items by their snapshotted category; items with no category render in a single trailing "Muut" bucket.
-    check: cargo test -p kauppa-web routes::lists::view_groups_by_category
+    check: cargo test -p kauppa-web routes::lists::tests::shop::view_groups_by_category
   - id: P2
     property: Within a category, items are ordered by the user-defined product position with alphabetical name as a deterministic fallback.
     check: cargo test -p kauppa-core repo::list::store::view_order_within_category
   - id: P3
     property: Toggling an item as found flips and persists its checked state; the toggle returns an HTML fragment on HX-Request.
-    check: cargo test -p kauppa-web routes::lists::toggle_found
+    check: cargo test -p kauppa-web routes::lists::tests::shop::toggle_found
   - id: P4
     property: Removing an item from the store view soft-deletes it (sets removed_at) and it no longer appears in the grouped view, while remaining recoverable.
-    check: cargo test -p kauppa-web routes::lists::remove_from_view
+    check: cargo test -p kauppa-web routes::lists::tests::shop::remove_from_view
   - id: P5
     property: Checked and removed state are owner-isolated — a user cannot toggle or remove an item on another user's list.
-    check: cargo test -p kauppa-web routes::lists::view_owner_isolation
+    check: cargo test -p kauppa-web routes::lists::tests::shop::view_owner_isolation
   - id: P6
     property: GET of the store view returns the full page on a normal request and fragments for toggle/remove on HX-Request; unauthenticated requests are rejected.
-    check: cargo test -p kauppa-web routes::lists::view_htmx_and_auth
+    check: cargo test -p kauppa-web routes::lists::tests::shop::view_htmx_and_auth
 context:
   - crates/kauppa-core/src/domain/shopping_list.rs
   - crates/kauppa-core/src/repo/mod.rs

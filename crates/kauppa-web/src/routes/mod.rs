@@ -7,6 +7,7 @@ pub mod lists;
 pub mod pages;
 pub mod products;
 pub mod recipes;
+pub mod request;
 
 #[cfg(test)]
 pub mod test_support;

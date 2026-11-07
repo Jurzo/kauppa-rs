@@ -12,16 +12,16 @@ non_goals:
 acceptance:
   - id: P1
     property: On the first (full-page) load of `/lists/{id}`, the "Recipe" picker lists each recipe by its own title, the same as the htmx fragment does; the page title is still the list's name.
-    check: cargo test -p kauppa-web routes::lists::recipe_picker_shows_titles
+    check: cargo test -p kauppa-web routes::lists::tests::recipes::recipe_picker_shows_titles
   - id: P2
     property: The `/recipes` index shows each recipe card with its own title; the page title is still "Recipes".
-    check: cargo test -p kauppa-web routes::recipes::index_shows_titles
+    check: cargo test -p kauppa-web routes::recipes::tests::pages::index_shows_titles
   - id: P3
     property: The new-recipe title field on `/recipes` is empty on a normal load, and after a rejected submission without htmx it holds what the user typed.
-    check: cargo test -p kauppa-web routes::recipes::new_recipe_draft
+    check: cargo test -p kauppa-web routes::recipes::tests::pages::new_recipe_draft
   - id: P4
     property: After a rejected recipe-details edit without htmx, the title field holds the title the user typed, not the stored one; the page heading still shows the stored title.
-    check: cargo test -p kauppa-web routes::recipes::details_draft_survives_rejection
+    check: cargo test -p kauppa-web routes::recipes::tests::pages::details_draft_survives_rejection
   - id: P5
     property: Inside the layout, a body field with the same name as a layout parameter renders its own value, so a future view field can't be shadowed silently.
     check: cargo test -p kauppa-web templates::layout_params_do_not_shadow_body
@@ -61,6 +61,8 @@ resolutions:
   - RR-0006
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

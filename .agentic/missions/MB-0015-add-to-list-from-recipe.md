@@ -13,13 +13,13 @@ non_goals:
 acceptance:
   - id: P1
     property: The recipe page offers the user's own lists, most recently updated first, and a "Times" field defaulting to 1; with no lists it links to /lists instead. Another user's lists never appear.
-    check: cargo test -p kauppa-web routes::recipes::add_to_list_form
+    check: cargo test -p kauppa-web routes::recipes::tests::add_to_list::add_to_list_form
   - id: P2
     property: "Submitting adds the recipe's ingredients to the chosen list exactly as `POST /lists/{id}/recipes` does (snapshot, multiplier). Over htmx it answers with a confirmation fragment naming the list and the number of items added, with a link to the list; without htmx, a 303 to the list."
-    check: cargo test -p kauppa-web routes::recipes::add_to_list
+    check: cargo test -p kauppa-web routes::recipes::tests::add_to_list::add_to_list
   - id: P3
     property: Another user's list or recipe is a 404 and adds nothing; a missing list choice, a bad multiplier, or a recipe without ingredients shows a message, over htmx and without it.
-    check: cargo test -p kauppa-web routes::recipes::add_to_list_rejections
+    check: cargo test -p kauppa-web routes::recipes::tests::add_to_list::add_to_list_rejections
 context:
   - crates/kauppa-web/src/routes/recipes.rs
   - crates/kauppa-web/src/routes/lists.rs
@@ -47,6 +47,8 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

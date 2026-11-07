@@ -16,10 +16,10 @@ acceptance:
     check: cargo test -p kauppa-core repo::product::suggestions::suggestion_names
   - id: P2
     property: "The recipe editor's ingredient name input offers those names through a native `<datalist>` (`list=` on the input), so it works on mobile keyboards and without JavaScript; another user's products never appear."
-    check: cargo test -p kauppa-web routes::recipes::ingredient_suggestions
+    check: cargo test -p kauppa-web routes::recipes::tests::suggestions::ingredient_suggestions
   - id: P3
     property: "When the typed name matches an existing product ignoring case, the add form shows that product's category and that the category picker won't apply (\"Uses Kylmä\"); for a new name it asks for a category. The hint updates over htmx; without JavaScript the form still submits and is validated as before."
-    check: cargo test -p kauppa-web routes::recipes::ingredient_match_hint
+    check: cargo test -p kauppa-web routes::recipes::tests::suggestions::ingredient_match_hint
 context:
   - crates/kauppa-core/src/repo/mod.rs
   - crates/kauppa-core/src/repo/sqlite.rs

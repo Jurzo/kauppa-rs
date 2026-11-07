@@ -19,13 +19,13 @@ acceptance:
     check: cargo test -p kauppa-core repo::list::lifecycle::index_ordered_by_updated
   - id: P3
     property: Opening a list by id loads the list so it can be continued; opening a list the user does not own is rejected.
-    check: cargo test -p kauppa-web routes::lists::open_resume_owner_isolation
+    check: cargo test -p kauppa-web routes::lists::tests::lifecycle::open_resume_owner_isolation
   - id: P4
     property: A list can be renamed and deleted; deleting a list removes its items via the existing ON DELETE CASCADE.
     check: cargo test -p kauppa-core repo::list::lifecycle::rename_and_delete_cascades
   - id: P5
     property: Create / open / rename / delete return HTML fragments on HX-Request and full pages otherwise; unauthenticated requests are rejected.
-    check: cargo test -p kauppa-web routes::lists::lifecycle_htmx_and_auth
+    check: cargo test -p kauppa-web routes::lists::tests::lifecycle::lifecycle_htmx_and_auth
 context:
   - crates/kauppa-core/src/domain/shopping_list.rs
   - crates/kauppa-core/src/repo/mod.rs

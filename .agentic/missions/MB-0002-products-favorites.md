@@ -12,7 +12,7 @@ non_goals:
 acceptance:
   - id: P1
     property: Creating a favorite product requires an existing category owned by the same user; a missing or foreign category id is rejected at the handler layer (category required per RR-0001).
-    check: cargo test -p kauppa-web routes::products::create_requires_owned_category
+    check: cargo test -p kauppa-web routes::products::tests::catalog::create_requires_owned_category
   - id: P2
     property: Product names are unique per owner and non-empty; duplicates and empty names are rejected.
     check: cargo test -p kauppa-core repo::product::catalog::unique_nonempty_name
@@ -27,7 +27,7 @@ acceptance:
     check: cargo test -p kauppa-core repo::product::catalog::mutations
   - id: P6
     property: GET /favorites renders the catalog grouped by category; create/edit/delete return HTML fragments on HX-Request and full pages otherwise; unauthenticated requests are rejected.
-    check: cargo test -p kauppa-web routes::products::crud_and_auth
+    check: cargo test -p kauppa-web routes::products::tests::catalog::crud_and_auth
 context:
   - crates/kauppa-core/src/domain/mod.rs
   - crates/kauppa-core/src/repo/mod.rs

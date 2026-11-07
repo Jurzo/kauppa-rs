@@ -25,10 +25,10 @@ acceptance:
     check: cargo test -p kauppa-core repo::list::recipes::add_recipe_handles_uncategorized
   - id: P5
     property: A user cannot add from a recipe they do not own, nor onto a list they do not own.
-    check: cargo test -p kauppa-web routes::lists::add_recipe_owner_isolation
+    check: cargo test -p kauppa-web routes::lists::tests::recipes::add_recipe_owner_isolation
   - id: P6
     property: POST add-recipe returns an HTML fragment of the updated list on HX-Request and a full page otherwise; unauthenticated requests are rejected.
-    check: cargo test -p kauppa-web routes::lists::add_recipe_htmx
+    check: cargo test -p kauppa-web routes::lists::tests::recipes::add_recipe_htmx
 context:
   - crates/kauppa-core/src/domain/recipe.rs
   - crates/kauppa-core/src/domain/shopping_list.rs

@@ -19,13 +19,13 @@ acceptance:
     check: cargo test -p kauppa-core repo::product::hidden::make_favorite
   - id: P3
     property: /favorites shows these products in their own section below the favorites, with category and usage count, and every action (make favorite, rename, change category, delete) works over htmx and without it. Another user's products never appear.
-    check: cargo test -p kauppa-web routes::products::hidden_products_section
+    check: cargo test -p kauppa-web routes::products::tests::hidden::hidden_products_section
   - id: P4
     property: A recipe-created product left uncategorized by a category deletion can be given a category from this section, after which it is accepted as a recipe ingredient again (closes the MB-0003 P2 dead end).
-    check: cargo test -p kauppa-web routes::products::hidden_uncategorized_fixable
+    check: cargo test -p kauppa-web routes::products::tests::hidden::hidden_uncategorized_fixable
   - id: P5
     property: Deleting a product that recipes use asks for confirmation naming the usage count; afterwards those ingredients keep their name and quantity, unlinked (RR-0001 constraint 4).
-    check: cargo test -p kauppa-web routes::products::delete_used_product_warns
+    check: cargo test -p kauppa-web routes::products::tests::hidden::delete_used_product_warns
 context:
   - crates/kauppa-core/src/repo/mod.rs
   - crates/kauppa-core/src/repo/sqlite.rs
