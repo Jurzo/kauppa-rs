@@ -14,7 +14,7 @@ non_goals:
 acceptance:
   - id: P1
     property: Describe the invariant or user-visible behavior.
-    check: Name the test or script that proves it.
+    check: Name the test by its full path (see `.agentic/mentorship/actix-web.md` → Testing), or the script that proves it.
   - id: P2
     property: Another property.
     check: Another check.

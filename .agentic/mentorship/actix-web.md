@@ -36,6 +36,13 @@ Version: v1 · Scope: `crates/kauppa-web/src/routes/**` and middleware.
 - Unit-test core logic in `kauppa-core`.
 - For HTTP smoke tests, use `actix_web::test::init_service` + `TestRequest`.
 - Reserve full E2E (Playwright) for user-visible flows.
+- A module's tests live in `<module>/tests/<area>.rs`, grouped by feature
+  area, with shared fixtures in `routes::test_support` (RR-0009).
+- Brief checks name the full test path (for example
+  `cargo test -p kauppa-web routes::lists::tests::<area>::<test>`), and
+  `scripts/agentic/check_brief_tests.sh` must pass (RR-0009).
+- Source files stay under about 800 lines; split by feature area when one
+  grows past it (RR-0009).
 
 ## Red flags
 

@@ -576,7 +576,10 @@ async fn share_by_email() {
 // The structural half of P1: a test that fails if a list or list-item query
 // goes around the central predicate. It reads the SQLite repo's source.
 
-const SQLITE_RS: &str = include_str!("sqlite.rs");
+// The list repo. Every other file in `repo/sqlite/` is read when the test runs
+// (`other_sqlite_files`), so a new file can't escape RR-0009 constraint 3:
+// only `sqlite/list.rs` may name a list table.
+const LIST_RS: &str = include_str!("sqlite/list.rs");
 const MOD_RS: &str = include_str!("mod.rs");
 
 /// The text from `header` to the end of its top-level block.
@@ -614,13 +617,31 @@ fn items(src: &str) -> Vec<(&str, String)> {
     out
 }
 
+/// Every `.rs` file in `repo/sqlite/` except `list.rs`, as `(name, source)`.
+fn other_sqlite_files() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/repo/sqlite");
+    let mut files: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .expect("read repo/sqlite")
+        .map(|entry| entry.expect("dir entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+        .filter(|path| path.file_name().is_some_and(|n| n != "list.rs"))
+        .map(|path| {
+            let name = format!("sqlite/{}", path.file_name().unwrap().to_string_lossy());
+            (name, std::fs::read_to_string(&path).expect("read source"))
+        })
+        .collect();
+    files.sort();
+    files
+}
+
 /// P1's bypass check. Fails if:
 /// - a `ShoppingListRepo` method (other than `create`, which makes a new
 ///   list) doesn't open its transaction through `begin_read` /
 ///   `begin_write` or call `accessible_lists`, or runs a query before that;
 /// - the trait gains a method this check didn't see;
 /// - any code outside that impl and the grant-taking helpers mentions a list
-///   table (`shopping_lists`, `list_items`, `list_shares`).
+///   table (`shopping_lists`, `list_items`, `list_shares`);
+/// - any SQLite repo file other than `sqlite/list.rs` mentions one (RR-0009).
 #[test]
 fn list_queries_route_through_central_predicate() {
     const GATES: [&str; 3] = ["self.begin_read(", "self.begin_write(", "accessible_lists("];
@@ -635,7 +656,7 @@ fn list_queries_route_through_central_predicate() {
         "async fn fetch_items",
         "impl ShoppingListRepo for SqlitePool",
     ];
-    let repo = block(SQLITE_RS, "impl ShoppingListRepo for SqlitePool {");
+    let repo = block(LIST_RS, "impl ShoppingListRepo for SqlitePool {");
     let mut seen = 0;
     for method in repo.split("\n    async fn ").skip(1) {
         seen += 1;
@@ -663,7 +684,7 @@ fn list_queries_route_through_central_predicate() {
         .count();
     assert_eq!(seen, declared, "every trait method was checked");
 
-    for (header, text) in items(SQLITE_RS) {
+    for (header, text) in items(LIST_RS) {
         let code: String = text
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -686,6 +707,33 @@ fn list_queries_route_through_central_predicate() {
             assert!(
                 code.contains("grant: &ListGrant"),
                 "`{header}` must take a `&ListGrant`"
+            );
+        }
+    }
+
+    let others = other_sqlite_files();
+    assert!(others.len() >= 5, "read the other repo/sqlite files");
+    for (file, src) in &others {
+        let code: String = src
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for table in ["shopping_lists", "list_items", "list_shares"] {
+            assert!(
+                !code.contains(table),
+                "{file} names `{table}`; list SQL belongs in sqlite/list.rs"
+            );
+        }
+        for select in [
+            "ACCESS_SELECT",
+            "ITEM_SELECT)",
+            "STORE_VIEW_SELECT",
+            "SHARE_SELECT",
+        ] {
+            assert!(
+                !code.contains(select),
+                "{file} uses `{select}` outside sqlite/list.rs"
             );
         }
     }

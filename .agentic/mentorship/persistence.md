@@ -32,6 +32,10 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
   + `sqlx::query_as!` + `cargo sqlx prepare` offline cache under `.sqlx/`,
   then add `SQLX_OFFLINE=true` to CI. Track in a Mission Brief.
 - Prefer named columns in SELECT, never `*`.
+- One `repo/sqlite/<area>.rs` per repo trait implementation (RR-0009).
+- The list tables (`shopping_lists`, `list_items`, `list_shares`) are named
+  only in `repo/sqlite/list.rs`, behind the central access predicate;
+  `repo::share`'s bypass guard enforces it (RR-0009 constraint 3).
 
 ## Point-in-time data
 

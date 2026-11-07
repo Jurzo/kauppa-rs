@@ -13,16 +13,16 @@ non_goals:
 acceptance:
   - id: P1
     property: A user can create multiple named lists; each list is owner-scoped and never visible to another user.
-    check: cargo test -p kauppa-core repo::list::create_named_owner_scoped
+    check: cargo test -p kauppa-core repo::list::lifecycle::create_named_owner_scoped
   - id: P2
     property: The list index returns the user's lists ordered most-recently-updated first.
-    check: cargo test -p kauppa-core repo::list::index_ordered_by_updated
+    check: cargo test -p kauppa-core repo::list::lifecycle::index_ordered_by_updated
   - id: P3
     property: Opening a list by id loads the list so it can be continued; opening a list the user does not own is rejected.
     check: cargo test -p kauppa-web routes::lists::open_resume_owner_isolation
   - id: P4
     property: A list can be renamed and deleted; deleting a list removes its items via the existing ON DELETE CASCADE.
-    check: cargo test -p kauppa-core repo::list::rename_and_delete_cascades
+    check: cargo test -p kauppa-core repo::list::lifecycle::rename_and_delete_cascades
   - id: P5
     property: Create / open / rename / delete return HTML fragments on HX-Request and full pages otherwise; unauthenticated requests are rejected.
     check: cargo test -p kauppa-web routes::lists::lifecycle_htmx_and_auth
@@ -52,6 +52,8 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

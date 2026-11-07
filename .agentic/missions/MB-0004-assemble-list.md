@@ -12,16 +12,16 @@ non_goals:
 acceptance:
   - id: P1
     property: Adding a favorite to a list creates a list item that snapshots the product's name and its category at add-time.
-    check: cargo test -p kauppa-core repo::list::add_favorite_snapshots_category
+    check: cargo test -p kauppa-core repo::list::items::add_favorite_snapshots_category
   - id: P2
     property: A free-text item is created with category_id NULL (uncategorized) and can later be assigned a category.
-    check: cargo test -p kauppa-core repo::list::freetext_uncategorized_then_assign
+    check: cargo test -p kauppa-core repo::list::items::freetext_uncategorized_then_assign
   - id: P3
     property: Removing an item sets removed_at (soft delete); default reads exclude removed items and a removed item can be restored.
-    check: cargo test -p kauppa-core repo::list::soft_delete_excludes_and_restores
+    check: cargo test -p kauppa-core repo::list::items::soft_delete_excludes_and_restores
   - id: P4
     property: Changing a product's category in the catalog after it has been added to a list does not change the list item's category — the item keeps its add-time snapshot.
-    check: cargo test -p kauppa-core repo::list::snapshot_is_stable
+    check: cargo test -p kauppa-core repo::list::items::snapshot_is_stable
   - id: P5
     property: List items are owner-isolated via their parent list — a user cannot add to or read another user's list.
     check: cargo test -p kauppa-web routes::lists::owner_isolation
@@ -58,6 +58,8 @@ resolutions:
   - RR-0001
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 
