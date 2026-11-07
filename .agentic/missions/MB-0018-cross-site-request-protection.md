@@ -25,7 +25,7 @@ acceptance:
     check: cargo test -p kauppa-web csrf::every_write_route_is_covered
   - id: P5
     property: MB-0008's deferred P8 holds — share and revoke reject cross-origin posts — as a named test in its original module.
-    check: cargo test -p kauppa-web routes::lists::share_rejects_cross_origin
+    check: cargo test -p kauppa-web routes::lists::tests::sharing_invites::share_rejects_cross_origin
   - id: P6
     property: Rejections are logged with method, path and the reason (missing or mismatched proof) at `warn`, without cookies, tokens or full emails.
     check: cargo test -p kauppa-web csrf::rejections_are_logged
@@ -68,6 +68,8 @@ resolutions:
   - RR-0008
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): P5's test goes in the `routes::lists` test area `sharing_invites`, beside the other share and revoke tests; this mission may pick another area and update the check.
 
 ## Context
 

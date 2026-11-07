@@ -262,7 +262,3 @@ pub async fn revoke(
             .finish())
     }
 }
-
-// MB-0007 acceptance tests (P3, P5). They sit at module level rather than in a
-// `tests` submodule so the brief's `cargo test -p kauppa-web
-// routes::lists::<name>` checks select them.

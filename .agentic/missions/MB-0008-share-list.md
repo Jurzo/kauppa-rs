@@ -16,22 +16,22 @@ acceptance:
     check: cargo test -p kauppa-core repo::share::central_predicate_denies_non_grantee
   - id: P2
     property: A view-role grantee can read the list but every mutation (add, check, remove, share, delete) is rejected.
-    check: cargo test -p kauppa-web routes::lists::view_role_is_read_only
+    check: cargo test -p kauppa-web routes::lists::tests::sharing_roles::view_role_is_read_only
   - id: P3
     property: An edit-role grantee can add, check, and remove items but cannot re-share, revoke, or delete the list.
-    check: cargo test -p kauppa-web routes::lists::edit_role_cannot_administer
+    check: cargo test -p kauppa-web routes::lists::tests::sharing_roles::edit_role_cannot_administer
   - id: P4
     property: Only the owner can share, revoke, and delete the list.
-    check: cargo test -p kauppa-web routes::lists::owner_only_administration
+    check: cargo test -p kauppa-web routes::lists::tests::sharing_roles::owner_only_administration
   - id: P5
     property: Sharing to an unknown or non-existent email returns the same generic response as a successful share, disclosing nothing about account existence.
-    check: cargo test -p kauppa-web routes::lists::share_is_enumeration_safe
+    check: cargo test -p kauppa-web routes::lists::tests::sharing_invites::share_is_enumeration_safe
   - id: P6
     property: After the owner revokes a share, the former grantee is denied on the very next request with no cached grant.
     check: cargo test -p kauppa-core repo::share::revocation_is_immediate
   - id: P7
     property: Grant and revoke are logged with grantor and list id and never the grantee's full email at info level or higher.
-    check: cargo test -p kauppa-web routes::lists::share_audit_logging
+    check: cargo test -p kauppa-web routes::lists::tests::sharing_invites::share_audit_logging
 context:
   - crates/kauppa-web/src/routes/lists.rs
   - crates/kauppa-web/src/routes/auth.rs
@@ -67,6 +67,8 @@ resolutions:
   - RR-0008
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

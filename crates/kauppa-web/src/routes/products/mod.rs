@@ -425,7 +425,3 @@ pub async fn delete(
     let outcome = ProductRepo::delete(&state.pool, user, path.into_inner()).await;
     respond(&state, &req, user, outcome, Draft::default()).await
 }
-
-// MB-0002 acceptance tests (P1, P6). They sit at module level rather than in a
-// `tests` submodule so the brief's `cargo test -p kauppa-web
-// routes::products::<name>` checks select them.

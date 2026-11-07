@@ -104,7 +104,3 @@ pub async fn add_recipe_to_list(
         render_show(&state, user, recipe_id, None, status, feedback).await
     }
 }
-
-// MB-0003 acceptance tests (P2, P6). They sit at module level rather than in a
-// `tests` submodule so the brief's `cargo test -p kauppa-web
-// routes::recipes::<name>` checks select them.

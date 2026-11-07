@@ -15,7 +15,7 @@ acceptance:
     check: cargo test -p kauppa-core repo::recipe::create_with_ingredients
   - id: P2
     property: Adding an ingredient whose product has no category is rejected at the handler layer (category required per RR-0001).
-    check: cargo test -p kauppa-web routes::recipes::ingredient_requires_categorized_product
+    check: cargo test -p kauppa-web routes::recipes::tests::editor::ingredient_requires_categorized_product
   - id: P3
     property: Adding an ingredient for a not-yet-saved product name creates a catalog product (is_favorite = 0) in the chosen category and reuses it on repeat.
     check: cargo test -p kauppa-core repo::recipe::ingredient_upserts_product
@@ -27,7 +27,7 @@ acceptance:
     check: cargo test -p kauppa-core repo::recipe::ingredients_ordered
   - id: P6
     property: GET /recipes/{id} renders a recipe with its ingredients; create/edit go through htmx; a user cannot read or edit another user's recipe.
-    check: cargo test -p kauppa-web routes::recipes::owner_isolation
+    check: cargo test -p kauppa-web routes::recipes::tests::editor::owner_isolation
 context:
   - crates/kauppa-core/src/domain/recipe.rs
   - crates/kauppa-core/src/repo/mod.rs
@@ -58,6 +58,8 @@ resolutions:
   - RR-0001
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 

@@ -19,7 +19,7 @@ acceptance:
     check: cargo test -p kauppa-core repo::recipe::delete_owner_scoped
   - id: P3
     property: "`POST /recipes/{id}/delete` from the editor asks for confirmation, then lands on /recipes without the recipe: `HX-Redirect` over htmx, a 303 otherwise. Another user gets a 404."
-    check: cargo test -p kauppa-web routes::recipes::delete_recipe
+    check: cargo test -p kauppa-web routes::recipes::tests::delete::delete_recipe
 context:
   - crates/kauppa-core/src/repo/mod.rs
   - crates/kauppa-core/src/repo/sqlite.rs
@@ -51,6 +51,8 @@ resolutions:
   - RR-0001
 ---
 ```
+
+> Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
 
 ## Context
 
