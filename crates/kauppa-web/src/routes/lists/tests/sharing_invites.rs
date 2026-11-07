@@ -4,7 +4,7 @@ use actix_web::http::{StatusCode, header};
 
 use kauppa_core::repo::ShoppingListRepo;
 
-use super::LogCapture;
+use crate::routes::test_support::LogCapture;
 
 /// MB-0008 P5: sharing to an email with an account, one without, and the
 /// owner's own answer identically — status, `Location` and body, as a plain
