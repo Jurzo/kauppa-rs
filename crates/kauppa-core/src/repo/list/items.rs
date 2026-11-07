@@ -1,8 +1,9 @@
-//! MB-0004 (P1–P4): list items — favorites and free text, soft delete, snapshots — plus owner scoping.
+//! MB-0004 (P1–P4): list items — favorites and free text, soft delete, snapshots — plus owner scoping; MB-0021 (P1): editing an item's quantity.
 
 use uuid::Uuid;
 
 use crate::CoreError;
+use crate::domain::ListItem;
 use crate::repo::{CategoryRepo, ProductRepo, ShoppingListRepo, SqlitePool};
 
 use super::{item, make_category, make_list, make_user, test_db};
@@ -286,4 +287,114 @@ async fn items_owner_scoped() {
     assert_eq!(their_items.len(), 1);
     assert!(their_items[0].category.is_none());
     assert_eq!(shape(&pool, u, mine).await, [item("Kynttilä", None)]);
+}
+
+/// Every field of a list's items, active then removed.
+async fn snapshot(pool: &SqlitePool, user: Uuid, list: Uuid) -> Vec<ListItem> {
+    let mut items = ShoppingListRepo::items(pool, user, list, false)
+        .await
+        .unwrap();
+    items.extend(
+        ShoppingListRepo::items(pool, user, list, true)
+            .await
+            .unwrap(),
+    );
+    items
+}
+
+/// `ListItem` has no `PartialEq`, so items are compared through `Debug`.
+fn fields(items: &[ListItem]) -> Vec<String> {
+    items.iter().map(|i| format!("{i:?}")).collect()
+}
+
+/// MB-0021 P1: an active item's quantity can be set (trimmed) or cleared
+/// (`None` or blank); nothing else about it, or about other items, changes.
+/// A removed item, or an item of another list, is `NotFound`.
+#[tokio::test]
+async fn set_item_quantity() {
+    let (pool, _raw) = test_db().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let other = make_user(&pool, "other@example.com").await;
+    let kylma = make_category(&pool, u, "Kylmä").await;
+    let list = make_list(&pool, u).await;
+    let also_mine = make_list(&pool, u).await;
+    let theirs = make_list(&pool, other).await;
+    let maito = ProductRepo::create(&pool, u, "Maito", kylma).await.unwrap();
+    let milk = ShoppingListRepo::add_product(&pool, u, list, maito.id, Some("2 dl"))
+        .await
+        .unwrap();
+    ShoppingListRepo::set_checked(&pool, u, list, milk.id, true)
+        .await
+        .unwrap();
+    let bread = ShoppingListRepo::add_item(&pool, u, list, "Leipä", Some("1"))
+        .await
+        .unwrap();
+    let sugar = ShoppingListRepo::add_item(&pool, u, list, "Sokeri", Some("1 kg"))
+        .await
+        .unwrap();
+    ShoppingListRepo::remove_item(&pool, u, list, sugar.id)
+        .await
+        .unwrap();
+    let their_item = ShoppingListRepo::add_item(&pool, other, theirs, "Omena", Some("3"))
+        .await
+        .unwrap();
+    let mut expected = snapshot(&pool, u, list).await;
+    assert_eq!(expected[0].id, milk.id);
+    assert_eq!(expected[1].id, bread.id);
+
+    // Set, trimmed: only the quantity changes.
+    let updated = ShoppingListRepo::set_item_quantity(&pool, u, list, milk.id, Some("  3 dl "))
+        .await
+        .unwrap();
+    expected[0].quantity = Some("3 dl".to_owned());
+    assert_eq!(
+        fields(std::slice::from_ref(&updated)),
+        fields(&expected[..1])
+    );
+    assert!(updated.checked && updated.removed_at.is_none());
+    assert_eq!(updated.category.as_ref().map(|c| c.id), Some(kylma));
+    assert_eq!(fields(&snapshot(&pool, u, list).await), fields(&expected));
+
+    // An item without a quantity can get one.
+    let candles = ShoppingListRepo::add_item(&pool, u, also_mine, "Kynttilät", None)
+        .await
+        .unwrap();
+    let got = ShoppingListRepo::set_item_quantity(&pool, u, also_mine, candles.id, Some("2 kpl"))
+        .await
+        .unwrap();
+    assert_eq!(got.quantity.as_deref(), Some("2 kpl"));
+
+    // Cleared with `None` and with blank.
+    for clear in [None, Some("   "), Some("")] {
+        ShoppingListRepo::set_item_quantity(&pool, u, list, bread.id, Some("5"))
+            .await
+            .unwrap();
+        let cleared = ShoppingListRepo::set_item_quantity(&pool, u, list, bread.id, clear)
+            .await
+            .unwrap();
+        assert_eq!(cleared.quantity, None, "{clear:?}");
+    }
+    expected[1].quantity = None;
+    assert_eq!(fields(&snapshot(&pool, u, list).await), fields(&expected));
+
+    // A removed item, an item of another list, an unknown item, or another
+    // user's list: NotFound, and nothing changes.
+    for (list_id, item_id) in [
+        (list, sugar.id),
+        (also_mine, milk.id),
+        (list, their_item.id),
+        (list, Uuid::new_v4()),
+        (theirs, their_item.id),
+    ] {
+        assert!(
+            matches!(
+                ShoppingListRepo::set_item_quantity(&pool, u, list_id, item_id, Some("9")).await,
+                Err(CoreError::NotFound)
+            ),
+            "{list_id} {item_id}"
+        );
+    }
+    assert_eq!(fields(&snapshot(&pool, u, list).await), fields(&expected));
+    let theirs_now = snapshot(&pool, other, theirs).await;
+    assert_eq!(theirs_now[0].quantity.as_deref(), Some("3"));
 }

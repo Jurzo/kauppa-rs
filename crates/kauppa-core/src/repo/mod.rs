@@ -145,7 +145,8 @@ pub trait ProductRepo: Send + Sync {
 ///
 /// Required access per method: reads (`get`, `access`, `items`,
 /// `store_view`) need any grant (`view`); item writes (`add_item`,
-/// `set_checked`, `remove_item`, `restore_item`) need `edit`; the methods
+/// `set_item_quantity`, `set_checked`, `remove_item`, `restore_item`) need
+/// `edit`; the methods
 /// that read the owner's catalog (`add_product`, `add_recipe`,
 /// `assign_category`) and administration (`rename`, `delete`, `shares`,
 /// `share`, `revoke`) are the owner's alone.
@@ -230,6 +231,17 @@ pub trait ShoppingListRepo: Send + Sync {
         list_id: Uuid,
         item_id: Uuid,
         category_id: Uuid,
+    ) -> CoreResult<ListItem>;
+
+    /// Set or clear (`None` or blank) an active item's quantity, trimmed
+    /// (MB-0021; `edit`). Changes nothing else about the item. A removed
+    /// item, or one of another list, is `NotFound`.
+    async fn set_item_quantity(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        quantity: Option<&str>,
     ) -> CoreResult<ListItem>;
 
     /// A list's active items grouped for the store (MB-0006). Groups follow

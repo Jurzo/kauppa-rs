@@ -553,6 +553,33 @@ impl ShoppingListRepo for SqlitePool {
         Ok(item)
     }
 
+    async fn set_item_quantity(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        touch_list(&mut tx, &grant).await?;
+
+        let result = sqlx::query(
+            r"UPDATE list_items SET quantity = ?1
+                WHERE id = ?2 AND list_id = ?3 AND removed_at IS NULL",
+        )
+        .bind(clean_quantity(quantity))
+        .bind(item_id.to_string())
+        .bind(grant.list_id())
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+        let item = fetch_item(&mut *tx, &grant, item_id).await?;
+        tx.commit().await?;
+        Ok(item)
+    }
+
     async fn store_view(&self, user_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>> {
         // An unknown or foreign list is NotFound, not an empty view.
         let (mut tx, grant) = self.begin_read(user_id, list_id, ListAccess::View).await?;
