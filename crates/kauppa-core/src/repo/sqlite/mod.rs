@@ -20,6 +20,7 @@ use crate::error::CoreError;
 
 mod category;
 mod list;
+mod list_rows;
 mod product;
 mod recipe;
 mod user;

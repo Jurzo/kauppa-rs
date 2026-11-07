@@ -576,16 +576,10 @@ async fn share_by_email() {
 // The structural half of P1: a test that fails if a list or list-item query
 // goes around the central predicate. It reads the SQLite repo's source.
 
-// The list repo, and every other SQLite repo file (RR-0009 constraint 3:
-// only `sqlite/list.rs` may name a list table).
+// The list repo. Every other file in `repo/sqlite/` is read when the test runs
+// (`other_sqlite_files`), so a new file can't escape RR-0009 constraint 3:
+// only `sqlite/list.rs` may name a list table.
 const LIST_RS: &str = include_str!("sqlite/list.rs");
-const OTHER_SQLITE_RS: [(&str, &str); 5] = [
-    ("sqlite/mod.rs", include_str!("sqlite/mod.rs")),
-    ("sqlite/user.rs", include_str!("sqlite/user.rs")),
-    ("sqlite/category.rs", include_str!("sqlite/category.rs")),
-    ("sqlite/product.rs", include_str!("sqlite/product.rs")),
-    ("sqlite/recipe.rs", include_str!("sqlite/recipe.rs")),
-];
 const MOD_RS: &str = include_str!("mod.rs");
 
 /// The text from `header` to the end of its top-level block.
@@ -621,6 +615,23 @@ fn items(src: &str) -> Vec<(&str, String)> {
         }
     }
     out
+}
+
+/// Every `.rs` file in `repo/sqlite/` except `list.rs`, as `(name, source)`.
+fn other_sqlite_files() -> Vec<(String, String)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/repo/sqlite");
+    let mut files: Vec<(String, String)> = std::fs::read_dir(&dir)
+        .expect("read repo/sqlite")
+        .map(|entry| entry.expect("dir entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+        .filter(|path| path.file_name().is_some_and(|n| n != "list.rs"))
+        .map(|path| {
+            let name = format!("sqlite/{}", path.file_name().unwrap().to_string_lossy());
+            (name, std::fs::read_to_string(&path).expect("read source"))
+        })
+        .collect();
+    files.sort();
+    files
 }
 
 /// P1's bypass check. Fails if:
@@ -700,7 +711,9 @@ fn list_queries_route_through_central_predicate() {
         }
     }
 
-    for (file, src) in OTHER_SQLITE_RS {
+    let others = other_sqlite_files();
+    assert!(others.len() >= 5, "read the other repo/sqlite files");
+    for (file, src) in &others {
         let code: String = src
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
