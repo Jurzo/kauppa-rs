@@ -1,6 +1,7 @@
 use actix_web::middleware::from_fn;
 use actix_web::web;
 
+pub mod admin;
 pub mod auth;
 pub mod categories;
 pub mod health;

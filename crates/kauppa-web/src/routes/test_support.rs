@@ -24,6 +24,12 @@ pub const PASSWORD: &str = "correct horse battery staple";
 
 /// App state over a fresh in-memory database and the workspace's templates.
 pub async fn test_state() -> web::Data<AppState> {
+    test_state_with_url().await.0
+}
+
+/// [`test_state`], plus the database URL, for a test that opens a second
+/// connection to change rows no repo method changes.
+pub async fn test_state_with_url() -> (web::Data<AppState>, String) {
     let url = format!(
         "sqlite:file:web-{}?mode=memory&cache=shared",
         Uuid::new_v4()
@@ -33,13 +39,14 @@ pub async fn test_state() -> web::Data<AppState> {
     let templates =
         templates::build_registry_from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../templates"))
             .expect("load templates");
-    web::Data::new(AppState {
+    let state = web::Data::new(AppState {
         pool,
         templates: Arc::new(templates),
         // As `main.rs` with `KAUPPA_PUBLIC_ORIGIN` unset and cookies not
         // `Secure`: the request's own `Host`, over http.
         origin: OriginPolicy::SameHost(Scheme::Http),
-    })
+    });
+    (state, url)
 }
 
 /// The host `TestRequest` reports by default (actix-web's test config), and
