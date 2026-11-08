@@ -64,13 +64,18 @@ async fn register_requires_invite_same_answer_for_every_invalid_token() {
         ("revoked", Some(&revoked)),
         ("used", Some(&used)),
     ];
+    // Each with a new email, and with one that already has an account: an
+    // invalid token never reveals which emails are taken.
+    make_user(&state, "taken@example.com").await;
     let mut bodies = Vec::new();
-    for (label, token) in cases {
-        let resp = call_service(
-            &app,
-            register_request(token, "pat@example.com").to_request(),
-        )
-        .await;
+    for (label, token) in cases
+        .iter()
+        .flat_map(|&case| [(case, "pat@example.com"), (case, "taken@example.com")])
+        .map(|((label, token), email)| (format!("{label} ({email})"), (token, email)))
+    {
+        let (token, email) = token;
+        let label = label.as_str();
+        let resp = call_service(&app, register_request(token, email).to_request()).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{label}");
         assert_private(&resp, label);
         assert_eq!(resp.response().cookies().count(), 0, "{label}: no session");
@@ -83,7 +88,7 @@ async fn register_requires_invite_same_answer_for_every_invalid_token() {
                 .is_none(),
             "{label}: no account"
         );
-        bodies.push((label, body));
+        bodies.push((label.to_owned(), body));
     }
     for (label, body) in &bodies[1..] {
         assert_eq!(*body, bodies[0].1, "{label}: same body as missing");

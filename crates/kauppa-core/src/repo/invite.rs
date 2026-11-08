@@ -277,6 +277,44 @@ mod single_use_and_expiry {
         assert_eq!(InvitationRepo::list(&pool).await.unwrap(), before);
     }
 
+    /// An invalid token with a registered email is the same `None` as with
+    /// a new one, never `Conflict`: only the holder of a pending invitation
+    /// learns that an email is taken (RR-0012 sub-answer 4, constraint 4).
+    #[tokio::test]
+    async fn taken_email_with_an_invalid_token_is_just_invalid() {
+        let (pool, raw) = test_db().await;
+        UserRepo::create(&pool, "taken@example.com", "Old", "h")
+            .await
+            .unwrap();
+        let now = Utc::now();
+        let used = InvitationRepo::create(&pool, None, None, now)
+            .await
+            .unwrap();
+        register(&pool, &used.token.hash(), "pat@example.com", now)
+            .await
+            .unwrap();
+        let revoked = InvitationRepo::create(&pool, None, None, now)
+            .await
+            .unwrap();
+        InvitationRepo::revoke(&pool, revoked.invitation.id, now)
+            .await
+            .unwrap();
+        let expired = InvitationRepo::create(&pool, None, None, now - Duration::days(8))
+            .await
+            .unwrap();
+        for (label, hash) in [
+            ("unknown", token::hash(&"ab".repeat(32))),
+            ("used", used.token.hash()),
+            ("revoked", revoked.token.hash()),
+            ("expired", expired.token.hash()),
+        ] {
+            let outcome =
+                InvitationRepo::register(&pool, &hash, "taken@example.com", "New", "h", now).await;
+            assert!(matches!(outcome, Ok(None)), "{label}: {outcome:?}");
+        }
+        assert_eq!(users(&raw).await, 2);
+    }
+
     /// A duplicate email rolls back: no second account, the invitation
     /// stays pending, and the error doesn't name the email.
     #[tokio::test]
