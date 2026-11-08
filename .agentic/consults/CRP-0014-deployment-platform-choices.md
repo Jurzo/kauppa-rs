@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: high
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0022 autonomy.escalate: \"choosing how the image reaches the droplet\" (platform-owner); \"choosing the Terraform state backend ... or how state is locked\" (platform-owner); \"choosing how secrets reach the droplet ... and whether any secret may pass through Terraform state\" (security); \"choosing the backup target and schedule ... and the retention\" (data-owner); \"whether the domain's DNS is managed by Terraform ... or outside it\" (owner); \"adding or changing anything under `.github/`\" (platform-owner). MB-0022 Conceptual plan step 1 (S1 stops until an RR answers). CODEOWNERS `/.github/` (platform)."
 ---
 ```

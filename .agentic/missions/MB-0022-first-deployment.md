@@ -16,22 +16,22 @@ acceptance:
     property: "The Docker image builds from a clean checkout (multi-stage, release build). It runs as a non-root user, contains the binary, `templates/`, `assets/` and `migrations/` but no source tree, toolchain or `.env`, and serves the login page, `/assets/app.css` and a registered user's lists from a database on the `/data` volume."
     check: scripts/deploy/smoke_image.sh
   - id: P2
-    property: "The database lives on the volume: after `docker compose down` and `up` with a rebuilt image, a user registered before can still log in and see their lists. Migrations run on start, and the app refuses to start with the dev session secret or a secret under 64 bytes."
+    property: "The database lives on the volume: after `docker compose down` and `up` with a rebuilt image, a user registered before can still log in and see their lists. Migrations run on start, and the app refuses to start with the dev session secret or a secret under 64 bytes (the dev-secret check is in the container entrypoint; RR-0014)."
     check: scripts/deploy/smoke_image.sh
   - id: P3
-    property: "Through the Compose stack, Caddy is the only thing listening on public ports (80 and 443); the app is reachable only on the internal network. Caddy passes `Host` through and redirects HTTP to HTTPS. The app runs with `KAUPPA_COOKIE_SECURE=true` and `KAUPPA_PUBLIC_ORIGIN` set: a same-origin POST succeeds, a cross-site POST gets 403 (MB-0018), and the session cookie is `Secure; HttpOnly; SameSite=Lax`."
+    property: "Through the Compose stack, Caddy is the only thing listening on public ports (80 and 443); the app is reachable only on the internal network. Caddy passes `Host` through and redirects HTTP to HTTPS. The app runs with `KAUPPA_COOKIE_SECURE=true` and `KAUPPA_PUBLIC_ORIGIN` set: a same-origin POST succeeds, a cross-site POST gets 403 (MB-0018), and the session cookie is `Secure; HttpOnly; SameSite=Lax`. Caddy writes no access log containing query strings (RR-0014 constraint 5)."
     check: scripts/deploy/smoke_compose.sh
   - id: P4
     property: "The Terraform in `deploy/terraform/` is formatted and validates. It declares a droplet, a block-storage volume mounted for `/data` (kept when the droplet is replaced), a reserved IP, and a cloud firewall allowing inbound 80 and 443 from anywhere and 22 only from the operator CIDRs in a variable. No secret has a default value, and every secret variable is `sensitive`."
     check: scripts/deploy/check_terraform.sh
   - id: P5
-    property: "A backup is a consistent SQLite snapshot (online `.backup` or `VACUUM INTO`, never a file copy of a live database) copied off the droplet on a schedule. With WAL (MB-0025) recent commits may still be only in `kauppa.db-wal`, so the snapshot must come from SQLite, not from the files. A restore drill on a scratch stack, taken while the app is writing, brings back the users and lists that existed when the backup was taken."
+    property: "A backup is a consistent SQLite snapshot (online `.backup` or `VACUUM INTO`, never a file copy of a live database) copied off the droplet on a schedule (`VACUUM INTO` every 6 hours to Spaces; retention per RR-0014). With WAL (MB-0025) recent commits may still be only in `kauppa.db-wal`, so the snapshot must come from SQLite, not from the files. A restore drill on a scratch stack, taken while the app is writing, brings back the users and lists that existed when the backup was taken."
     check: scripts/deploy/backup_restore_drill.sh
   - id: P6
     property: "No secret is committed: production `.env`, `*.tfvars`, Terraform state and the DigitalOcean token are ignored by git, and the operator guide says where each secret lives. The check fails if any tracked file matches those patterns."
     check: scripts/deploy/check_no_secrets.sh
   - id: P7
-    property: "`deploy/README.md` covers first deploy from an empty account (token, SSH key, DNS, `terraform apply`, secrets, first start), updating to a new version, backup and restore, rotating `KAUPPA_SESSION_SECRET`, and tearing down without losing the volume. Its database section (MB-0025) says: the database is three files (`kauppa.db`, `kauppa.db-wal`, `kauppa.db-shm`) that stay together on the data volume; never copy, move or delete one of them while the app runs, and never copy `kauppa.db` alone as a backup; a restore stops the app, replaces `kauppa.db`, removes any stale `-wal` and `-shm`, then starts it; `synchronous=NORMAL` means a power or OS failure can lose the last few seconds of commits but not corrupt the database; and only one container may open the file. It also warns that rolling back to a binary older than the database's newest migration fails at startup, so a rollback after a migration means restoring the pre-update backup. The owner follows it for the first real deploy, and the resulting https:// site passes the P3 checks against the real domain."
+    property: "`deploy/README.md` covers first deploy from an empty account (token, SSH key, DNS, `terraform apply`, secrets, first start), updating to a new version, backup and restore, rotating `KAUPPA_SESSION_SECRET`, and tearing down without losing the volume. Its database section (MB-0025) says: the database is three files (`kauppa.db`, `kauppa.db-wal`, `kauppa.db-shm`) that stay together on the data volume; never copy, move or delete one of them while the app runs, and never copy `kauppa.db` alone as a backup; a restore stops the app, replaces `kauppa.db`, removes any stale `-wal` and `-shm`, then starts it; `synchronous=NORMAL` means a power or OS failure can lose the last few seconds of commits but not corrupt the database; and only one app container may open the file (the backup job is a short-lived reader on the same host; RR-0014). It also warns that rolling back to a binary older than the database's newest migration fails at startup, so a rollback after a migration means restoring the pre-update backup. The owner follows it for the first real deploy, and the resulting https:// site passes the P3 checks against the real domain."
     check: "manual: owner's first deploy, recorded in MB-0022's Continuity Pack (scripts/deploy/smoke_compose.sh pointed at the live URL)"
 context:
   - crates/kauppa-web/src/main.rs
@@ -73,7 +73,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0014]
 ---
 ```
 
@@ -133,7 +133,8 @@ machine or a CI runner), and the first real deploy is the owner's (P7).
 
 1. **Clarify (S1).** One Consultation Request Pack covering the escalations
    that block design: image delivery, state backend, secret delivery,
-   backup target, and DNS. A CI job may come later. Stop until an RR answers it.
+   backup target, and DNS. CI: one new workflow in a separate `.github/`
+   PR (RR-0014 Q7). Answered by RR-0014.
 2. **Container (P1, P2).** A multi-stage Dockerfile, `.dockerignore` (no
    `target/`, `.env`, `data/`, `.git`), a non-root user, `/data` as a
    volume, and a health check. `smoke_image.sh` builds, runs and drives it
@@ -147,8 +148,8 @@ machine or a CI runner), and the first real deploy is the owner's (P7).
    SSH key; outputs for the IP. `check_terraform.sh` runs `fmt -check`,
    `init -backend=false`, `validate`, and static checks on the firewall
    rules and variables.
-5. **Backups (P5).** A scheduled job (per the RR) taking an online
-   snapshot and copying it off the droplet; the drill restores into a
+5. **Backups (P5).** A scheduled `VACUUM INTO` job (RR-0014) taking an
+   online snapshot and copying it off the droplet; the drill restores into a
    scratch stack and logs in. The update procedure takes a backup before
    pulling a new image, for the one-way-migration case.
 6. **Operator guide (P7).** `deploy/README.md`; the owner's first deploy
