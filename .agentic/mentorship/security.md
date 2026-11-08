@@ -32,11 +32,14 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   user-provided content.
 - **Logging.** Never log passwords, hashes, session cookies, or full emails
   in error messages at `info` or higher.
+- **Cross-site requests.** Every non-safe request passes the app-wide
+  cross-site check in one place (`Origin`/`Referer` against the app's
+  origin, with `Sec-Fetch-Site` as a reject-only layer; MB-0018, RR-0010).
+  No route is exempt without an approved RR. Safe methods stay side-effect
+  free.
 
 ## Rules (should)
 
-- Add CSRF protection (double-submit cookie or origin check) before any
-  deployment that is reachable outside localhost.
 - Rotate `KAUPPA_SESSION_SECRET` on compromise; invalidates all sessions.
 - Rate-limit `/auth/login` and `/auth/register` (per-IP + per-account).
 

@@ -209,3 +209,92 @@ async fn share_audit_logging() {
         "no email (or its local part) at info or above: {log}"
     );
 }
+
+/// MB-0008 P8, delivered by MB-0018 (P5): share and revoke reject a
+/// cross-origin post — plain or htmx, signed in as the owner — with 403, and
+/// grant or revoke nothing. A same-origin post still works.
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn share_rejects_cross_origin() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use kauppa_core::domain::ShareRole;
+
+    use crate::routes::test_support::{
+        login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let owner = make_user(&state, "owner@example.com").await;
+    let viewer = make_user(&state, "viewer@example.com").await;
+    make_user(&state, "attacker@example.com").await;
+    let list = ShoppingListRepo::create(&state.pool, owner, "Kauppa")
+        .await
+        .expect("list")
+        .id;
+    let grant = ShoppingListRepo::share(
+        &state.pool,
+        owner,
+        list,
+        "viewer@example.com",
+        ShareRole::View,
+    )
+    .await
+    .expect("share")
+    .expect("matched");
+    let session =
+        session_cookie(&call_service(&app, login_request("owner@example.com").to_request()).await);
+    let shares = || async {
+        ShoppingListRepo::shares(&state.pool, owner, list)
+            .await
+            .expect("shares")
+            .into_iter()
+            .map(|g| (g.grantee_id, g.role))
+            .collect::<Vec<_>>()
+    };
+    let before = shares().await;
+    assert_eq!(before, [(viewer, ShareRole::View)]);
+
+    let share_uri = format!("/lists/{list}/shares");
+    let revoke_uri = format!("/lists/{list}/shares/{}/revoke", grant.id);
+    for origin in ["http://evil.example", "http://sub.localhost:8080", "null"] {
+        for htmx in [false, true] {
+            for (uri, form) in [
+                (
+                    &share_uri,
+                    vec![("email", "attacker@example.com"), ("role", "edit")],
+                ),
+                (&revoke_uri, vec![]),
+            ] {
+                let mut req = TestRequest::post()
+                    .uri(uri)
+                    .cookie(session.clone())
+                    .insert_header((header::ORIGIN, origin))
+                    .set_form(form);
+                if htmx {
+                    req = req.insert_header(("HX-Request", "true"));
+                }
+                let resp = call_service(&app, req.to_request()).await;
+                assert_eq!(
+                    resp.status(),
+                    StatusCode::FORBIDDEN,
+                    "{uri} from {origin}, htmx={htmx}"
+                );
+            }
+        }
+    }
+    assert_eq!(shares().await, before, "nothing granted or revoked");
+
+    // The same revoke from the app's own page goes through.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&revoke_uri)
+            .cookie(session)
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(shares().await, [], "revoked");
+}

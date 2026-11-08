@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use actix_web::body::MessageBody;
 use actix_web::cookie::Cookie;
-use actix_web::dev::ServiceResponse;
+use actix_web::dev::{ServiceRequest, ServiceResponse};
+use actix_web::http::header::{self, HeaderValue};
 use actix_web::{test, web};
 use uuid::Uuid;
 
@@ -14,6 +15,7 @@ use kauppa_core::domain::{NewIngredient, RecipeInput};
 use kauppa_core::password;
 use kauppa_core::repo::{CategoryRepo, RecipeRepo, ShoppingListRepo, SqlitePool, UserRepo};
 
+use crate::csrf::{OriginPolicy, Scheme};
 use crate::state::AppState;
 use crate::templates;
 
@@ -33,7 +35,37 @@ pub async fn test_state() -> web::Data<AppState> {
     web::Data::new(AppState {
         pool,
         templates: Arc::new(templates),
+        // As `main.rs` with `KAUPPA_PUBLIC_ORIGIN` unset and cookies not
+        // `Secure`: the request's own `Host`, over http.
+        origin: OriginPolicy::SameHost(Scheme::Http),
     })
+}
+
+/// The host `TestRequest` reports by default (actix-web's test config), and
+/// the origin a page served from it has.
+pub const TEST_HOST: &str = "localhost:8080";
+pub const TEST_ORIGIN: &str = "http://localhost:8080";
+
+/// Gives a request the proof a same-origin browser sends (RR-0010
+/// constraint 4): when it carries neither `Origin` nor `Referer`, it gets
+/// `Origin` for its `Host` (and `Host: localhost:8080` if it has none).
+/// `test_app!` applies this to every request, so route tests send valid
+/// proof by default; a test that sets its own `Origin` or `Referer` keeps
+/// it, and the CSRF tests use `bare_test_app!`, which never adds anything.
+pub fn add_default_proof(req: &mut ServiceRequest) {
+    let headers = req.headers_mut();
+    if headers.contains_key(header::ORIGIN) || headers.contains_key(header::REFERER) {
+        return;
+    }
+    if !headers.contains_key(header::HOST) {
+        headers.insert(header::HOST, HeaderValue::from_static(TEST_HOST));
+    }
+    let host = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .expect("ascii host");
+    let origin = HeaderValue::from_str(&format!("http://{host}")).expect("header value");
+    headers.insert(header::ORIGIN, origin);
 }
 
 /// A user whose password is [`PASSWORD`]; returns their id.
@@ -143,26 +175,49 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
     }
 }
 
-/// An app wired like `main.rs`: identity + cookie session + all routes. A macro
-/// because `init_service` returns an unnameable `impl Service`.
+/// The `App` as `main.rs` wires it: identity + cookie session + all routes,
+/// which `routes::configure` puts behind the cross-site check. Not
+/// initialized; see [`test_app!`] and [`bare_test_app!`].
+macro_rules! wired_app {
+    ($state:expr) => {
+        actix_web::App::new()
+            .app_data($state.clone())
+            .wrap(actix_identity::IdentityMiddleware::default())
+            .wrap(
+                actix_session::SessionMiddleware::builder(
+                    actix_session::storage::CookieSessionStore::default(),
+                    actix_web::cookie::Key::from(&[0u8; 64]),
+                )
+                .cookie_name("kauppa_sid".to_owned())
+                .cookie_secure(false)
+                .build(),
+            )
+            .configure(crate::routes::configure)
+    };
+}
+pub(crate) use wired_app;
+
+/// An app wired like `main.rs`, whose requests carry same-origin proof
+/// unless the test sets its own ([`add_default_proof`]). A macro because
+/// `init_service` returns an unnameable `impl Service`.
 macro_rules! test_app {
     ($state:expr) => {
-        actix_web::test::init_service(
-            actix_web::App::new()
-                .app_data($state.clone())
-                .wrap(actix_identity::IdentityMiddleware::default())
-                .wrap(
-                    actix_session::SessionMiddleware::builder(
-                        actix_session::storage::CookieSessionStore::default(),
-                        actix_web::cookie::Key::from(&[0u8; 64]),
-                    )
-                    .cookie_name("kauppa_sid".to_owned())
-                    .cookie_secure(false)
-                    .build(),
-                )
-                .configure(crate::routes::configure),
-        )
+        actix_web::test::init_service(crate::routes::test_support::wired_app!($state).wrap_fn(
+            |mut req, srv| {
+                crate::routes::test_support::add_default_proof(&mut req);
+                actix_web::dev::Service::call(srv, req)
+            },
+        ))
         .await
     };
 }
 pub(crate) use test_app;
+
+/// An app wired like `main.rs` that sends requests exactly as built: no
+/// default proof. For the cross-site tests (MB-0018), which strip or forge it.
+macro_rules! bare_test_app {
+    ($state:expr) => {
+        actix_web::test::init_service(crate::routes::test_support::wired_app!($state)).await
+    };
+}
+pub(crate) use bare_test_app;
