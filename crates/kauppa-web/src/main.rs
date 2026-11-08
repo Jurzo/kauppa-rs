@@ -18,6 +18,7 @@ use tracing_actix_web::TracingLogger;
 
 use kauppa_core::repo::SqlitePool;
 
+mod admin;
 mod config;
 mod csrf;
 mod error;
@@ -33,13 +34,25 @@ async fn main() -> anyhow::Result<()> {
     // .env is best-effort — production should rely on real env vars.
     let _ = dotenvy::dotenv();
 
+    // Host subcommands (`kauppa-web admin …`, MB-0023, RR-0012), parsed
+    // before anything else: unknown arguments exit non-zero and never start
+    // the server.
+    let command = admin::bootstrap::parse(std::env::args().skip(1))?;
+
     let cfg = config::Settings::load()?;
     telemetry::init(&cfg.log_level)?;
 
-    tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting kauppa-web");
+    if command.is_none() {
+        tracing::info!(version = env!("CARGO_PKG_VERSION"), "starting kauppa-web");
+    }
 
     let pool = SqlitePool::connect(&cfg.database_url).await?;
     pool.run_migrations().await?;
+
+    if let Some(command) = command {
+        let public_origin = cfg.public_origin.as_ref().map(|p| &p.0);
+        return admin::bootstrap::run(command, &pool, public_origin, &mut std::io::stdout()).await;
+    }
 
     let origin = cfg.origin_policy();
     match &origin {

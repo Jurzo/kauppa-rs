@@ -257,8 +257,8 @@ async fn register_requires_invite_duplicate_email_keeps_the_form() {
 
 /// RR-0012 constraint 1: outside tests, accounts are created only by
 /// `InvitationRepo::register`. No non-test source in this crate calls
-/// `UserRepo::create`, by path or as a method of a file that imports
-/// `UserRepo`.
+/// `UserRepo::create`: not by path, and no file that imports `UserRepo`
+/// calls a `.create(` method (other repos' `create` by path is fine).
 #[test]
 fn register_requires_invite_no_bypass() {
     let files = source_files();
@@ -277,7 +277,7 @@ fn register_requires_invite_no_bypass() {
         );
         if text.contains("UserRepo") {
             assert!(
-                !text.contains("create("),
+                !text.contains(".create("),
                 "{file} imports UserRepo and calls a create method"
             );
         }

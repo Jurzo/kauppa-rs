@@ -13,7 +13,7 @@ use super::{ADMIN, invitation_link, make_admin};
 use crate::csrf::{AppOrigin, OriginPolicy};
 use crate::routes::auth::tests::register_request;
 use crate::routes::test_support::{
-    body_string, login_request, session_cookie, test_app, test_state,
+    LogCapture, body_string, login_request, make_user, session_cookie, test_app, test_state,
 };
 use crate::state::AppState;
 
@@ -205,4 +205,117 @@ async fn create_list_revoke_boosted_with_public_origin() {
         link.starts_with("https://kauppa.example/auth/register?invite="),
         "{link}"
     );
+}
+
+/// P7: granting admin, and creating, using and revoking an invitation, each
+/// log one INFO line with the acting user's id and the invitation's id;
+/// nothing at any level holds a token, an email or a note.
+#[actix_web::test]
+async fn audit_logging() {
+    // As in `error::tests`: a second, idle dispatcher keeps parallel tests
+    // from switching callsites off; the rebuild recomputes interest.
+    let _idle = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    let capture = LogCapture::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(capture.clone())
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+    tracing::callsite::rebuild_interest_cache();
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let admin = make_user(&state, ADMIN).await;
+    assert!(
+        crate::admin::bootstrap::grant(&state.pool, ADMIN, Utc::now())
+            .await
+            .expect("grant")
+    );
+    let session = session_cookie(&call_service(&app, login_request(ADMIN).to_request()).await);
+    let create = || {
+        TestRequest::post()
+            .uri("/admin/invitations")
+            .cookie(session.clone())
+            .set_form([("note", "Secret note for Mum")])
+            .to_request()
+    };
+
+    let resp = call_service(&app, create()).await;
+    let (_, used_token) = invitation_link(&body_string(resp).await).expect("link");
+    let resp = call_service(
+        &app,
+        register_request(Some(&used_token), "invitee.person@example.com").to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let resp = call_service(&app, create()).await;
+    let (_, revoked_token) = invitation_link(&body_string(resp).await).expect("link");
+    let listed = InvitationRepo::list(&state.pool).await.expect("list");
+    let used = listed.iter().find(|i| i.used_at.is_some()).expect("used");
+    let revoked = listed
+        .iter()
+        .find(|i| i.used_at.is_none())
+        .expect("pending");
+    let invitee = used.used_by.as_ref().expect("used by").id;
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("/admin/invitations/{}/revoke", revoked.id))
+            .cookie(session.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+
+    let log = capture.text();
+    let info_lines = |message: &str| -> Vec<String> {
+        log.lines()
+            .filter(|l| l.contains(" INFO ") && l.contains(message))
+            .map(str::to_owned)
+            .collect()
+    };
+    let granted = info_lines("admin granted");
+    assert_eq!(granted.len(), 1, "{log}");
+    assert!(
+        granted[0].contains(&format!("user_id={admin}")),
+        "{granted:?}"
+    );
+    assert!(granted[0].contains("granted_by=\"host\""), "{granted:?}");
+
+    let created = info_lines("invitation created");
+    assert_eq!(created.len(), 2, "{log}");
+    for id in [used.id, revoked.id] {
+        let line = created
+            .iter()
+            .find(|l| l.contains(&format!("invitation_id={id}")))
+            .unwrap_or_else(|| panic!("{id} created: {created:?}"));
+        assert!(line.contains(&format!("admin_id={admin}")), "{line}");
+    }
+    let used_line = info_lines("invitation used");
+    assert_eq!(used_line.len(), 1, "{log}");
+    assert!(
+        used_line[0].contains(&format!("user_id={invitee}")),
+        "{used_line:?}"
+    );
+    assert!(
+        used_line[0].contains(&format!("invitation_id={}", used.id)),
+        "{used_line:?}"
+    );
+    let revoked_line = info_lines("invitation revoked");
+    assert_eq!(revoked_line.len(), 1, "{log}");
+    assert!(revoked_line[0].contains(&format!("admin_id={admin}")));
+    assert!(revoked_line[0].contains(&format!("invitation_id={}", revoked.id)));
+
+    for secret in [
+        used_token.as_str(),
+        revoked_token.as_str(),
+        &token::hash(&used_token),
+        ADMIN,
+        "admin@",
+        "invitee.person",
+        "Secret note",
+    ] {
+        assert!(!log.contains(secret), "{secret:?} in log: {log}");
+    }
 }
