@@ -135,7 +135,26 @@ impl InvitationRepo for SqlitePool {
         now: DateTime<Utc>,
     ) -> CoreResult<Option<Registered>> {
         let now = whole_seconds(now);
-        let mut tx = self.inner.begin().await?;
+        // IMMEDIATE: take the write lock up front (waiting out the busy
+        // timeout), so the read below can't deadlock with a concurrent
+        // registration when this transaction starts writing.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        // 0. Only the holder of a pending invitation may learn that an email
+        //    is taken: without this check, a duplicate email would fail
+        //    step 1 before any invitation is looked at, for any token.
+        let pending: Option<i64> = sqlx::query_scalar(
+            r"SELECT 1 FROM invitations
+               WHERE token_hash = ?1 AND used_at IS NULL AND revoked_at IS NULL
+                 AND expires_at > ?2",
+        )
+        .bind(token_hash)
+        .bind(now)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if pending.is_none() {
+            tx.rollback().await?;
+            return Ok(None);
+        }
         // 1. The user first: `used_by` references it. A duplicate email
         //    returns here, and dropping `tx` rolls back.
         let user = insert_user(&mut *tx, email, display_name, password_hash, now).await?;
