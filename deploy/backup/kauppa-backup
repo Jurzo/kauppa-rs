@@ -1,0 +1,201 @@
+#!/bin/sh
+# kauppa-backup: consistent SQLite snapshots of the app's database, shipped
+# off the droplet (MB-0022 P5; RR-0014 Q4, constraint 3).
+#
+# Every backup, scheduled or on demand, is:
+#   1. `VACUUM INTO` a new file, through SQLite, with a busy timeout. The
+#      snapshot includes commits still only in kauppa.db-wal (MB-0025).
+#   2. `PRAGMA integrity_check` on the snapshot; anything but "ok" fails.
+#   3. gzip, upload, delete the local copy.
+# It never copies, moves or deletes kauppa.db, -wal or -shm while the app
+# runs. Only `restore` touches them, and only with the app stopped.
+#
+# Usage (inside the backup container):
+#   kauppa-backup schedule                  run supercronic (the default command)
+#   kauppa-backup scheduled                 one 6h/ run (+ daily/, monthly/ by date)
+#   kauppa-backup pre-update                one run into pre-update/
+#   kauppa-backup run PREFIX...             one snapshot, uploaded under each PREFIX
+#   kauppa-backup list [PREFIX]             list stored backups
+#   kauppa-backup restore --app-stopped OBJECT
+#                                           replace the database with OBJECT
+#                                           (e.g. daily/kauppa-20261108T030000Z.db.gz)
+#
+# Environment:
+#   BACKUP_TARGET     rclone destination: `spaces:<bucket>` for Spaces, or a
+#                     local directory such as /backups (restore drill)
+#   BACKUP_SPACES_ACCESS_KEY_ID, BACKUP_SPACES_SECRET_ACCESS_KEY
+#                     the limited-access Spaces key (secrets/backup.env)
+#   BACKUP_SPACES_ENDPOINT   default ams3.digitaloceanspaces.com
+#   KAUPPA_BACKUP_DB         default /data/kauppa.db
+#   KAUPPA_BACKUP_BUSY_MS    default 10000 (SQLite busy timeout)
+
+set -eu
+
+DB=${KAUPPA_BACKUP_DB:-/data/kauppa.db}
+BUSY_MS=${KAUPPA_BACKUP_BUSY_MS:-10000}
+CRONTAB=/etc/kauppa-backup/crontab
+
+log() {
+    printf '%s kauppa-backup: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2
+}
+
+die() {
+    log "FAILED: $*"
+    exit 1
+}
+
+WORK=""
+cleanup() {
+    if [ -n "$WORK" ] && [ -d "$WORK" ]; then
+        rm -rf "$WORK"
+    fi
+}
+trap cleanup EXIT INT TERM
+
+configure_target() {
+    : "${BACKUP_TARGET:?BACKUP_TARGET is not set}"
+    case "$BACKUP_TARGET" in
+        spaces:*)
+            : "${BACKUP_SPACES_ACCESS_KEY_ID:?BACKUP_SPACES_ACCESS_KEY_ID is not set (secrets/backup.env)}"
+            : "${BACKUP_SPACES_SECRET_ACCESS_KEY:?BACKUP_SPACES_SECRET_ACCESS_KEY is not set (secrets/backup.env)}"
+            export RCLONE_CONFIG_SPACES_TYPE=s3
+            export RCLONE_CONFIG_SPACES_PROVIDER=DigitalOcean
+            export RCLONE_CONFIG_SPACES_ENDPOINT="${BACKUP_SPACES_ENDPOINT:-ams3.digitaloceanspaces.com}"
+            export RCLONE_CONFIG_SPACES_ACCESS_KEY_ID="$BACKUP_SPACES_ACCESS_KEY_ID"
+            export RCLONE_CONFIG_SPACES_SECRET_ACCESS_KEY="$BACKUP_SPACES_SECRET_ACCESS_KEY"
+            export RCLONE_CONFIG_SPACES_ACL=private
+            # The limited key can't create buckets; Terraform owns the bucket.
+            export RCLONE_S3_NO_CHECK_BUCKET=true
+            ;;
+        /*) ;;
+        *) die "BACKUP_TARGET must be spaces:<bucket> or an absolute directory" ;;
+    esac
+    # No rclone config file: the remote is defined by the variables above.
+    export RCLONE_CONFIG=/dev/null
+}
+
+# Takes one snapshot into $WORK; sets SNAPSHOT to the gzipped, checked file.
+SNAPSHOT=""
+snapshot() {
+    [ -f "$DB" ] || die "no database at $DB"
+    ts=$(date -u +%Y%m%dT%H%M%SZ)
+    snap="$WORK/kauppa-$ts.db"
+
+    log "snapshot of $DB (VACUUM INTO)"
+    sqlite3 -bail -cmd ".timeout $BUSY_MS" "$DB" "VACUUM INTO '$snap';" \
+        || die "VACUUM INTO failed"
+
+    check=$(sqlite3 -bail "$snap" "PRAGMA integrity_check;") \
+        || die "integrity_check could not run"
+    [ "$check" = "ok" ] || die "integrity_check on the snapshot: $check"
+
+    gzip -9 "$snap" || die "gzip failed"
+    SNAPSHOT="$snap.gz"
+}
+
+upload() {
+    file=$1
+    shift
+    name=$(basename "$file")
+    for prefix in "$@"; do
+        dest="$BACKUP_TARGET/$prefix/$name"
+        rclone copyto --retries 3 "$file" "$dest" || die "upload to $dest failed"
+        log "uploaded $prefix/$name ($(wc -c < "$file") bytes)"
+    done
+}
+
+run_backup() {
+    [ "$#" -gt 0 ] || die "run needs at least one prefix"
+    for prefix in "$@"; do
+        case "$prefix" in
+            "" | /* | *..* | */) die "bad prefix: $prefix" ;;
+        esac
+    done
+    configure_target
+    WORK=$(mktemp -d /tmp/kauppa-backup.XXXXXX)
+    snapshot
+    upload "$SNAPSHOT" "$@"
+    log "backup OK"
+}
+
+scheduled_prefixes() {
+    prefixes="6h"
+    hour=$(date -u +%H)
+    day=$(date -u +%d)
+    if [ "$hour" = "03" ]; then
+        prefixes="$prefixes daily"
+        if [ "$day" = "01" ]; then
+            prefixes="$prefixes monthly"
+        fi
+    fi
+    printf '%s\n' "$prefixes"
+}
+
+restore() {
+    if [ "${1:-}" != "--app-stopped" ]; then
+        die "restore replaces the live database: stop the app first (docker compose stop kauppa), then pass --app-stopped"
+    fi
+    object=${2:-}
+    case "$object" in
+        "" | /* | *..*) die "restore needs an object path such as daily/kauppa-<ts>.db.gz" ;;
+        *.db.gz) ;;
+        *) die "restore expects a .db.gz object: $object" ;;
+    esac
+    configure_target
+
+    WORK=$(mktemp -d /tmp/kauppa-restore.XXXXXX)
+    rclone copyto "$BACKUP_TARGET/$object" "$WORK/restore.db.gz" \
+        || die "download of $object failed"
+    gunzip "$WORK/restore.db.gz" || die "gunzip failed"
+    check=$(sqlite3 -bail "$WORK/restore.db" "PRAGMA integrity_check;") \
+        || die "integrity_check could not run"
+    [ "$check" = "ok" ] || die "integrity_check on $object: $check"
+
+    dir=$(dirname "$DB")
+    # Keep the replaced database as a set: kauppa.db with its -wal, -shm or
+    # -journal, moved together so it stays openable for forensics.
+    aside="$dir/pre-restore-$(date -u +%Y%m%dT%H%M%SZ)"
+    mkdir "$aside"
+    for f in "$DB" "$DB-wal" "$DB-shm" "$DB-journal"; do
+        if [ -e "$f" ]; then
+            mv "$f" "$aside/"
+        fi
+    done
+    cp "$WORK/restore.db" "$DB.restoring"
+    mv "$DB.restoring" "$DB"
+    log "restored $object into $DB; the previous files are in $aside"
+    log "start the app now: docker compose start kauppa"
+}
+
+cmd=${1:-schedule}
+if [ "$#" -gt 0 ]; then
+    shift
+fi
+
+case "$cmd" in
+    schedule)
+        configure_target
+        log "scheduler started ($(grep -v '^#' "$CRONTAB" | grep -v '^$'))"
+        exec supercronic "$CRONTAB"
+        ;;
+    scheduled)
+        # shellcheck disable=SC2046 # word splitting is the point
+        run_backup $(scheduled_prefixes)
+        ;;
+    pre-update)
+        run_backup pre-update
+        ;;
+    run)
+        run_backup "$@"
+        ;;
+    list)
+        configure_target
+        rclone lsl "$BACKUP_TARGET/${1:-}"
+        ;;
+    restore)
+        restore "$@"
+        ;;
+    *)
+        die "unknown command: $cmd (schedule, scheduled, pre-update, run, list, restore)"
+        ;;
+esac

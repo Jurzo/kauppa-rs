@@ -1,0 +1,4 @@
+# supercronic crontab, UTC (RR-0014 Q4). Every 6 hours, at 03, 09, 15 and
+# 21 UTC; `scheduled` also writes the 03:00 run to daily/ and, on the 1st of
+# the month, to monthly/.
+0 3,9,15,21 * * * /usr/local/bin/kauppa-backup scheduled

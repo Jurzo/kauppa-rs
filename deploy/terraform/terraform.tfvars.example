@@ -1,0 +1,21 @@
+# Copy to terraform.tfvars (git-ignored) and fill in. Nothing here is a
+# secret, and nothing secret may be added: credentials come from your shell
+# (DIGITALOCEAN_TOKEN, AWS_*, SPACES_*; see deploy/README.md), and the app's
+# secrets are created on the droplet (RR-0014 Q3).
+
+# Unique per Spaces region across all DigitalOcean customers.
+backup_bucket_name = "kauppa-backups-CHANGE-ME"
+
+# Contents of your public key file, e.g. ~/.ssh/id_ed25519.pub.
+ssh_public_key = "ssh-ed25519 AAAA... you@laptop"
+
+# Where you SSH from: your public address as /32 (IPv4) or a /64 (IPv6).
+# Never 0.0.0.0/0 or ::/0; the variable's validation rejects them.
+ssh_allowed_cidrs = ["203.0.113.7/32"]
+
+# Defaults (RR-0014 Q6); uncomment to override.
+# region          = "fra1"
+# droplet_size    = "s-1vcpu-1gb"   # s-1vcpu-2gb is the step up
+# volume_size_gib = 5
+# spaces_region   = "ams3"
+# enable_ipv6     = false

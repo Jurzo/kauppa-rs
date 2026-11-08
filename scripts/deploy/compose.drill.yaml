@@ -1,0 +1,10 @@
+# Override for scripts/deploy/backup_restore_drill.sh: the backup job writes
+# to a local directory instead of Spaces, so the drill needs no credentials.
+# Everything else (the VACUUM INTO job, the image, the volume) is the
+# production path.
+services:
+  backup:
+    environment:
+      BACKUP_TARGET: /backups
+    volumes:
+      - ${KAUPPA_DRILL_BACKUP_DIR:?set by the drill script}:/backups
