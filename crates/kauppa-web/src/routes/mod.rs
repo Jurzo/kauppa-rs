@@ -50,6 +50,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(lists::check_item)
                 .service(lists::remove_from_shop)
                 .service(lists::assign_category)
+                .service(lists::set_item_quantity)
                 .service(lists::remove_item)
                 .service(lists::restore_item)
                 .service(lists::sharing)

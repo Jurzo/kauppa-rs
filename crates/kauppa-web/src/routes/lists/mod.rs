@@ -24,9 +24,10 @@
 //! a user with no access gets a 404 and a grantee whose role is too weak a
 //! 403. Handlers only use the access level to decide which controls to show:
 //! a `view` grantee sees the list and the store view read-only; an `edit`
-//! grantee can add free-text items, check, remove and restore; favorites,
-//! recipes and categories come from the owner's catalog and stay the
-//! owner's, as do rename, delete and `/lists/{id}/sharing`. Sharing answers
+//! grantee can add free-text items, change quantities (MB-0021), check,
+//! remove and restore; favorites, recipes and categories come from the
+//! owner's catalog and stay the owner's, as do rename, delete and
+//! `/lists/{id}/sharing`. Sharing answers
 //! the same whether or not the email matches an account (RR-0002
 //! constraint 3), and grants and revokes are logged without the grantee's
 //! email (constraint 5).
@@ -59,7 +60,10 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub use items::{add_favorite, add_item, add_recipe, assign_category, remove_item, restore_item};
+pub use items::{
+    add_favorite, add_item, add_recipe, assign_category, remove_item, restore_item,
+    set_item_quantity,
+};
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};
 

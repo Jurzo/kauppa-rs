@@ -1,4 +1,4 @@
-//! MB-0004 (P5, P6): list items over HTTP, owner isolation and htmx fragments.
+//! MB-0004 (P5, P6): list items over HTTP, owner isolation and htmx fragments; MB-0021 (P2): editing a quantity.
 
 use actix_web::http::{StatusCode, header};
 
@@ -275,4 +275,177 @@ async fn htmx_fragments() {
     .await;
     assert!(page.contains("<html") && page.contains(&fragment_id));
     assert!(page.contains(&format!(r#"<option value="{}">Maito</option>"#, maito.id)));
+}
+
+/// MB-0021 P2: an active item's quantity is edited inline on the list page.
+/// htmx gets the `#list-{id}` fragment, a plain request a 303 back to the
+/// list; the new quantity shows on the list page and in the store view, and
+/// an empty value clears it. A removed item is a 404.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn edit_quantity() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_list, make_recipe_with, make_user,
+        session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let recipe = make_recipe_with(&state, user, "Puuro", kylma, &[("Kaura", Some("2 dl"))]).await;
+    let list = make_list(&state, user, "Viikko").await;
+    let oats = ShoppingListRepo::add_recipe(&state.pool, user, list, recipe, 1.0)
+        .await
+        .expect("add recipe")[0]
+        .id;
+    let candles = ShoppingListRepo::add_item(&state.pool, user, list, "Kynttilät", None)
+        .await
+        .expect("item")
+        .id;
+    let sugar = ShoppingListRepo::add_item(&state.pool, user, list, "Sokeri", Some("1 kg"))
+        .await
+        .expect("item")
+        .id;
+    ShoppingListRepo::remove_item(&state.pool, user, list, sugar)
+        .await
+        .expect("remove");
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let base = format!("/lists/{list}");
+    let fragment_id = format!(r#"id="list-{list}""#);
+    let shown = |q: &str| format!(r#"<span class="ingredient-quantity">{q}</span>"#);
+    let post = |item: uuid::Uuid, form: Vec<(&'static str, String)>| {
+        TestRequest::post()
+            .uri(&format!("{base}/items/{item}/quantity"))
+            .cookie(session.clone())
+            .set_form(form)
+    };
+    let quantities = || async {
+        ShoppingListRepo::items(&state.pool, user, list, false)
+            .await
+            .expect("items")
+            .into_iter()
+            .map(|i| (i.text, i.quantity))
+            .collect::<Vec<_>>()
+    };
+    let get = |uri: String, htmx: bool| {
+        let app = &app;
+        let session = session.clone();
+        async move {
+            let mut req = TestRequest::get().uri(&uri).cookie(session);
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::OK, "{uri}");
+            body_string(resp).await
+        }
+    };
+
+    // Each active item offers the form, prefilled; the removed one doesn't.
+    let page = get(base.clone(), false).await;
+    assert!(page.contains(&format!(r#"action="{base}/items/{oats}/quantity""#)));
+    assert!(page.contains(&format!(r#"action="{base}/items/{candles}/quantity""#)));
+    assert!(!page.contains(&format!("{base}/items/{sugar}/quantity")));
+    assert!(page.contains(r#"value="2 dl""#));
+
+    // htmx: the fragment, with the new (trimmed) quantity.
+    let resp = call_service(
+        &app,
+        post(oats, vec![("quantity", "  3 dl ".to_owned())])
+            .insert_header(("HX-Request", "true"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(!body.contains("<html") && body.contains(&fragment_id));
+    assert!(body.contains(&shown("3 dl")) && !body.contains(&shown("2 dl")));
+    assert!(body.contains(r#"value="3 dl""#));
+
+    // Plain: a 303 back to the list; an item without a quantity gets one.
+    let resp = call_service(
+        &app,
+        post(candles, vec![("quantity", "2 kpl".to_owned())]).to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        resp.headers().get(header::LOCATION).expect("location"),
+        base.as_str()
+    );
+    assert_eq!(
+        quantities().await,
+        [
+            ("Kaura".to_owned(), Some("3 dl".to_owned())),
+            ("Kynttilät".to_owned(), Some("2 kpl".to_owned())),
+        ]
+    );
+
+    // The list page and the store view show both, as full pages and as
+    // fragments.
+    for uri in [base.clone(), format!("{base}/shop")] {
+        for htmx in [false, true] {
+            let body = get(uri.clone(), htmx).await;
+            assert_eq!(body.contains("<html"), !htmx, "{uri} htmx={htmx}");
+            if !htmx {
+                assert!(body.contains("<title>Viikko — kauppa</title>"), "{uri}");
+            }
+            assert!(body.contains(&shown("3 dl")), "{uri} htmx={htmx}");
+            assert!(body.contains(&shown("2 kpl")), "{uri} htmx={htmx}");
+        }
+    }
+
+    // An empty value clears it, over htmx and plain; so does a missing one.
+    let resp = call_service(
+        &app,
+        post(candles, vec![("quantity", "   ".to_owned())])
+            .insert_header(("HX-Request", "true"))
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains(&fragment_id) && !body.contains(&shown("2 kpl")));
+    let resp = call_service(
+        &app,
+        post(oats, vec![("quantity", String::new())]).to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        quantities().await,
+        [("Kaura".to_owned(), None), ("Kynttilät".to_owned(), None)]
+    );
+    call_service(
+        &app,
+        post(oats, vec![("quantity", "1 dl".to_owned())]).to_request(),
+    )
+    .await;
+    let resp = call_service(&app, post(oats, vec![]).to_request()).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(quantities().await[0], ("Kaura".to_owned(), None));
+    for uri in [base.clone(), format!("{base}/shop")] {
+        let body = get(uri.clone(), false).await;
+        assert!(!body.contains(r#"class="ingredient-quantity""#), "{uri}");
+    }
+
+    // A removed or unknown item is a 404, and stays as it was.
+    for item in [sugar, uuid::Uuid::new_v4()] {
+        for htmx in [false, true] {
+            let mut req = post(item, vec![("quantity", "9".to_owned())]);
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::NOT_FOUND, "htmx={htmx}");
+        }
+    }
+    let removed = ShoppingListRepo::items(&state.pool, user, list, true)
+        .await
+        .expect("removed");
+    assert_eq!(removed[0].quantity.as_deref(), Some("1 kg"));
 }

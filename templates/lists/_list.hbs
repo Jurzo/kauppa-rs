@@ -72,9 +72,10 @@
           {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}
           <span class="muted">· {{#if this.category}}{{this.category}}{{else}}Uncategorized{{/if}}</span>
         </span>
-        {{#if ../is_owner}}
-        <details class="product-edit"{{#unless this.category}}{{#if ../has_categories}} open{{/if}}{{/unless}}>
-          <summary>{{#if this.category}}Edit{{else}}Choose category{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
+        {{#if ../can_edit}}
+        <details class="product-edit"{{#if ../is_owner}}{{#unless this.category}}{{#if ../has_categories}} open{{/if}}{{/unless}}{{/if}}>
+          <summary>{{#if ../is_owner}}{{#if this.category}}Edit{{else}}Choose category{{/if}}{{else}}Edit{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
+          {{#if ../is_owner}}
           {{#if ../has_categories}}
             <form method="post" action="/lists/{{../id}}/items/{{this.id}}/category"
                   hx-post="/lists/{{../id}}/items/{{this.id}}/category" hx-target="#list-{{../id}}" hx-swap="outerHTML">
@@ -86,17 +87,21 @@
           {{else}}
             <p class="muted"><a href="/categories">Create a category</a> to group items.</p>
           {{/if}}
+          {{/if}}
+          <form method="post" action="/lists/{{../id}}/items/{{this.id}}/quantity"
+                hx-post="/lists/{{../id}}/items/{{this.id}}/quantity" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+            <label>Quantity
+              <input name="quantity" type="text" autocomplete="off" placeholder="e.g. 2 dl"
+                     value="{{this.quantity}}" />
+            </label>
+            <button type="submit" class="button">Save</button>
+          </form>
           <form method="post" action="/lists/{{../id}}/items/{{this.id}}/remove"
                 hx-post="/lists/{{../id}}/items/{{this.id}}/remove" hx-target="#list-{{../id}}" hx-swap="outerHTML">
             <button type="submit" class="link danger">Remove</button>
           </form>
         </details>
-        {{else}}{{#if ../can_edit}}
-          <form class="row-actions" method="post" action="/lists/{{../id}}/items/{{this.id}}/remove"
-                hx-post="/lists/{{../id}}/items/{{this.id}}/remove" hx-target="#list-{{../id}}" hx-swap="outerHTML">
-            <button type="submit" class="link danger">Remove<span class="visually-hidden"> {{this.text}}</span></button>
-          </form>
-        {{/if}}{{/if}}
+        {{/if}}
       </li>
     {{else}}
       <li class="product-row empty">No items yet.</li>
