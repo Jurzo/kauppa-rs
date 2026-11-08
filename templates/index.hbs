@@ -4,9 +4,9 @@
   <p>Shopping lists and recipes, built with Rust and htmx.</p>
   {{#unless signed_in}}
     <p>
-      <a class="button primary" href="/auth/register">Create an account</a>
-      <a class="button" href="/auth/login">Sign in</a>
+      <a class="button primary" href="/auth/login">Sign in</a>
     </p>
+    <p class="muted">Accounts are by invitation.</p>
   {{else}}
     <p>
       <a class="button primary" href="/lists">Your lists</a>

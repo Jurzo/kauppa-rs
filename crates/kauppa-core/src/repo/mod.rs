@@ -12,6 +12,8 @@ pub mod sqlite;
 #[cfg(test)]
 mod category;
 #[cfg(test)]
+mod invite;
+#[cfg(test)]
 mod list;
 #[cfg(test)]
 mod product;
@@ -23,24 +25,94 @@ mod share;
 pub use sqlite::SqlitePool;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, Direction, HiddenProductGroup, Ingredient, ListAccess, ListGroup, ListItem,
-    ListShare, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail, RecipeInput, ShareRole,
-    SharedList, ShoppingList, User,
+    Category, CreatedInvitation, Direction, HiddenProductGroup, Ingredient, Invitation, ListAccess,
+    ListGroup, ListItem, ListShare, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail,
+    RecipeInput, Registered, ShareRole, SharedList, ShoppingList, User,
 };
 
 #[async_trait]
 pub trait UserRepo: Send + Sync {
     async fn find_by_email(&self, email: &str) -> CoreResult<Option<(User, String)>>;
+
+    /// Insert an account directly. For tests and fixtures only: outside
+    /// tests, accounts are created only by [`InvitationRepo::register`]
+    /// (RR-0012 constraint 1; `routes::auth`'s bypass guard checks the web
+    /// crate). A duplicate email is `Conflict`, whose message never names
+    /// the email.
     async fn create(
         &self,
         email: &str,
         display_name: &str,
         password_hash: &str,
     ) -> CoreResult<User>;
+}
+
+/// Invitations to create an account (MB-0023, RR-0012).
+///
+/// Every timestamp is stored at whole seconds, so SQL compares them as text
+/// correctly (RR-0012 constraint 7); `now` is truncated the same way.
+#[async_trait]
+pub trait InvitationRepo: Send + Sync {
+    /// Create an invitation that expires [`invitation_ttl`] after `now`, with
+    /// a fresh 256-bit token stored only as its hash. `created_by` is the
+    /// admin, or `None` for the host command. The note is trimmed (blank is
+    /// none); `Invalid` past [`NOTE_MAX_CHARS`]. The returned token is the
+    /// only copy of the plaintext.
+    ///
+    /// [`invitation_ttl`]: crate::domain::invitation::invitation_ttl
+    /// [`NOTE_MAX_CHARS`]: crate::domain::invitation::NOTE_MAX_CHARS
+    async fn create(
+        &self,
+        created_by: Option<Uuid>,
+        note: Option<&str>,
+        now: DateTime<Utc>,
+    ) -> CoreResult<CreatedInvitation>;
+
+    /// Every invitation, newest first, with the account each one created.
+    async fn list(&self) -> CoreResult<Vec<Invitation>>;
+
+    /// Revoke a pending invitation. `NotFound` for an unknown id and for one
+    /// that is not pending at `now` (used, revoked or expired).
+    async fn revoke(&self, id: Uuid, now: DateTime<Utc>) -> CoreResult<Invitation>;
+
+    /// Create an account by using the invitation whose token hashes to
+    /// `token_hash`, in one transaction: insert the user, then mark the
+    /// invitation used only if it is still pending at `now`. If it isn't
+    /// (unknown, used, revoked or expired, or used by a concurrent call in
+    /// the meantime) nothing is written and the result is `None`, the same
+    /// for every reason. A duplicate email is `Conflict` and leaves the
+    /// invitation pending.
+    async fn register(
+        &self,
+        token_hash: &str,
+        email: &str,
+        display_name: &str,
+        password_hash: &str,
+        now: DateTime<Utc>,
+    ) -> CoreResult<Option<Registered>>;
+}
+
+/// Administrators (MB-0023, RR-0012): the users in the `admins` table.
+/// Read from the database on every check, never cached.
+#[async_trait]
+pub trait AdminRepo: Send + Sync {
+    /// Whether `user_id` is an administrator now.
+    async fn is_admin(&self, user_id: Uuid) -> CoreResult<bool>;
+
+    /// Make `user_id` an administrator. `granted_by` is the granting admin,
+    /// or `None` for the host command. Idempotent: returns `false`, and
+    /// changes nothing, if they already are one.
+    async fn grant(
+        &self,
+        user_id: Uuid,
+        granted_by: Option<Uuid>,
+        now: DateTime<Utc>,
+    ) -> CoreResult<bool>;
 }
 
 #[async_trait]

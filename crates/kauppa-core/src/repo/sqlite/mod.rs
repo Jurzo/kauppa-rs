@@ -6,9 +6,11 @@
 //! `.agentic/mentorship/persistence.md`.
 //!
 //! One file per repo trait implementation (RR-0009): `user`, `category`,
-//! `product`, `list` and `recipe`. Row parsers and checks used by more than
+//! `product`, `list` and `recipe`; `invitation` holds the invitation and
+//! admin repos (MB-0023). Row parsers and checks used by more than
 //! one live here.
 
+use chrono::{DateTime, SubsecRound, Utc};
 use sqlx::Row;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow};
 use std::str::FromStr;
@@ -19,6 +21,7 @@ use crate::domain::{Category, Ingredient, Product};
 use crate::error::CoreError;
 
 mod category;
+mod invitation;
 mod list;
 mod list_rows;
 mod product;
@@ -52,6 +55,13 @@ impl SqlitePool {
             .map_err(|e| CoreError::Invalid(format!("migration failed: {e}")))?;
         Ok(())
     }
+}
+
+/// `t` without its fraction of a second. Timestamps that SQL compares as
+/// text (`expires_at > ?`) are bound at whole seconds, so sqlx's RFC3339 text
+/// has a fixed width (RR-0012 constraint 7).
+fn whole_seconds(t: DateTime<Utc>) -> DateTime<Utc> {
+    t.trunc_subsecs(0)
 }
 
 fn parse_uuid(s: &str) -> CoreResult<Uuid> {

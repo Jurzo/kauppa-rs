@@ -1,6 +1,7 @@
 use actix_web::middleware::from_fn;
 use actix_web::web;
 
+pub mod admin;
 pub mod auth;
 pub mod categories;
 pub mod health;
@@ -35,6 +36,13 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(auth::register_form)
                 .service(auth::register_submit)
                 .service(auth::logout),
+        )
+        .service(
+            web::scope("/admin")
+                .service(admin::index)
+                .service(admin::invitations)
+                .service(admin::create_invitation)
+                .service(admin::revoke_invitation),
         )
         .service(
             web::scope("/lists")

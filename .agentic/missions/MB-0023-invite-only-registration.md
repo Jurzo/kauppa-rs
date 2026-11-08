@@ -25,7 +25,7 @@ acceptance:
     property: "In the portal an admin can create an invitation (with an optional note, such as who it's for), sees its link once on creation, and can list invitations with their state (pending, used, expired, revoked) and revoke a pending one. The portal works on a 320 px screen and with htmx disabled."
     check: cargo test -p kauppa-web routes::admin::tests::invites::create_list_revoke
   - id: P5
-    property: "The first administrator is set up from the host (e.g. a subcommand run with `docker compose exec`, per the RR). It needs no web request, there are no default credentials or default admin, and running it again for the same user changes nothing."
+    property: "The first administrator is set up from the host (e.g. a subcommand run with `docker compose exec`, per RR-0012). It needs no web request, there are no default credentials or default admin, and running it again for the same user changes nothing."
     check: cargo test -p kauppa-web admin::bootstrap::tests::grants_admin_once
   - id: P6
     property: "Existing users are unaffected: the migration only adds to the schema, every existing account can log in and keeps its lists, recipes and shares, and no existing account becomes an admin."
@@ -75,7 +75,8 @@ mentorship:
   - .agentic/mentorship/persistence.md@v1
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/templating.md@v1
-resolutions: []
+resolutions:
+  - RR-0012
 ---
 ```
 
