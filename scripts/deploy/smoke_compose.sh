@@ -215,7 +215,7 @@ healthz_ok() { http GET "$BASE/healthz" && status_is 200 && body_has ok; }
 check P3 "GET /healthz through Caddy over HTTPS is 200" -- healthz_ok
 
 no_host_rewrite() {
-    ! grep -vE '^\s*#' deploy/Caddyfile | grep -qiE 'header_up\s+Host'
+    ! grep -vE '^\s*#' deploy/Caddyfile | qgrep -iE 'header_up\s+Host'
 }
 check P3 "Caddyfile passes Host through (no header_up Host)" -- no_host_rewrite
 
@@ -263,12 +263,12 @@ sleep 1
 no_caddy_access_log() {
     ! grep -vE '^[[:space:]]*#' deploy/Caddyfile \
         | grep -E '^[[:space:]]*log([[:space:]]|$|\{)' \
-        | grep -qvE '^[[:space:]]*log[[:space:]]+default[[:space:]]*\{'
+        | qgrep -vE '^[[:space:]]*log[[:space:]]+default[[:space:]]*\{'
 }
 check P3 "Caddyfile has no access log (only the global log filter)" -- no_caddy_access_log
 
 caddy_logs_clean() {
-    ! compose logs --no-color caddy 2>&1 | grep -qF "$QUERY_MARKER"
+    ! compose logs --no-color caddy 2>&1 | qgrep -F "$QUERY_MARKER"
 }
 check P3 "Caddy logs no query string for normal traffic" -- caddy_logs_clean
 
@@ -290,7 +290,7 @@ http GET "$BASE/auth/register?invite=$QUERY_MARKER_502"
 sleep 1
 info "UPSTREAM-DOWN: the request got $HTTP_STATUS"
 caddy_error_log_clean() {
-    ! compose logs --no-color caddy 2>&1 | grep -qF "$QUERY_MARKER_502"
+    ! compose logs --no-color caddy 2>&1 | qgrep -F "$QUERY_MARKER_502"
 }
 check P3 "Caddy's error log has no query string while the app is down" -- caddy_error_log_clean
 

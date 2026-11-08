@@ -10,6 +10,16 @@ FAILURES=0
 CHECKS=0
 
 log() { printf '%s\n' "$*" >&2; }
+
+# qgrep ARGS...: `grep -q ARGS` that reads all of stdin first. A plain
+# `producer | grep -q` lets grep exit at the first match, the producer then
+# dies of SIGPIPE, and under `set -o pipefail` the pipeline fails even though
+# grep matched (and `! producer | grep -q` wrongly passes).
+qgrep() {
+    local input
+    input=$(cat)
+    grep -q "$@" <<<"$input"
+}
 section() { printf '\n== %s\n' "$*" >&2; }
 die() {
     printf 'FATAL: %s\n' "$*" >&2

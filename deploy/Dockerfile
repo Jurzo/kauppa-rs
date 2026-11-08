@@ -20,6 +20,9 @@ WORKDIR /build
 # toolchain builds the binary (no rustup download during the build).
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+# kauppa-web's build.rs embeds these into the binary (MB-0024).
+COPY templates ./templates
+COPY assets ./assets
 # sqlx::migrate! embeds migrations/ at compile time.
 COPY migrations ./migrations
 

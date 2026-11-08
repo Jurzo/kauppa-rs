@@ -51,7 +51,7 @@ tf_src() { cat "$TF_DIR"/*.tf | grep -vE '^[[:space:]]*(#|//)'; }
 
 resource_present() {
     local type=$1 name=$2
-    tf_src | grep -qE "^resource \"$type\" \"$name\" \{"
+    tf_src | qgrep -E "^resource \"$type\" \"$name\" \{"
 }
 declares_all() {
     local r ok=0
@@ -77,7 +77,7 @@ block_of() {
 }
 
 prevent_destroy_on() {
-    block_of "$1" "$2" | grep -qE '^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true' \
+    block_of "$1" "$2" | qgrep -E '^[[:space:]]*prevent_destroy[[:space:]]*=[[:space:]]*true' \
         || { log "    $1.$2 lacks lifecycle { prevent_destroy = true }"; return 1; }
 }
 check P4 "the data volume has prevent_destroy (RR-0014 constraint 8)" -- prevent_destroy_on digitalocean_volume data
@@ -86,8 +86,8 @@ check P4 "the backup bucket has prevent_destroy (RR-0014 constraint 8)" -- preve
 volume_separate() {
     # The volume is its own resource, attached by id: replacing the droplet
     # doesn't replace it. Nothing may make it depend on the droplet.
-    block_of digitalocean_droplet app | grep -qE 'volume_ids[[:space:]]*=[[:space:]]*\[digitalocean_volume\.data\.id\]' \
-        && ! block_of digitalocean_volume data | grep -q 'digitalocean_droplet'
+    block_of digitalocean_droplet app | qgrep -E 'volume_ids[[:space:]]*=[[:space:]]*\[digitalocean_volume\.data\.id\]' \
+        && ! block_of digitalocean_volume data | qgrep 'digitalocean_droplet'
 }
 check P4 "the volume is independent of the droplet and attached by id" -- volume_separate
 
@@ -143,26 +143,26 @@ secret_vars_ok() {
 check P4 "every secret-named variable is sensitive with no default (exception: ssh_public_key)" -- secret_vars_ok
 
 forbidden_resources() {
-    ! tf_src | grep -qE '(resource|data) "(random_password|random_string|digitalocean_spaces_key|digitalocean_container_registry_docker_credentials|local_file|local_sensitive_file)"' \
+    ! tf_src | qgrep -E '(resource|data) "(random_password|random_string|digitalocean_spaces_key|digitalocean_container_registry_docker_credentials|local_file|local_sensitive_file)"' \
         || { log "    a resource or data source that would put a secret in state"; return 1; }
 }
 check P4 "no resource that puts a secret in state (RR-0014 constraint 1)" -- forbidden_resources
 
 backend_no_credentials() {
     ! awk '/backend "s3" \{/ { inside = 1 } inside { print } inside && /^  \}/ { exit }' "$TF_DIR/versions.tf" \
-        | grep -qE '^[[:space:]]*(access_key|secret_key|token)[[:space:]]*='
+        | qgrep -E '^[[:space:]]*(access_key|secret_key|token)[[:space:]]*='
 }
 check P4 "the S3 backend block holds no credentials" -- backend_no_credentials
 
 lockfile_backend() {
     awk '/backend "s3" \{/ { inside = 1 } inside { print } inside && /^  \}/ { exit }' "$TF_DIR/versions.tf" \
-        | grep -qE '^[[:space:]]*use_lockfile[[:space:]]*=[[:space:]]*true'
+        | qgrep -E '^[[:space:]]*use_lockfile[[:space:]]*=[[:space:]]*true'
 }
 check P4 "the backend locks with use_lockfile (RR-0014 Q2)" -- lockfile_backend
 
 provider_pinned() {
-    tf_src | grep -qE '^[[:space:]]*version[[:space:]]*=[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"' \
-        && ! tf_src | grep -qE '^[[:space:]]*version[[:space:]]*=[[:space:]]*"[~><=!]'
+    tf_src | qgrep -E '^[[:space:]]*version[[:space:]]*=[[:space:]]*"[0-9]+\.[0-9]+\.[0-9]+"' \
+        && ! tf_src | qgrep -E '^[[:space:]]*version[[:space:]]*=[[:space:]]*"[~><=!]'
 }
 check P4 "the DigitalOcean provider is pinned to an exact version" -- provider_pinned
 

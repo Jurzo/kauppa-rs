@@ -99,12 +99,12 @@ runtime_uid_not_zero() {
 check P1 "container process runs as a non-zero uid" -- runtime_uid_not_zero
 
 has_healthcheck() {
-    docker image inspect -f '{{json .Config.Healthcheck}}' "$IMAGE" | grep -q '/usr/local/bin/healthcheck'
+    docker image inspect -f '{{json .Config.Healthcheck}}' "$IMAGE" | qgrep '/usr/local/bin/healthcheck'
 }
 check P1 "image has a HEALTHCHECK (GET /healthz)" -- has_healthcheck
 
 has_data_volume() {
-    docker image inspect -f '{{json .Config.Volumes}}' "$IMAGE" | grep -q '"/data"'
+    docker image inspect -f '{{json .Config.Volumes}}' "$IMAGE" | qgrep '"/data"'
 }
 check P1 "image declares the /data volume" -- has_data_volume
 
@@ -189,11 +189,11 @@ check P1 "create a list" -- create_list "$BASE" "$ORIGIN" "$JAR" "$LIST"
 check P1 "GET /lists shows the user's list" -- lists_page_has "$BASE" "$JAR" "$LIST"
 
 db_on_volume() {
-    docker run --rm --entrypoint /bin/ls -v "$VOLUME:/data" "$IMAGE" /data | grep -qx 'kauppa.db'
+    docker run --rm --entrypoint /bin/ls -v "$VOLUME:/data" "$IMAGE" /data | qgrep -x 'kauppa.db'
 }
 check P1 "kauppa.db is on the /data volume" -- db_on_volume
 
-migrations_ran() { docker logs "$CTR" 2>&1 | grep -qi 'listening'; }
+migrations_ran() { docker logs "$CTR" 2>&1 | qgrep -i 'listening'; }
 check P2 "migrations ran on start and the server is listening" -- migrations_ran
 
 # ------------------------------------------------- P2: replace container ----
