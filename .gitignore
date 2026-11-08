@@ -10,6 +10,8 @@
 # Local DB
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite-journal
 /data
