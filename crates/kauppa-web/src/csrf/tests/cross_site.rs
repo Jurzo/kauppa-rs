@@ -150,3 +150,64 @@ async fn missing_proof_is_rejected() {
         StatusCode::NOT_FOUND
     );
 }
+
+/// MB-0023: the forged requests above are refused by the check, not by the
+/// handlers: the same form, sent same-origin by the signed-in admin, does
+/// create an invitation, revoke one and create an account.
+#[actix_web::test]
+async fn invite_routes_reject_only_on_proof() {
+    let state = test_state().await;
+    let app = bare_test_app!(state);
+    let w: World = world(&state).await;
+    let login = login_request(super::OWNER)
+        .insert_header((header::HOST, TEST_HOST))
+        .insert_header((header::ORIGIN, TEST_ORIGIN));
+    let session: Cookie<'static> = session_cookie(&call_service(&app, login.to_request()).await);
+    for path in [
+        "/admin/invitations",
+        "/admin/invitations/{id}/revoke",
+        "/auth/register",
+    ] {
+        let route = write_routes()
+            .into_iter()
+            .find(|r| r.path == path)
+            .expect("route");
+        // The revoke above revoked the world's invitation: registration
+        // gets a fresh one.
+        let w = if path == "/auth/register" {
+            world_invite_only(&state, &w).await
+        } else {
+            w.clone()
+        };
+        let before = w.snapshot(&state).await;
+        let req = TestRequest::post()
+            .uri(&w.uri(&route))
+            .insert_header((header::HOST, TEST_HOST))
+            .insert_header((header::ORIGIN, TEST_ORIGIN))
+            .cookie(session.clone())
+            .set_form(w.form(&route));
+        let status = call_service(&app, req.to_request()).await.status();
+        assert!(
+            status.is_success() || status.is_redirection(),
+            "{path}: {status}"
+        );
+        assert_ne!(w.snapshot(&state).await, before, "{path} changed something");
+    }
+}
+
+/// `w` with a new pending invitation in place of its own.
+async fn world_invite_only(state: &crate::state::AppState, w: &World) -> World {
+    let created = kauppa_core::repo::InvitationRepo::create(
+        &state.pool,
+        Some(w.owner),
+        None,
+        chrono::Utc::now(),
+    )
+    .await
+    .expect("invitation");
+    World {
+        invitation: created.invitation.id,
+        invite: created.token.as_str().to_owned(),
+        ..w.clone()
+    }
+}
