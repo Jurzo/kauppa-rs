@@ -3,7 +3,7 @@
 //!
 //! 1. handlers are registered only by attribute macros (`#[post("…")]`), not
 //!    by builder calls the scan can't see (`web::resource`, `.route`, …);
-//! 2. `main.rs` registers nothing besides the static files and
+//! 2. `main.rs` registers nothing besides `routes::assets::Assets` and
 //!    `routes::configure`;
 //! 3. `routes::configure` registers one scope, wrapped in `csrf::guard`,
 //!    around `routes::protected`;
@@ -11,12 +11,17 @@
 //!    `routes::protected`, and every registration there is a handler found;
 //! 5. behind the real wiring, each write route answers a forged request
 //!    with 403 and a same-origin one with something else, so the route
-//!    exists and the 403 is the check's.
+//!    exists and the 403 is the check's;
+//! 6. behind the real wiring, every non-safe method on `/assets/…` answers
+//!    405 with `Allow: GET, HEAD`, so the static files accept no write
+//!    (RR-0011).
 
-use actix_web::http::{StatusCode, header};
-use actix_web::test::{TestRequest, call_service};
+use actix_web::App;
+use actix_web::http::{Method, StatusCode, header};
+use actix_web::test::{TestRequest, call_service, init_service};
 
 use super::{handler_attrs, protected_services, source_files, write_routes};
+use crate::routes::assets::Assets;
 use crate::routes::test_support::{TEST_HOST, TEST_ORIGIN, bare_test_app, test_state};
 
 /// Route registrations other than handler attribute macros.
@@ -71,7 +76,8 @@ async fn every_write_route_is_covered() {
         }
     }
 
-    // 2. main.rs: static files (GET/HEAD only) and routes::configure, nothing else.
+    // 2. main.rs: static files (GET/HEAD only, rule 6) and routes::configure,
+    //    nothing else.
     let main = &sources
         .iter()
         .find(|(f, _)| f == "main.rs")
@@ -84,7 +90,7 @@ async fn every_write_route_is_covered() {
     assert_eq!(
         services,
         [
-            ".service(Files::new(\"/assets\", \"./assets\"))",
+            ".service(routes::assets::Assets)",
             ".configure(routes::configure)"
         ],
         "main.rs registers routes only through routes::configure"
@@ -157,5 +163,47 @@ async fn every_write_route_is_covered() {
             .contains(&genuine),
             "{route:?}: a same-origin request reaches the handler, got {genuine}"
         );
+    }
+
+    // 6. Behind the real wiring (rule 2: `Assets` first, then
+    //    `routes::configure`), `/assets` accepts no write method, on a known
+    //    and an unknown path, with or without cross-site proof: 405 from
+    //    `Assets`, never 2xx and never the check's 403 (RR-0011).
+    let app = init_service(
+        App::new()
+            .app_data(state.clone())
+            .service(Assets)
+            .configure(crate::routes::configure),
+    )
+    .await;
+    for method in [
+        Method::POST,
+        Method::PUT,
+        Method::PATCH,
+        Method::DELETE,
+        Method::OPTIONS,
+        Method::TRACE,
+    ] {
+        for uri in ["/assets/app.css", "/assets/x"] {
+            for origin in [TEST_ORIGIN, "http://evil.example"] {
+                let req = TestRequest::default()
+                    .method(method.clone())
+                    .uri(uri)
+                    .insert_header((header::HOST, TEST_HOST))
+                    .insert_header((header::ORIGIN, origin))
+                    .to_request();
+                let res = call_service(&app, req).await;
+                assert_eq!(
+                    res.status(),
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    "{method} {uri} from {origin}: /assets accepts no write"
+                );
+                assert_eq!(
+                    res.headers().get(header::ALLOW).expect("Allow"),
+                    "GET, HEAD",
+                    "{method} {uri} from {origin}"
+                );
+            }
+        }
     }
 }
