@@ -47,9 +47,13 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/templating.md@v1
-resolutions: []
+resolutions: [RR-0011]
 ---
 ```
+
+> `/assets` registration and the coverage guard's rule 6 per RR-0011.
+> `actix-files` and handlebars' `dir_source` stay; their removal is a
+> follow-up under the dependency-bump runbook (RR-0011 sub-answer 2).
 
 ## Context
 
