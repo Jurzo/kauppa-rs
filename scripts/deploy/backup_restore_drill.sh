@@ -187,7 +187,7 @@ stop_writer
 TOTAL=$(acked)
 info "writer: $BEFORE lists acknowledged before the backup, $AFTER after it, $TOTAL in total"
 
-OBJECT=$(cd "$BACKUPS" && find drill -name 'kauppa-*.db.gz' | head -1)
+OBJECT=$(cd "$BACKUPS" && find drill -name 'kauppa-*.db.gz' | sed -n 1p)
 one_object() { [[ -n "$OBJECT" && "$(find "$BACKUPS/drill" -name '*.db.gz' | wc -l)" -eq 1 ]]; }
 check P5 "exactly one snapshot under drill/ ($OBJECT)" -- one_object
 

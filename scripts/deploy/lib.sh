@@ -95,7 +95,7 @@ header_has() { grep -qi -- "$1" "$HTTP_HEADERS" || { log "    headers lack '$1'"
 
 # The session cookie's Set-Cookie line from the last response.
 session_cookie_line() {
-    grep -i '^set-cookie: kauppa_sid=' "$HTTP_HEADERS" | head -1 | tr -d '\r'
+    grep -i '^set-cookie: kauppa_sid=' "$HTTP_HEADERS" | sed -n 1p | tr -d '\r'
 }
 
 cookie_flags_ok() {
@@ -128,7 +128,7 @@ register() {
     log "    open registration refused ($HTTP_STATUS); trying an invitation (MB-0023)"
     local out token
     out=$("$@" 2>/dev/null) || { log "    invite command failed: $*"; return 1; }
-    token=$(grep -oE 'invite=[A-Za-z0-9_-]+' <<<"$out" | head -1 | cut -d= -f2)
+    token=$(grep -oE 'invite=[A-Za-z0-9_-]+' <<<"$out" | sed -n 1p | cut -d= -f2)
     [[ -n "$token" ]] || { log "    no invite token in the command's output"; return 1; }
     http POST "$base/auth/register" -H "Origin: $origin" -c "$jar" -b "$jar" \
         --data-urlencode "email=$email" --data-urlencode "display_name=Smoke" \

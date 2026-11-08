@@ -72,8 +72,10 @@ block_of() {
         inside {
             print
             depth += gsub(/\{/, "{") - gsub(/\}/, "}")
-            if (depth == 0) exit
+            if (depth == 0) inside = 0
         }'
+    # No `exit` above: awk reads to the end, so tf_src never gets SIGPIPE
+    # (which `set -o pipefail` would turn into a failed check).
 }
 
 prevent_destroy_on() {
@@ -133,7 +135,7 @@ secret_vars_ok() {
         done
         [[ "$skip" -eq 1 ]] && continue
         if [[ "$name" =~ (token|secret|key|password|credential) ]]; then
-            body=$(tf_src | awk -v head="variable \"$name\" {" '$0 == head { inside = 1 } inside { print } inside && /^\}/ { exit }')
+            body=$(tf_src | awk -v head="variable \"$name\" {" '$0 == head { inside = 1 } inside { print } inside && /^\}/ { inside = 0 }')
             grep -qE '^[[:space:]]*sensitive[[:space:]]*=[[:space:]]*true' <<<"$body" || { log "    variable $name is not sensitive"; ok=1; }
             ! grep -qE '^[[:space:]]*default[[:space:]]*=' <<<"$body" || { log "    variable $name has a default"; ok=1; }
         fi

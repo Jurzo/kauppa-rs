@@ -127,7 +127,7 @@ contents_ok() {
             if command -v "$c" >/dev/null 2>&1; then echo "    toolchain on PATH: $c" >&2; rc=1; fi
         done
         found=$(find / -xdev \( -name "*.rs" -o -name ".env" -o -name ".env.*" -o -name "Cargo.toml" \) \
-                -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | head -5)
+                -not -path "/proc/*" -not -path "/sys/*" 2>/dev/null | sed -n 1,5p)
         if [ -n "$found" ]; then echo "    source or env files in the image: $found" >&2; rc=1; fi
         exit $rc
     '
