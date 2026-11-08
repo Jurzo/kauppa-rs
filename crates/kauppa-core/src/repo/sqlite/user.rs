@@ -7,10 +7,9 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::User;
-use crate::error::CoreError;
 use crate::repo::UserRepo;
 
-use super::{SqlitePool, parse_uuid};
+use super::{SqlitePool, conflict_on_unique, parse_uuid};
 
 #[async_trait]
 impl UserRepo for SqlitePool {
@@ -49,33 +48,42 @@ impl UserRepo for SqlitePool {
         display_name: &str,
         password_hash: &str,
     ) -> CoreResult<User> {
-        let id = Uuid::new_v4();
-        let id_str = id.to_string();
-        let now = Utc::now();
-
-        sqlx::query(
-            r"INSERT INTO users (id, email, display_name, password_hash, created_at)
-              VALUES (?1, ?2, ?3, ?4, ?5)",
-        )
-        .bind(&id_str)
-        .bind(email)
-        .bind(display_name)
-        .bind(password_hash)
-        .bind(now)
-        .execute(&self.inner)
-        .await
-        .map_err(|e| match &e {
-            sqlx::Error::Database(db) if db.is_unique_violation() => {
-                CoreError::Conflict(format!("email already registered: {email}"))
-            }
-            _ => CoreError::Database(e),
-        })?;
-
-        Ok(User {
-            id,
-            email: email.to_owned(),
-            display_name: display_name.to_owned(),
-            created_at: now,
-        })
+        insert_user(&self.inner, email, display_name, password_hash, Utc::now()).await
     }
+}
+
+/// Insert a user row. Shared by [`UserRepo::create`] and the invitation
+/// transaction (`InvitationRepo::register`). A duplicate email is
+/// `Conflict`; its message never contains the email, so the WARN line
+/// `WebError` logs can't leak it (RR-0012 sub-answer 4).
+pub(super) async fn insert_user<'e, E>(
+    executor: E,
+    email: &str,
+    display_name: &str,
+    password_hash: &str,
+    now: DateTime<Utc>,
+) -> CoreResult<User>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let id = Uuid::new_v4();
+    sqlx::query(
+        r"INSERT INTO users (id, email, display_name, password_hash, created_at)
+          VALUES (?1, ?2, ?3, ?4, ?5)",
+    )
+    .bind(id.to_string())
+    .bind(email)
+    .bind(display_name)
+    .bind(password_hash)
+    .bind(now)
+    .execute(executor)
+    .await
+    .map_err(|e| conflict_on_unique(e, || "email already registered".to_owned()))?;
+
+    Ok(User {
+        id,
+        email: email.to_owned(),
+        display_name: display_name.to_owned(),
+        created_at: now,
+    })
 }

@@ -16,11 +16,17 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
   `product_id`) use `ON DELETE SET NULL` and stay nullable, so deleting a
   category or product never deletes the rows that point at it. Whether a
   category is required is a handler rule, not a `NOT NULL` column.
+- Exception (RR-0012): audit references to the acting user
+  (`admins.granted_by`, `invitations.created_by`, `invitations.used_by`) use
+  `ON DELETE SET NULL` and stay nullable, so deleting a user keeps the
+  record. Timestamps that SQL compares (`expires_at > ?`) are truncated to
+  whole seconds before binding.
 
 ## Queries
 
 - Repository traits (`UserRepo`, `CategoryRepo`, `ProductRepo`,
-  `ShoppingListRepo`, `RecipeRepo`) are the only surface the web layer sees.
+  `ShoppingListRepo`, `RecipeRepo`, `InvitationRepo`, `AdminRepo`) are the
+  only surface the web layer sees.
   Add methods there, not in handlers.
 - Foreign keys prove that a referenced row exists, not that it belongs to the
   acting user (RR-0001). A write that sets a reference to another owner-scoped

@@ -20,9 +20,14 @@ use std::path::{Path, PathBuf};
 use actix_web::http::Method;
 use uuid::Uuid;
 
+use chrono::Utc;
 use kauppa_core::domain::ShareRole;
-use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo, UserRepo};
 
+use kauppa_core::repo::{
+    AdminRepo, CategoryRepo, InvitationRepo, ProductRepo, RecipeRepo, ShoppingListRepo, UserRepo,
+};
+
+pub use crate::routes::test_support::source_files;
 use crate::routes::test_support::{make_category, make_recipe_with, make_user};
 use crate::state::AppState;
 
@@ -39,37 +44,6 @@ pub struct Route {
 /// The crate's `src/`.
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
-}
-
-/// Every non-test `.rs` file under `src/`, as `(path relative to src, text)`:
-/// skips `tests/` directories and `test_support.rs`.
-pub fn source_files() -> Vec<(String, String)> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(dir).expect("read src dir") {
-            let path = entry.expect("dir entry").path();
-            if path.is_dir() {
-                if path.file_name().is_some_and(|n| n != "tests") {
-                    walk(&path, out);
-                }
-            } else if path.extension().is_some_and(|e| e == "rs")
-                && path.file_name().is_some_and(|n| n != "test_support.rs")
-            {
-                out.push(path);
-            }
-        }
-    }
-    let src = src_dir();
-    let mut paths = Vec::new();
-    walk(&src, &mut paths);
-    paths.sort();
-    paths
-        .into_iter()
-        .map(|p| {
-            let rel = p.strip_prefix(&src).expect("under src");
-            let rel = rel.to_string_lossy().replace('\\', "/");
-            (rel, std::fs::read_to_string(&p).expect("read source"))
-        })
-        .collect()
 }
 
 /// actix-web's route attribute macros and the method each registers
@@ -205,7 +179,10 @@ pub const EDITOR: &str = "editor@example.com";
 pub const NEWCOMER: &str = "newcomer@example.com";
 
 /// A signed-in victim's data: something for every write route to change.
-#[derive(Debug, Clone, Copy)]
+/// The owner is an admin with a pending invitation (MB-0023), so the admin
+/// routes and registration are refused by the cross-site check, not by a
+/// missing right or token.
+#[derive(Debug, Clone)]
 pub struct World {
     pub owner: Uuid,
     pub viewer: Uuid,
@@ -217,6 +194,9 @@ pub struct World {
     pub item: Uuid,
     pub removed: Uuid,
     pub share: Uuid,
+    pub invitation: Uuid,
+    /// The pending invitation's token, which the forged register form sends.
+    pub invite: String,
 }
 
 pub async fn world(state: &AppState) -> World {
@@ -268,6 +248,12 @@ pub async fn world(state: &AppState) -> World {
         .expect("share")
         .expect("viewer matched")
         .id;
+    AdminRepo::grant(&state.pool, owner, None, Utc::now())
+        .await
+        .expect("admin");
+    let created = InvitationRepo::create(&state.pool, Some(owner), None, Utc::now())
+        .await
+        .expect("invitation");
     World {
         owner,
         viewer,
@@ -279,6 +265,8 @@ pub async fn world(state: &AppState) -> World {
         item,
         removed,
         share,
+        invitation: created.invitation.id,
+        invite: created.token.as_str().to_owned(),
     }
 }
 
@@ -291,6 +279,7 @@ impl World {
             "recipes" => self.recipe,
             "categories" => self.category,
             "favorites" => self.product,
+            "admin" => self.invitation,
             _ => Uuid::nil(),
         };
         let item = if route.path.ends_with("/restore") {
@@ -332,6 +321,8 @@ impl World {
             ("product_id", self.product.to_string()),
             ("recipe_id", self.recipe.to_string()),
             ("list_id", self.list.to_string()),
+            ("invite", self.invite.clone()),
+            ("note", "Hijacked".to_owned()),
         ]
     }
 
@@ -351,9 +342,11 @@ impl World {
         let newcomer = UserRepo::find_by_email(pool, NEWCOMER)
             .await
             .map(|u| u.is_some());
+        let invitations = InvitationRepo::list(pool).await;
         format!(
             "{lists:?}\n{viewer_lists:?}\n{active:?}\n{removed:?}\n{shares:?}\n{recipes:?}\n\
-             {recipe:?}\n{categories:?}\n{favorites:?}\n{hidden:?}\n{newcomer:?}"
+             {recipe:?}\n{categories:?}\n{favorites:?}\n{hidden:?}\n{newcomer:?}\n\
+             {invitations:?}"
         )
     }
 }
