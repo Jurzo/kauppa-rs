@@ -1,0 +1,93 @@
+#cloud-config
+# kauppa-rs droplet bootstrap (MB-0022, RR-0014).
+#
+# This file holds NO secret and must never hold one (RR-0014 constraint 1):
+# user_data is readable through the droplet metadata service, from the
+# control panel and API, and is stored in Terraform plan files. The session
+# secret is generated on the droplet, into the data volume, below.
+#
+# Terraform renders it with templatefile(), which treats dollar-brace
+# sequences as its own interpolation; the shell code below writes variables
+# as $name only.
+
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - docker-buildx
+  - git
+
+# 1 GiB of swap as headroom on the 1 GB droplet (RR-0014 Q6).
+swap:
+  filename: /swapfile
+  size: 1073741824
+  maxsize: 1073741824
+
+write_files:
+  # Key-only SSH. The cloud firewall already limits port 22 to the
+  # operator's CIDRs (deploy/terraform/main.tf).
+  - path: /etc/ssh/sshd_config.d/60-kauppa.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PermitRootLogin prohibit-password
+
+  # Mounts the data volume and prepares it. Idempotent: safe on every boot
+  # and on a replacement droplet that finds an existing volume.
+  - path: /usr/local/sbin/kauppa-bootstrap
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      dev=/dev/disk/by-id/scsi-0DO_Volume_${volume_name}
+      mnt=${volume_mount}
+      app_uid=${app_uid}
+
+      for _ in $(seq 1 120); do
+        [ -b "$dev" ] && break
+        sleep 1
+      done
+      if [ ! -b "$dev" ]; then
+        echo "kauppa-bootstrap: volume $dev is not attached" >&2
+        exit 1
+      fi
+      # Terraform creates the volume with an ext4 filesystem. Never format
+      # here: a missing filesystem means something is wrong, not "new".
+      if ! blkid "$dev" >/dev/null; then
+        echo "kauppa-bootstrap: $dev has no filesystem; refusing to format it" >&2
+        exit 1
+      fi
+
+      mkdir -p "$mnt"
+      if ! grep -q "[[:space:]]$mnt[[:space:]]" /etc/fstab; then
+        echo "$dev $mnt ext4 defaults,nofail,discard,noatime 0 2" >> /etc/fstab
+      fi
+      mountpoint -q "$mnt" || mount "$mnt"
+
+      # db/: the SQLite database (kauppa.db, -wal, -shm), owned by the
+      # container user. secrets/: root-only, one 0600 file per secret.
+      install -d -o "$app_uid" -g "$app_uid" -m 0750 "$mnt/db"
+      install -d -o root -g root -m 0700 "$mnt/secrets"
+
+      # The session secret is generated here, only if it doesn't exist yet,
+      # so a replaced droplet keeps it (RR-0014 Q3).
+      if [ ! -e "$mnt/secrets/app.env" ]; then
+        umask 077
+        tmp=$(mktemp "$mnt/secrets/.app.env.XXXXXX")
+        printf 'KAUPPA_SESSION_SECRET=%s\n' \
+          "$(openssl rand -base64 64 | tr -d '\n' | cut -c1-64)" > "$tmp"
+        chmod 0600 "$tmp"
+        mv "$tmp" "$mnt/secrets/app.env"
+        echo "kauppa-bootstrap: generated $mnt/secrets/app.env"
+      fi
+
+      install -d -m 0755 /opt/kauppa
+      echo "kauppa-bootstrap: volume ready at $mnt"
+
+runcmd:
+  - [/usr/local/sbin/kauppa-bootstrap]
+  - [systemctl, enable, --now, docker]
+  - [systemctl, reload, ssh]
