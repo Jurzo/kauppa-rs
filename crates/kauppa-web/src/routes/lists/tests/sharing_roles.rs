@@ -444,3 +444,69 @@ async fn owner_only_administration() {
             .is_empty()
     );
 }
+
+/// MB-0020 P4: a view grantee's write (403) and a stranger opening the list
+/// (404) are expected answers: `kauppa_web::error` logs them at WARN, and
+/// nothing is logged at ERROR.
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn expected_errors_log_at_warn() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        LogCapture, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    // As in `sharing_invites::share_audit_logging`: an idle second dispatcher
+    // keeps parallel tests from switching these callsites off.
+    let _idle = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+    let capture = LogCapture::default();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(capture.clone())
+        .with_max_level(tracing::Level::INFO)
+        .with_ansi(false)
+        .finish();
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    make_user(&state, "stranger@example.com").await;
+    let viewer =
+        session_cookie(&call_service(&app, login_request("viewer@example.com").to_request()).await);
+    let stranger = session_cookie(
+        &call_service(&app, login_request("stranger@example.com").to_request()).await,
+    );
+    let base = format!("/lists/{}", s.list);
+
+    tracing::callsite::rebuild_interest_cache();
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/items"))
+            .cookie(viewer)
+            .set_form([("text", "x")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let resp = call_service(
+        &app,
+        TestRequest::get().uri(&base).cookie(stranger).to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let log = capture.text();
+    for error in ["Core(Forbidden)", "Core(NotFound)"] {
+        assert!(
+            log.lines().any(|l| l.contains(" WARN kauppa_web::error:")
+                && l.ends_with(&format!("request error error={error}"))),
+            "{error} at WARN: {log}"
+        );
+    }
+    assert!(
+        !log.lines().any(|l| l.contains(" ERROR ")),
+        "nothing at ERROR: {log}"
+    );
+}

@@ -114,6 +114,35 @@ pub async fn body_string<B: MessageBody>(resp: ServiceResponse<B>) -> String {
     String::from_utf8(test::read_body(resp).await.to_vec()).expect("utf-8 body")
 }
 
+/// A `tracing` writer that keeps everything written to it.
+#[derive(Debug, Clone, Default)]
+pub struct LogCapture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl LogCapture {
+    pub fn text(&self) -> String {
+        String::from_utf8(self.0.lock().expect("log lock").clone()).expect("utf-8 log")
+    }
+}
+
+impl std::io::Write for LogCapture {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("log lock").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
+    type Writer = Self;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
 /// An app wired like `main.rs`: identity + cookie session + all routes. A macro
 /// because `init_service` returns an unnameable `impl Service`.
 macro_rules! test_app {
