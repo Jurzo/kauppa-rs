@@ -38,6 +38,13 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(auth::logout),
         )
         .service(
+            web::scope("/admin")
+                .service(admin::index)
+                .service(admin::invitations)
+                .service(admin::create_invitation)
+                .service(admin::revoke_invitation),
+        )
+        .service(
             web::scope("/lists")
                 .service(lists::index)
                 .service(lists::create)

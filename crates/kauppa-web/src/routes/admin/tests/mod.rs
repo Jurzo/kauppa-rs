@@ -49,10 +49,11 @@ pub fn admin_requests(invitation: Uuid, session: Option<&Cookie<'static>>) -> Ve
     reqs
 }
 
-/// The invitation link on a page that shows one, and its token.
+/// The invitation link on a page that shows one, as a browser reads the
+/// attribute (handlebars escapes `=`), and its token.
 pub fn invitation_link(page: &str) -> Option<(String, String)> {
     let start = page.find("value=\"http")?;
-    let link = page[start + 7..].split('"').next()?.to_owned();
+    let link = page[start + 7..].split('"').next()?.replace("&#x3D;", "=");
     let token = link.split("?invite=").nth(1)?.to_owned();
     Some((link, token))
 }

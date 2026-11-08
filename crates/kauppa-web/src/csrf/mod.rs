@@ -58,8 +58,9 @@ impl OriginPolicy {
     }
 
     /// The app's origin for a request with these headers, if it has one: a
-    /// same-host request without a usable `Host` has none.
-    fn app_origin(&self, headers: &HeaderMap, uri: &Uri) -> Option<AppOrigin> {
+    /// same-host request without a usable `Host` has none. Also builds the
+    /// admin portal's invitation links (MB-0023).
+    pub fn app_origin(&self, headers: &HeaderMap, uri: &Uri) -> Option<AppOrigin> {
         match self {
             Self::Fixed(origin) => Some(origin.clone()),
             Self::SameHost(scheme) => {

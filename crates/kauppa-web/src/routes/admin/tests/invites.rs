@@ -84,7 +84,7 @@ async fn create_list_revoke() {
     let page = get_page().await;
     assert!(!page.contains(&mum_token), "shown once");
     assert!(
-        page.contains("for Mum") && page.contains("pending"),
+        page.contains("for Mum") && page.contains("· pending"),
         "{page}"
     );
     let mum_revoke = format!("/admin/invitations/{}/revoke", listed[0].id);
@@ -99,7 +99,7 @@ async fn create_list_revoke() {
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     let page = get_page().await;
     assert!(
-        page.contains("used") && page.contains("mum@example.com"),
+        page.contains("· used") && page.contains("mum@example.com"),
         "{page}"
     );
     assert!(!page.contains(&mum_revoke), "a used one can't be revoked");
@@ -108,7 +108,18 @@ async fn create_list_revoke() {
     let resp = call_service(&app, create("  ")).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let (_, token2) = invitation_link(&body_string(resp).await).expect("link");
-    let second = InvitationRepo::list(&state.pool).await.expect("list")[0].id;
+    // (Both were created within a second: find it by state, not order.)
+    let pool = &state.pool;
+    let by_use = |used: bool| async move {
+        InvitationRepo::list(pool)
+            .await
+            .expect("list")
+            .into_iter()
+            .find(|i| i.used_at.is_some() == used)
+            .expect("invitation")
+            .id
+    };
+    let second = by_use(false).await;
     let revoke = |id: String| {
         TestRequest::post()
             .uri(&format!("/admin/invitations/{id}/revoke"))
@@ -119,7 +130,7 @@ async fn create_list_revoke() {
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     header_is(&resp, &header::LOCATION, "/admin/invitations");
     let page = get_page().await;
-    assert!(page.contains("revoked"), "{page}");
+    assert!(page.contains("· revoked"), "{page}");
     let resp = call_service(
         &app,
         register_request(Some(&token2), "late@example.com").to_request(),
@@ -128,7 +139,7 @@ async fn create_list_revoke() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "revoked link");
 
     // Revoking anything but a pending invitation: 404.
-    let used = InvitationRepo::list(&state.pool).await.expect("list")[1].id;
+    let used = by_use(true).await;
     for id in [
         second.to_string(),
         used.to_string(),
@@ -146,7 +157,7 @@ async fn create_list_revoke() {
         .invitation
         .id;
     let page = get_page().await;
-    assert!(page.contains("expired"), "{page}");
+    assert!(page.contains("· expired"), "{page}");
     assert!(!page.contains(&format!("/admin/invitations/{expired}/revoke")));
 
     // A note that's too long is a form error; nothing is created.
