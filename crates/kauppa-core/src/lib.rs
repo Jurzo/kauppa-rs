@@ -7,5 +7,6 @@ pub mod domain;
 pub mod error;
 pub mod password;
 pub mod repo;
+pub mod token;
 
 pub use error::{CoreError, CoreResult};
