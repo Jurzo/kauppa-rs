@@ -31,7 +31,16 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   rendering, handlebars escapes by default — never use `{{{raw}}}` on
   user-provided content.
 - **Logging.** Never log passwords, hashes, session cookies, or full emails
-  in error messages at `info` or higher.
+  in error messages at `info` or higher. Request log spans record the path
+  only, never the query string (RR-0012).
+- **Registration.** Accounts are created only by consuming a valid
+  invitation in the same transaction (`InvitationRepo::register`; MB-0023,
+  RR-0012). Handlers never call `UserRepo::create`. Invitation tokens are 256
+  bits from `OsRng`, stored only as hex SHA-256, and never logged.
+- **Admin.** Admin status lives in the `admins` table and is checked from
+  the database on every `/admin` request, never cached in the session. It is
+  granted from the host (`kauppa-web admin grant`), never by a web request
+  without an existing admin (RR-0012).
 - **Cross-site requests.** Every non-safe request passes the app-wide
   cross-site check in one place (`Origin`/`Referer` against the app's
   origin, with `Sec-Fetch-Site` as a reject-only layer; MB-0018, RR-0010).
@@ -53,7 +62,9 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
 Any change to:
 
 - `crates/kauppa-core/src/password.rs`
-- `crates/kauppa-web/src/routes/auth.rs`
+- `crates/kauppa-web/src/routes/auth/`
+- `crates/kauppa-web/src/routes/admin/` and `crates/kauppa-web/src/admin/`
+  (admin portal and host bootstrap, RR-0012)
 - Session middleware configuration in `main.rs`
 - Cookie flags in `config.rs`
 

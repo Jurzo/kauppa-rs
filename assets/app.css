@@ -152,3 +152,15 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
   padding: 0.5rem 0.75rem; text-align: left; color: var(--fg); font-size: 1.05rem; }
 .shop-row.found .product-name { text-decoration: line-through; color: var(--muted); }
 .shop-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; }
+
+/* Admin portal (MB-0023) */
+.invite-created {
+  margin: 1rem 0; padding: 0.75rem; border: 1px solid var(--primary); border-radius: var(--radius);
+}
+.invite-created label { display: block; }
+.invite-link {
+  display: block; width: 100%; margin-top: 0.25rem; padding: 0.5rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); color: var(--fg); font: inherit; font-family: monospace;
+}
+.invite-meta { display: block; font-size: 0.875rem; overflow-wrap: anywhere; }

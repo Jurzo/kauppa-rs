@@ -20,6 +20,9 @@ anyhow = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 argon2 = { workspace = true, features = ["std"] }
+# Invitation token hashing (MB-0023, RR-0012 sub-answer 6). Resolves to the
+# sha2 0.10.9 already locked through sqlx and cookie: no new package.
+sha2 = "0.10"
 uuid = { workspace = true }
 chrono = { workspace = true }
 

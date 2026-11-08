@@ -26,4 +26,8 @@ pub enum CoreError {
 
     #[error("password hashing error")]
     PasswordHash(String),
+
+    /// The OS random number generator failed (invitation tokens).
+    #[error("random number generator error")]
+    Random(String),
 }

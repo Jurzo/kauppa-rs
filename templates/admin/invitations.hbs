@@ -1,0 +1,56 @@
+{{#> layout page_title="Invitations" page_signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>Invitations</h1>
+  </header>
+  <p class="muted">An invitation link lets one person create an account. Send it to them yourself; anyone who has the link can use it until it is used, revoked or expires.</p>
+
+  {{#if created}}
+    <div class="invite-created" role="status">
+      <p><strong>Invitation created{{#if created.note}} ({{created.note}}){{/if}}.</strong> Copy the link now: it is shown only this once. It works for one account until {{created.expires}}.</p>
+      <label>Invitation link
+        <input class="invite-link" type="text" readonly value="{{created.link}}" />
+      </label>
+    </div>
+  {{/if}}
+
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+  <form class="add-product" method="post" action="/admin/invitations">
+    <label>Note (optional)
+      <input name="note" type="text" maxlength="200" autocomplete="off"
+             placeholder="Who it's for" value="{{note}}" />
+    </label>
+    <button type="submit" class="button primary">Create invitation</button>
+  </form>
+
+  <h2>All invitations ({{count}})</h2>
+  <ul class="product-list">
+    {{#each invitations}}
+      <li class="product-row">
+        <span class="product-name">
+          {{#if this.note}}{{this.note}}{{else}}<span class="muted">No note</span>{{/if}}
+          <span class="muted">· {{this.state}}</span>
+          <span class="muted invite-meta">
+            Created {{this.created}}.
+            {{#if this.used}}
+              Used {{this.used}}{{#if this.used_by}} by {{this.used_by.display_name}} ({{this.used_by.email}}){{/if}}.
+            {{else}}
+              Expires {{this.expires}}.
+            {{/if}}
+          </span>
+        </span>
+        {{#if this.pending}}
+          <form class="row-actions" method="post" action="/admin/invitations/{{this.id}}/revoke"
+                hx-confirm="Revoke this invitation? Its link stops working.">
+            <button type="submit" class="link danger">Revoke<span class="visually-hidden"> invitation{{#if this.note}} {{this.note}}{{/if}}</span></button>
+          </form>
+        {{/if}}
+      </li>
+    {{else}}
+      <li class="product-row empty">No invitations yet.</li>
+    {{/each}}
+  </ul>
+</section>
+{{/layout}}
