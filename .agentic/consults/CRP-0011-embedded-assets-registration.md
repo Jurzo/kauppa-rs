@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0024 autonomy.escalate: \"replacing `actix-files` or changing how `/assets` is registered in `main.rs` (MB-0018 P4 pins its position)\" (security). feature.md escalation path \"Session middleware in crates/kauppa-web/src/main.rs\" (scripts/agentic/check_triggers.py: security:session-middleware). Secondary, platform-owner: removing `actix-files` (and handlebars' `dir_source` feature) is a manifest change under dependency-bump.md, which MB-0024 doesn't name yet. Not fired: \"using a crate instead of a build.rs\" (no crate added) and \"the binary grows by more than 1 MB\" (it shrinks by 384 KB)."
 ---
 ```
