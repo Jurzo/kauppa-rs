@@ -25,7 +25,10 @@ TRIGGERS = [
     # (path prefix, label)
     ("migrations/", "schema"),
     ("crates/kauppa-core/src/password.rs", "security:password"),
-    ("crates/kauppa-web/src/routes/auth.rs", "security:auth"),
+    # Matches routes/auth.rs and routes/auth/ (RR-0012).
+    ("crates/kauppa-web/src/routes/auth", "security:auth"),
+    ("crates/kauppa-web/src/routes/admin/", "security:admin"),
+    ("crates/kauppa-web/src/admin/", "security:admin"),
     ("crates/kauppa-web/src/main.rs", "security:session-middleware"),
     ("Cargo.toml", "platform:deps"),
     ("rust-toolchain.toml", "platform:toolchain"),

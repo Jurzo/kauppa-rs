@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: high
 urgency: high
-state: open
+state: answered
 runbook_trigger: "MB-0023 autonomy.escalate: schema shape (data-owner; migration.md entry gate 2, a CRP before any file in `migrations/`); first-admin bootstrap (security); email-bound vs bearer invitations (security); token form in the link and as a hidden field (security); a dependency for hashing (platform-owner, sub-question Q6). feature.md escalation paths `migrations/**`, `crates/kauppa-web/src/routes/auth.rs` and `main.rs`. Routed to security, with Q1 and Q2 also to data-owner and Q6 to platform."
 ---
 ```

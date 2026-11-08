@@ -13,7 +13,9 @@
 
 # Security: auth, sessions, password hashing.
 /crates/kauppa-core/src/password.rs           @juuso-kalliomaki
-/crates/kauppa-web/src/routes/auth.rs         @juuso-kalliomaki
+/crates/kauppa-web/src/routes/auth/          @juuso-kalliomaki
+/crates/kauppa-web/src/routes/admin/         @juuso-kalliomaki
+/crates/kauppa-web/src/admin/                @juuso-kalliomaki
 /crates/kauppa-web/src/main.rs                @juuso-kalliomaki
 
 # Platform: build, deps, lint config, CI, scripts.
