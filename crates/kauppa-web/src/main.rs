@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(state.clone())
-            .wrap(TracingLogger::default())
+            .wrap(TracingLogger::<telemetry::RequestSpan>::new())
             .wrap(IdentityMiddleware::default())
             .wrap(
                 SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())

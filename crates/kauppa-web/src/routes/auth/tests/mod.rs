@@ -3,6 +3,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod register_requires_invite;
+mod request_log;
 
 use actix_web::test::TestRequest;
 use chrono::{DateTime, Utc};
