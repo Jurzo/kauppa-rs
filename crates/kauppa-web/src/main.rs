@@ -8,7 +8,6 @@
 
 use std::sync::Arc;
 
-use actix_files::Files;
 use actix_identity::IdentityMiddleware;
 use actix_session::SessionMiddleware;
 use actix_session::storage::CookieSessionStore;
@@ -80,7 +79,7 @@ async fn main() -> anyhow::Result<()> {
             // Static files (GET and HEAD only) go first: `routes::configure`
             // puts every route behind the cross-site check, in one catch-all
             // scope (RR-0010).
-            .service(Files::new("/assets", "./assets"))
+            .service(routes::assets::Assets)
             .configure(routes::configure)
     })
     .bind(&bind)?
