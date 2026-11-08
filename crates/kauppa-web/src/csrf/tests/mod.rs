@@ -23,6 +23,7 @@ use uuid::Uuid;
 use kauppa_core::domain::ShareRole;
 use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo, UserRepo};
 
+pub use crate::routes::test_support::source_files;
 use crate::routes::test_support::{make_category, make_recipe_with, make_user};
 use crate::state::AppState;
 
@@ -39,37 +40,6 @@ pub struct Route {
 /// The crate's `src/`.
 fn src_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
-}
-
-/// Every non-test `.rs` file under `src/`, as `(path relative to src, text)`:
-/// skips `tests/` directories and `test_support.rs`.
-pub fn source_files() -> Vec<(String, String)> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in std::fs::read_dir(dir).expect("read src dir") {
-            let path = entry.expect("dir entry").path();
-            if path.is_dir() {
-                if path.file_name().is_some_and(|n| n != "tests") {
-                    walk(&path, out);
-                }
-            } else if path.extension().is_some_and(|e| e == "rs")
-                && path.file_name().is_some_and(|n| n != "test_support.rs")
-            {
-                out.push(path);
-            }
-        }
-    }
-    let src = src_dir();
-    let mut paths = Vec::new();
-    walk(&src, &mut paths);
-    paths.sort();
-    paths
-        .into_iter()
-        .map(|p| {
-            let rel = p.strip_prefix(&src).expect("under src");
-            let rel = rel.to_string_lossy().replace('\\', "/");
-            (rel, std::fs::read_to_string(&p).expect("read source"))
-        })
-        .collect()
 }
 
 /// actix-web's route attribute macros and the method each registers

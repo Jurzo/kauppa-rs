@@ -15,6 +15,9 @@ use kauppa_core::repo::UserRepo;
 use crate::error::{WebError, WebResult};
 use crate::state::AppState;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Deserialize)]
 pub struct Credentials {
     pub email: String,

@@ -2,6 +2,7 @@
 //! database, an app wired like `main.rs`, and a signed-in session.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use actix_web::body::MessageBody;
@@ -144,6 +145,38 @@ pub fn session_cookie<B>(resp: &ServiceResponse<B>) -> Cookie<'static> {
 
 pub async fn body_string<B: MessageBody>(resp: ServiceResponse<B>) -> String {
     String::from_utf8(test::read_body(resp).await.to_vec()).expect("utf-8 body")
+}
+
+/// Every non-test `.rs` file under the crate's `src/`, as `(path relative to
+/// src, text)`: skips `tests/` directories and this file. For the source
+/// scans (`csrf::tests::coverage`, `routes::auth`'s bypass guard).
+pub fn source_files() -> Vec<(String, String)> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|n| n != "tests") {
+                    walk(&path, out);
+                }
+            } else if path.extension().is_some_and(|e| e == "rs")
+                && path.file_name().is_some_and(|n| n != "test_support.rs")
+            {
+                out.push(path);
+            }
+        }
+    }
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut paths = Vec::new();
+    walk(&src, &mut paths);
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|p| {
+            let rel = p.strip_prefix(&src).expect("under src");
+            let rel = rel.to_string_lossy().replace('\\', "/");
+            (rel, std::fs::read_to_string(&p).expect("read source"))
+        })
+        .collect()
 }
 
 /// A `tracing` writer that keeps everything written to it.
