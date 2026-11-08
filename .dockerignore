@@ -1,0 +1,21 @@
+# Build context for deploy/Dockerfile (MB-0022 P1). An allowlist: everything
+# is excluded except what the build needs, so target/, .env, data/, .git,
+# Terraform state and secrets can never reach the image.
+*
+
+!Cargo.toml
+!Cargo.lock
+!crates/
+!migrations/
+!templates/
+!assets/
+!deploy/docker-entrypoint.sh
+!deploy/healthcheck.sh
+
+# Never, even inside an allowed directory.
+**/target/
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*
+**/*.sqlite
