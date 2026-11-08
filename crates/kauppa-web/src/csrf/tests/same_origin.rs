@@ -1,6 +1,7 @@
 //! MB-0018 P2: same-origin form posts and htmx requests still succeed,
-//! including login and registration, directly (same-host) and behind a
-//! proxy with `KAUPPA_PUBLIC_ORIGIN`. `bare_test_app!`: every request
+//! including login and registration (through an invitation link since
+//! MB-0023), directly (same-host) and behind a proxy with
+//! `KAUPPA_PUBLIC_ORIGIN`. `bare_test_app!`: every request
 //! carries exactly the proof a browser would.
 
 use actix_web::cookie::Cookie;
@@ -8,9 +9,12 @@ use actix_web::http::{StatusCode, header};
 use actix_web::test::{TestRequest, call_service};
 use actix_web::web;
 
-use kauppa_core::repo::{ShoppingListRepo, UserRepo};
+use chrono::Utc;
+
+use kauppa_core::repo::{InvitationRepo, ShoppingListRepo, UserRepo};
 
 use crate::csrf::{AppOrigin, OriginPolicy};
+use crate::routes::auth::tests::hidden_invite;
 use crate::routes::test_support::{
     PASSWORD, TEST_HOST, TEST_ORIGIN, bare_test_app, body_string, session_cookie, test_state,
 };
@@ -63,11 +67,19 @@ async fn browse(state: &web::Data<AppState>, host: &str, origin: &str) {
             .insert_header((header::HOST, host.to_owned()))
     };
 
-    // Registration and login, as plain posts and over htmx (hx-boost).
+    // Registration through an invitation link (MB-0023) and login, as
+    // plain posts and over htmx (hx-boost).
     for (htmx, email) in [(false, "plain@example.com"), (true, "htmx@example.com")] {
-        let page = body_string(call_service(&app, get("/auth/register").to_request()).await).await;
+        let token = InvitationRepo::create(&state.pool, None, None, Utc::now())
+            .await
+            .expect("invitation")
+            .token;
+        let link = format!("/auth/register?invite={}", token.as_str());
+        let page = body_string(call_service(&app, get(&link).to_request()).await).await;
         let action = form_action(&page, "/auth/register");
+        let invite = hidden_invite(&page).expect("hidden invite field");
         let form = [
+            ("invite", invite.as_str()),
             ("email", email),
             ("display_name", "Pat"),
             ("password", PASSWORD),
