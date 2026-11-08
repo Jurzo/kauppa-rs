@@ -12,8 +12,11 @@
 
 use chrono::{DateTime, SubsecRound, Utc};
 use sqlx::Row;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow, SqliteSynchronous,
+};
 use std::str::FromStr;
+use std::time::Duration;
 use uuid::Uuid;
 
 use crate::CoreResult;
@@ -28,20 +31,52 @@ mod product;
 mod recipe;
 mod user;
 
+#[cfg(test)]
+mod tests;
+
+/// Pool size. SQLite serializes writers, so more connections only add
+/// readers (persistence.md: don't raise without benchmarking contention).
+const MAX_CONNECTIONS: u32 = 8;
+
+/// How long a connection waits for another's write lock before failing.
+/// Writes are a few milliseconds, so even all other connections writing
+/// ahead clears well inside this; it stays below the pool's 30 s acquire
+/// timeout so a stuck lock surfaces as an error, not a hung request.
+const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[derive(Clone, Debug)]
 pub struct SqlitePool {
     inner: sqlx::SqlitePool,
 }
 
 impl SqlitePool {
+    /// Open the pool. Every connection gets the same settings (MB-0025):
+    ///
+    /// - WAL journal, so readers don't block the writer or each other. WAL
+    ///   is persistent in the file: the first connection switches an
+    ///   existing rollback-journal database over, the rest find it set.
+    ///   The database is then three files (`.db`, `-wal`, `-shm`); copying
+    ///   the `.db` alone is not a backup.
+    /// - `synchronous=NORMAL`: in WAL mode the database can't be corrupted,
+    ///   and an app crash loses nothing; a power or OS failure can roll back
+    ///   the last commits since the WAL was last synced.
+    /// - A busy timeout, so a write that finds another write in progress
+    ///   waits instead of failing with "database is locked". Writes take the
+    ///   lock up front (`BEGIN IMMEDIATE`), so the wait always applies.
+    /// - Foreign keys on.
+    ///
+    /// `:memory:` databases (the tests) report journal mode `memory`.
     pub async fn connect(url: &str) -> CoreResult<Self> {
         let options = SqliteConnectOptions::from_str(url)
             .map_err(|e| CoreError::Invalid(format!("bad database url: {e}")))?
             .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(BUSY_TIMEOUT)
             .foreign_keys(true);
 
         let inner = SqlitePoolOptions::new()
-            .max_connections(8)
+            .max_connections(MAX_CONNECTIONS)
             .connect_with(options)
             .await?;
 
