@@ -1,11 +1,13 @@
 use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::http::Version;
-use actix_web::{Error, HttpMessage};
+use actix_web::{Error, HttpMessage, web};
 use tracing::Span;
 use tracing::field::Empty;
 use tracing_actix_web::{DefaultRootSpanBuilder, RequestId, RootSpanBuilder};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+
+use crate::state::AppState;
 
 pub fn init(default_level: &str) -> anyhow::Result<()> {
     let filter = EnvFilter::try_from_env("KAUPPA_LOG")
@@ -34,7 +36,10 @@ pub fn init(default_level: &str) -> anyhow::Result<()> {
 /// constraint 3). An invitation link's token is in the query, and both
 /// formatters print the span's fields with every event in the request.
 ///
-/// MB-0026 adds its resolved `http.client_ip` here (CRP-0013 Q6).
+/// `http.client_ip` is the auth limiter's client key, truncated to IPv4 /24
+/// or IPv6 /48 (MB-0026, RR-0013 sub-answer 6), never
+/// `realip_remote_addr()`'s client-chosen address; empty when the request
+/// has no peer address.
 #[derive(Debug)]
 pub struct RequestSpan;
 
@@ -54,6 +59,16 @@ impl RootSpanBuilder for RequestSpan {
             .get::<RequestId>()
             .map(ToString::to_string)
             .unwrap_or_default();
+        let client_ip = request
+            .app_data::<web::Data<AppState>>()
+            .map(|state| {
+                state
+                    .limiter
+                    .client_key(request.peer_addr(), request.headers())
+                    .truncated()
+                    .to_string()
+            })
+            .unwrap_or_default();
         let connection_info = request.connection_info();
         tracing::info_span!(
             "HTTP request",
@@ -62,7 +77,7 @@ impl RootSpanBuilder for RequestSpan {
             http.flavor = %flavor(request.version()),
             http.scheme = %connection_info.scheme(),
             http.host = %connection_info.host(),
-            http.client_ip = %connection_info.realip_remote_addr().unwrap_or(""),
+            http.client_ip = %client_ip,
             http.user_agent = %user_agent,
             http.target = %request.path(),
             http.status_code = Empty,

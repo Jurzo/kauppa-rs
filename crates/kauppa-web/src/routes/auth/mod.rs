@@ -9,8 +9,14 @@
 //! (`InvitationRepo::register`). The invitation link is
 //! `/auth/register?invite=<token>`; the page carries the token on in a
 //! hidden field, so it never appears in a POST URL.
+//!
+//! Failed logins and registrations are rate-limited (MB-0026, RR-0013):
+//! both handlers consult [`limiter::AuthLimiter`] before any database
+//! lookup, invitation check or Argon2 call, and a throttled request does
+//! no other work.
 
 use std::fmt;
+use std::sync::OnceLock;
 
 use actix_identity::Identity;
 use actix_web::http::StatusCode;
@@ -21,10 +27,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use kauppa_core::repo::{InvitationRepo, UserRepo};
-use kauppa_core::{CoreError, password, token};
+use kauppa_core::{CoreError, CoreResult, password, token};
 
 use crate::error::{WebError, WebResult};
 use crate::state::AppState;
+
+use self::limiter::Throttled;
 
 pub mod limiter;
 
@@ -73,7 +81,7 @@ impl fmt::Debug for InviteQuery {
 #[derive(Debug, Default, Serialize)]
 struct RegisterView<'a> {
     invite: Option<&'a str>,
-    error: Option<&'static str>,
+    error: Option<&'a str>,
     display_name: &'a str,
     email: &'a str,
 }
@@ -81,6 +89,27 @@ struct RegisterView<'a> {
 /// The one answer to every invalid invitation: missing, malformed, unknown,
 /// expired, revoked or used (RR-0012 constraint 4).
 const INVALID_INVITATION: &str = "This invitation link isn't valid. Ask for a new one.";
+
+/// The login error for an unknown email and for a wrong password alike.
+const INVALID_LOGIN: &str = "Invalid email or password.";
+
+/// The password the dummy hash is made from. Its value doesn't matter: a
+/// match changes nothing, since an unknown email always gets the 401.
+const DUMMY_PASSWORD: &str = "kauppa-rs dummy password for unknown emails";
+
+static DUMMY_HASH: OnceLock<String> = OnceLock::new();
+
+/// A fixed PHC string, made once per process with `password::hash`, that
+/// login verifies against for an unknown email, so every login attempt
+/// costs one Argon2 verify (RR-0013 sub-answer 7). `main.rs` makes it at
+/// startup.
+pub fn dummy_hash() -> CoreResult<&'static str> {
+    if let Some(hash) = DUMMY_HASH.get() {
+        return Ok(hash);
+    }
+    let hash = password::hash(DUMMY_PASSWORD)?;
+    Ok(DUMMY_HASH.get_or_init(|| hash))
+}
 
 const EMAIL_TAKEN: &str =
     "An account already uses that email. Sign in instead, or use another email.";
@@ -99,14 +128,26 @@ pub async fn login_submit(
     state: web::Data<AppState>,
     form: web::Form<Credentials>,
 ) -> WebResult<HttpResponse> {
-    let found = state.pool.find_by_email(&form.email).await?;
-    let Some((user, stored_hash)) = found else {
-        return render_login_error(&state, "Invalid email or password.");
-    };
-
-    if !password::verify(&form.password, &stored_hash)? {
-        return render_login_error(&state, "Invalid email or password.");
+    // Limit before cost (RR-0013 constraint 1): client, then account, before
+    // the lookup and Argon2. Unknown and known emails are keyed alike.
+    let client = state.limiter.client_key(req.peer_addr(), req.headers());
+    let account = state.limiter.account_key(&form.email);
+    if let Some(throttled) = state.limiter.check_login(client, account) {
+        return render_login_throttled(&state, throttled);
     }
+
+    let found = state.pool.find_by_email(&form.email).await?;
+    let user = if let Some((user, stored_hash)) = found {
+        password::verify(&form.password, &stored_hash)?.then_some(user)
+    } else {
+        // The same Argon2 cost as a wrong password, and the same answer.
+        password::verify(&form.password, dummy_hash()?)?;
+        None
+    };
+    let Some(user) = user else {
+        state.limiter.record_login_failure(client, account);
+        return render_login_error(&state, INVALID_LOGIN);
+    };
 
     Identity::login(&req.extensions(), user.id.to_string())
         .map_err(|e| WebError::Internal(format!("session login failed: {e}")))?;
@@ -114,6 +155,27 @@ pub async fn login_submit(
     Ok(HttpResponse::SeeOther()
         .append_header((header::LOCATION, "/lists"))
         .finish())
+}
+
+/// The 429 page: the same text whichever limiter fired (RR-0013
+/// constraint 4).
+fn render_login_throttled(state: &AppState, throttled: Throttled) -> WebResult<HttpResponse> {
+    let body = state.templates.render(
+        "auth/login",
+        &json!({ "error": too_many_attempts(throttled) }),
+    )?;
+    Ok(HttpResponse::TooManyRequests()
+        .insert_header((header::RETRY_AFTER, throttled.retry_after_s))
+        .content_type("text/html")
+        .body(body))
+}
+
+/// "Too many attempts. Try again in N minutes." (RR-0013 sub-answer 1).
+fn too_many_attempts(throttled: Throttled) -> String {
+    match throttled.minutes() {
+        1 => "Too many attempts. Try again in 1 minute.".to_owned(),
+        n => format!("Too many attempts. Try again in {n} minutes."),
+    }
 }
 
 fn render_login_error(state: &AppState, msg: &str) -> WebResult<HttpResponse> {
@@ -150,11 +212,51 @@ pub async fn register_submit(
     state: web::Data<AppState>,
     form: Result<web::Form<Registration>, actix_web::Error>,
 ) -> HttpResponse {
+    // Limit before cost (RR-0013 constraint 1): before the invitation check
+    // and the password hash, and before even a malformed form is answered.
+    let client = state.limiter.client_key(req.peer_addr(), req.headers());
+    if let Some(throttled) = state.limiter.check_register(client) {
+        return private(
+            render_register_throttled(&state, form.ok().as_deref(), throttled).map_err(Into::into),
+        );
+    }
     let result = match form {
         Ok(form) => register(&req, &state, &form).await.map_err(Into::into),
         Err(e) => Err(e),
     };
+    // Every client error is a failure (RR-0013 sub-answer 1): a missing,
+    // unknown, expired, revoked or used invitation, a duplicate email, or
+    // invalid input. Server errors and successes don't count.
+    let failed = match &result {
+        Ok(resp) => resp.status().is_client_error(),
+        Err(e) => e.as_response_error().status_code().is_client_error(),
+    };
+    if failed {
+        state.limiter.record_register_failure(client);
+    }
     private(result)
+}
+
+/// The register page with the 429 message, keeping the form's invitation
+/// (and what was typed) when the form could be read.
+fn render_register_throttled(
+    state: &AppState,
+    form: Option<&Registration>,
+    throttled: Throttled,
+) -> WebResult<HttpResponse> {
+    let message = too_many_attempts(throttled);
+    let view = RegisterView {
+        invite: form.map(|f| f.invite.as_str()).filter(|t| !t.is_empty()),
+        error: Some(&message),
+        display_name: form.map_or("", |f| f.display_name.as_str()),
+        email: form.map_or("", |f| f.email.as_str()),
+    };
+    let mut resp = render_register(state, StatusCode::TOO_MANY_REQUESTS, &view)?;
+    resp.headers_mut().insert(
+        header::RETRY_AFTER,
+        HeaderValue::from(throttled.retry_after_s),
+    );
+    Ok(resp)
 }
 
 /// The steps of a registration, cheapest rejection first.
@@ -163,8 +265,7 @@ async fn register(
     state: &AppState,
     form: &Registration,
 ) -> WebResult<HttpResponse> {
-    // MB-0026's rate-limit check goes here: before the invitation check and
-    // the password hash.
+    // MB-0026's rate-limit check runs in `register_submit`, before this.
 
     // A missing or malformed token is rejected before any DB work or Argon2.
     if !token::is_well_formed(&form.invite) {

@@ -67,6 +67,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let limiter = AuthLimiter::new(Arc::new(SystemClock), cfg.trusted_proxies.clone());
+    // Made now, so the first unknown-email login costs what every other
+    // login costs (RR-0013 sub-answer 7).
+    routes::auth::dummy_hash()?;
 
     let templates = Arc::new(templates::build_registry()?);
     let state = web::Data::new(AppState {
