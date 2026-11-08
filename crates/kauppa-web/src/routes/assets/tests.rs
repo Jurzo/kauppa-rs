@@ -16,6 +16,8 @@ use crate::routes::test_support::{TEST_ORIGIN, test_state};
 const SERVED_AS: &[(&str, &str)] = &[
     ("app.css", "text/css; charset=utf-8"),
     ("manifest.webmanifest", "application/manifest+json"),
+    // MB-0027 (RR-0015): mime_guess 2.0.5 maps `js` to `text/javascript`.
+    ("vendor/htmx-2.0.3.min.js", "text/javascript"),
 ];
 
 /// The workspace's `assets/` folder, for comparison only.
