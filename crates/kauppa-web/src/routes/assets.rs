@@ -5,16 +5,8 @@
 //!
 //! It is a service factory, not a handler attribute or builder route: it
 //! registers one prefix of its own, beside `routes::configure`'s cross-site
-//! scope rather than inside it, the way `Files` is registered in `main.rs`,
+//! scope rather than inside it, the way `Files` was registered in `main.rs`,
 //! and it accepts no write method (MB-0018 P4).
-
-// Prototype (MB-0024): `main.rs` still serves `Files::new("/assets", …)`
-// until CRP-0011 is answered; the `.service(…)` swap there removes this, and
-// `expect` fails the build if it is left behind.
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "registered in main.rs after CRP-0011")
-)]
 
 use std::future::{Ready, ready};
 
