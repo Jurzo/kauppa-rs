@@ -40,7 +40,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0015]
 ---
 ```
 
@@ -64,7 +64,7 @@ along with the rest; the two don't conflict.
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to platform-owner: source, version, checksum
-   location; whether to add CSP now (security). Stop until the RR.
+   location; whether to add CSP now (security). Answered by RR-0015.
 2. Download from the chosen source, verify against its published checksum,
    commit with the checksum; change the `<script>` tag.
 
