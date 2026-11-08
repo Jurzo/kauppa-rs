@@ -49,9 +49,30 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
 ## Pool
 
 - `SqlitePool` wraps `sqlx::SqlitePool`. The web layer never imports `sqlx`.
-- `connect` sets `create_if_missing(true)` and `foreign_keys(true)`.
-- Max 8 connections for SQLite. Don't raise this without benchmarking write
-  contention — SQLite serializes writers.
+- `connect` sets, on every connection (MB-0025):
+  - `create_if_missing(true)` and `foreign_keys(true)`;
+  - `journal_mode(Wal)`: readers don't block the writer or each other. WAL is
+    stored in the file, so an existing rollback-journal database is switched
+    over on first open. The database is then three files (`.db`, `-wal`,
+    `-shm`) that must stay together on a local filesystem (not a network
+    share). Copying the `.db` alone is not a backup: use `.backup` or
+    `VACUUM INTO`.
+  - `synchronous(Normal)`: in WAL mode the database can't be corrupted and an
+    app crash loses nothing; a power or OS failure can roll back the last
+    commits. Switching to `Full` is a data-owner decision.
+  - `busy_timeout` of 10 s (`BUSY_TIMEOUT`): a write that finds another in
+    progress waits instead of failing with "database is locked". It stays
+    below the pool's 30 s acquire timeout, so a stuck lock surfaces as an
+    error, not a hung request.
+- Settings go through the typed `SqliteConnectOptions` methods, not raw
+  `PRAGMA` statements, so every new connection gets them.
+- Max 8 connections (`MAX_CONNECTIONS`). SQLite serializes writers, so more
+  connections only add readers. Don't raise this without benchmarking write
+  contention.
+- One process per database file. Running a second instance against the same
+  file is unsupported.
+- Tests that need WAL or locking behaviour use a temp-file database; `:memory:`
+  reports journal mode `memory`.
 
 ## Transactions
 
