@@ -13,22 +13,22 @@ non_goals:
 acceptance:
   - id: P1
     property: Every route that accepts a non-safe method (POST today; PUT, PATCH or DELETE if added) rejects a cross-site request with 403 and changes nothing, on every route the app registers, whether the request is a plain form post or htmx.
-    check: cargo test -p kauppa-web csrf::rejects_cross_site_writes
+    check: cargo test -p kauppa-web csrf::tests::cross_site::rejects_cross_site_writes
   - id: P2
     property: Same-origin form posts and htmx requests still succeed, including the login and registration forms, on a direct connection and behind a reverse proxy configured with the app's public origin.
-    check: cargo test -p kauppa-web csrf::same_origin_writes_succeed
+    check: cargo test -p kauppa-web csrf::tests::same_origin::same_origin_writes_succeed
   - id: P3
-    property: A non-safe request that carries none of the chosen proof (no matching `Origin`, `Referer` or token, per the decision in this brief's CRP) is rejected, so stripping headers isn't a bypass.
-    check: cargo test -p kauppa-web csrf::missing_proof_is_rejected
+    property: A non-safe request that carries none of the chosen proof (no matching `Origin`, `Referer` or token, per RR-0010) is rejected, so stripping headers isn't a bypass.
+    check: cargo test -p kauppa-web csrf::tests::cross_site::missing_proof_is_rejected
   - id: P4
     property: A route-coverage guard fails if a route accepting a non-safe method is registered outside the protection, so future handlers can't opt out by accident.
-    check: cargo test -p kauppa-web csrf::every_write_route_is_covered
+    check: cargo test -p kauppa-web csrf::tests::coverage::every_write_route_is_covered
   - id: P5
     property: MB-0008's deferred P8 holds — share and revoke reject cross-origin posts — as a named test in its original module.
     check: cargo test -p kauppa-web routes::lists::tests::sharing_invites::share_rejects_cross_origin
   - id: P6
     property: Rejections are logged with method, path and the reason (missing or mismatched proof) at `warn`, without cookies, tokens or full emails.
-    check: cargo test -p kauppa-web csrf::rejections_are_logged
+    check: cargo test -p kauppa-web csrf::tests::logging::rejections_are_logged
 context:
   - crates/kauppa-web/src/main.rs
   - crates/kauppa-web/src/config.rs
@@ -66,10 +66,13 @@ mentorship:
 resolutions:
   - RR-0002
   - RR-0008
+  - RR-0010
 ---
 ```
 
 > Check paths updated by MB-0019 (RR-0009): P5's test goes in the `routes::lists` test area `sharing_invites`, beside the other share and revoke tests; this mission may pick another area and update the check.
+
+> Check paths updated per RR-0009 (full test paths). The `csrf` tests live in `crates/kauppa-web/src/csrf/tests/<area>.rs` (`cross_site`, `same_origin`, `coverage`, `logging`); P5 stays in `routes::lists::tests::sharing_invites`.
 
 ## Context
 

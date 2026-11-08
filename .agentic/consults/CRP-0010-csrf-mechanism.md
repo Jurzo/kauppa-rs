@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: high
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0018 autonomy.escalate: \"choosing the mechanism (origin check, synchronizer or double-submit token, or both) — open a CRP before writing code\" (security); \"adding a configuration variable such as `KAUPPA_PUBLIC_ORIGIN`\" (platform-owner); \"any change to session middleware wiring in main.rs or to cookie attributes\" (security); \"promoting security.md's CSRF rule from should to must (Mentorship Pack change)\" (security); \"the mechanism seems to need a new dependency\" (platform-owner, answered here: no option needs one). feature.md escalation paths \"Session middleware in crates/kauppa-web/src/main.rs\" and `.agentic/{mentorship,runbooks,resolutions}/**`. RR-0002 constraint 6; RR-0008 constraint 1."
 ---
 ```
