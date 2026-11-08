@@ -26,6 +26,7 @@ mod state;
 mod telemetry;
 mod templates;
 
+use crate::routes::auth::limiter::{AuthLimiter, SystemClock};
 use crate::state::AppState;
 
 #[actix_web::main]
@@ -65,11 +66,14 @@ async fn main() -> anyhow::Result<()> {
         csrf::OriginPolicy::SameHost(_) => {}
     }
 
+    let limiter = AuthLimiter::new(Arc::new(SystemClock), cfg.trusted_proxies.clone());
+
     let templates = Arc::new(templates::build_registry()?);
     let state = web::Data::new(AppState {
         pool: pool.clone(),
         templates,
         origin,
+        limiter: Arc::new(limiter),
     });
 
     let session_key = Key::from(cfg.session_secret.as_bytes());

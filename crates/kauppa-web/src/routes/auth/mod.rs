@@ -26,6 +26,8 @@ use kauppa_core::{CoreError, password, token};
 use crate::error::{WebError, WebResult};
 use crate::state::AppState;
 
+pub mod limiter;
+
 #[cfg(test)]
 pub mod tests;
 

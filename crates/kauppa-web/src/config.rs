@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use crate::csrf::{OriginPolicy, PublicOrigin};
+use crate::routes::auth::limiter::TrustedProxies;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
@@ -15,6 +16,12 @@ pub struct Settings {
     /// and normalized on load. Unset (or empty): the request's own `Host`.
     #[serde(default, deserialize_with = "optional_origin")]
     pub public_origin: Option<PublicOrigin>,
+    /// Reverse proxies whose `X-Forwarded-For` names the client for the
+    /// auth limiter (`KAUPPA_TRUSTED_PROXIES`, MB-0026, RR-0013):
+    /// comma-separated addresses or CIDR blocks. Validated on load; a
+    /// malformed entry refuses to start. Unset (or empty): trust none.
+    #[serde(default, deserialize_with = "trusted_proxies")]
+    pub trusted_proxies: TrustedProxies,
 }
 
 /// An empty `KAUPPA_PUBLIC_ORIGIN=` means unset, as in `.env.example`.
@@ -26,6 +33,14 @@ where
     raw.filter(|s| !s.trim().is_empty())
         .map(|s| PublicOrigin::try_from(s).map_err(serde::de::Error::custom))
         .transpose()
+}
+
+fn trusted_proxies<'de, D>(deserializer: D) -> Result<TrustedProxies, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Option::<String>::deserialize(deserializer)?;
+    TrustedProxies::parse(raw.as_deref().unwrap_or("")).map_err(serde::de::Error::custom)
 }
 
 impl Settings {
