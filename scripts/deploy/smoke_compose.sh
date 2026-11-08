@@ -258,10 +258,14 @@ http POST "$BASE/auth/login" -H "Origin: $ORIGIN" \
     --data-urlencode "email=nobody-$PROJECT@example.test" --data-urlencode "password=wrong-password-123"
 sleep 1
 
-no_caddy_log_directive() {
-    ! grep -vE '^[[:space:]]*#' deploy/Caddyfile | grep -qE '^[[:space:]]*log([[:space:]]|$|\{)'
+# The only `log` directive allowed is the global `log default` filter;
+# a site-level `log` would be an access log (RR-0014 constraint 5).
+no_caddy_access_log() {
+    ! grep -vE '^[[:space:]]*#' deploy/Caddyfile \
+        | grep -E '^[[:space:]]*log([[:space:]]|$|\{)' \
+        | grep -qvE '^[[:space:]]*log[[:space:]]+default[[:space:]]*\{'
 }
-check P3 "Caddyfile has no log directive (no access log)" -- no_caddy_log_directive
+check P3 "Caddyfile has no access log (only the global log filter)" -- no_caddy_access_log
 
 caddy_logs_clean() {
     ! compose logs --no-color caddy 2>&1 | grep -qF "$QUERY_MARKER"
@@ -278,17 +282,17 @@ CADDY_IMAGE=$(docker inspect -f '{{.Config.Image}}' "$(compose ps -q caddy)")
 ECHO="$PROJECT-echo"
 compose stop kauppa >&2
 
-# Upstream down: Caddy answers 502 and writes an error log entry. Report
-# whether that entry carries the query string (an open item: RR-0014
-# constraint 5 covers access logs; see MB-0022's Continuity Pack).
+# Upstream down: Caddy answers 502 and writes an error log entry with the
+# request URI. The global `log default` filter must strip its query string
+# (RR-0014 constraint 5, owner-approved 2026-11-08).
 QUERY_MARKER_502="smokeupstreamdown$(rand_id)"
 http GET "$BASE/auth/register?invite=$QUERY_MARKER_502"
 sleep 1
-if compose logs --no-color caddy 2>&1 | grep -qF "$QUERY_MARKER_502"; then
-    info "UPSTREAM-DOWN: Caddy's error log recorded the query string of a request that got $HTTP_STATUS"
-else
-    info "UPSTREAM-DOWN: no query string in Caddy's logs for a request that got $HTTP_STATUS"
-fi
+info "UPSTREAM-DOWN: the request got $HTTP_STATUS"
+caddy_error_log_clean() {
+    ! compose logs --no-color caddy 2>&1 | grep -qF "$QUERY_MARKER_502"
+}
+check P3 "Caddy's error log has no query string while the app is down" -- caddy_error_log_clean
 
 docker run -d --rm --name "$ECHO" --network "${PROJECT}_internal" --network-alias kauppa \
     --entrypoint /bin/sh "$CADDY_IMAGE" -c \

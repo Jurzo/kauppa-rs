@@ -8,10 +8,15 @@
 # app unchanged (no header_up). The app still checks POSTs against its fixed
 # KAUPPA_PUBLIC_ORIGIN (RR-0010), so the check doesn't depend on that.
 #
-# No access log (RR-0014 constraint 5): there is deliberately no `log`
-# directive, because invitation links carry a token in the query string
+# No access log (RR-0014 constraint 5): there is deliberately no site-level
+# `log` directive, because invitation links carry a token in the query string
 # (MB-0023, CRP-0012 Q5). Enabling access logs is a security review item and
-# must strip the query from request>uri. No `trusted_proxies` either: Caddy
+# must strip the query from request>uri.
+#
+# Caddy still writes its own logs, e.g. a reverse_proxy error (502) while the
+# app restarts during an update, and those carry the request URI. The global
+# `log default` filter below strips the query string and the Referer from
+# every Caddy log entry (owner-approved 2026-11-08 under constraint 5). No `trusted_proxies` either: Caddy
 # then overwrites any client-sent X-Forwarded-For with the real peer address,
 # which MB-0026's KAUPPA_TRUSTED_PROXIES relies on (RR-0013).
 
@@ -19,6 +24,19 @@
 	# HTTP/1.1 and HTTP/2 only: the firewall and Compose open TCP 443, not UDP.
 	servers {
 		protocols h1 h2
+	}
+
+	# Every Caddy log entry (error logs included): no query string, no
+	# Referer. JSON to stderr, so `docker compose logs caddy` shows it.
+	log default {
+		output stderr
+		format filter {
+			wrap json
+			fields {
+				request>uri regexp `\?.*$` "?REDACTED"
+				request>headers>Referer delete
+			}
+		}
 	}
 }
 

@@ -262,8 +262,9 @@ These land with their own missions; set them when the image contains them.
   docker compose exec kauppa kauppa-web admin grant you@example.com
   ```
 
-  The invitation link carries a token in `?invite=`; Caddy has no access log,
-  and the app logs paths only after MB-0023, so it isn't written to a log.
+  The invitation link carries a token in `?invite=`; Caddy has no access log
+  and strips query strings from its own (error) logs, and the app logs paths
+  only after MB-0023, so it isn't written to a log.
 - **After MB-0024 (embedded templates and assets):** the image no longer needs
   `templates/` and `assets/` copied; changing `deploy/Dockerfile` for that is
   an owner decision (MB-0022 escalation).
