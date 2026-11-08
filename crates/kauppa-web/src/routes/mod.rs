@@ -1,3 +1,4 @@
+use actix_web::middleware::from_fn;
 use actix_web::web;
 
 pub mod auth;
@@ -12,7 +13,19 @@ pub mod request;
 #[cfg(test)]
 pub mod test_support;
 
+/// Every route, behind the app-wide cross-site check (MB-0018, RR-0010): one
+/// catch-all scope wrapped in [`crate::csrf::guard`], so no handler is
+/// registered outside it (`csrf::tests::coverage` checks).
 pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(from_fn(crate::csrf::guard))
+            .configure(protected),
+    );
+}
+
+/// The routes. Register new ones here, never beside the scope above.
+fn protected(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(pages::index)
         .service(
