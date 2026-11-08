@@ -177,8 +177,8 @@ async fn reads_during_write() {
         .execute(&mut *writer)
         .await
         .unwrap();
-    sqlx::query("UPDATE shopping_lists SET name = 'Uncommitted' WHERE id = ?1")
-        .bind(list.to_string())
+    sqlx::query("UPDATE users SET display_name = 'Uncommitted' WHERE id = ?1")
+        .bind(user.to_string())
         .execute(&mut *writer)
         .await
         .unwrap();
