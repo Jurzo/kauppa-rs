@@ -46,3 +46,5 @@ dotenvy = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+# Checksums of the vendored htmx in `templates::tests` (MB-0027, RR-0015).
+sha2 = "0.10.9"

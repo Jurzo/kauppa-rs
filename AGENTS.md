@@ -28,7 +28,7 @@ htmx — no SPA.
 | Auth primitives | `crates/kauppa-core/src/password.rs` | Argon2id. Never roll your own in handlers. |
 | HTTP handlers | `crates/kauppa-web/src/routes/` | Thin: parse → call core → render. |
 | Templates | `templates/*.hbs` | Handlebars partial-block layout. |
-| Client interactivity | `assets/*` + `hx-*` attrs | htmx first; add JS only when htmx can't. |
+| Client interactivity | `assets/*` + `hx-*` attrs | htmx first (vendored at `assets/vendor/`, RR-0015); add JS only when htmx can't. |
 | Schema | `migrations/*.sql` | Append-only. New file per change. |
 | Agentic artifacts | `.agentic/` | Human-owned governance. |
 
@@ -150,8 +150,10 @@ consult.
 - `Cargo.toml` dependency additions, removals, or version bumps route through
   the dependency-bump runbook.
 - `assets/` is served directly; nothing executable may be committed there
-  beyond vendored, pinned JS from a reviewed source (right now htmx is loaded
-  from CDN; vendoring it is a platform decision).
+  except under `assets/vendor/`: pinned third-party JS from a reviewed
+  source, byte-for-byte, with its checksum checked in the test suite (htmx
+  2.0.3 from the npm registry, RR-0015). Adding, upgrading or modifying a
+  vendored file is a platform decision.
 
 ---
 

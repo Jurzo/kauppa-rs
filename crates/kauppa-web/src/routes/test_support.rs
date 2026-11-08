@@ -21,7 +21,7 @@ use crate::templates;
 
 pub const PASSWORD: &str = "correct horse battery staple";
 
-/// App state over a fresh in-memory database and the workspace's templates.
+/// App state over a fresh in-memory database and the embedded templates.
 pub async fn test_state() -> web::Data<AppState> {
     let url = format!(
         "sqlite:file:web-{}?mode=memory&cache=shared",
@@ -29,9 +29,7 @@ pub async fn test_state() -> web::Data<AppState> {
     );
     let pool = SqlitePool::connect(&url).await.expect("connect test pool");
     pool.run_migrations().await.expect("run migrations");
-    let templates =
-        templates::build_registry_from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../templates"))
-            .expect("load templates");
+    let templates = templates::build_registry().expect("load templates");
     web::Data::new(AppState {
         pool,
         templates: Arc::new(templates),

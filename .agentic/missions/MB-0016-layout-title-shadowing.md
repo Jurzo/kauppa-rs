@@ -24,7 +24,7 @@ acceptance:
     check: cargo test -p kauppa-web routes::recipes::tests::pages::details_draft_survives_rejection
   - id: P5
     property: Inside the layout, a body field with the same name as a layout parameter renders its own value, so a future view field can't be shadowed silently.
-    check: cargo test -p kauppa-web templates::layout_params_do_not_shadow_body
+    check: cargo test -p kauppa-web templates::tests::layout_params_do_not_shadow_body
 context:
   - templates/layout.hbs
   - templates/lists/show.hbs
@@ -63,6 +63,11 @@ resolutions:
 ```
 
 > Check paths updated by MB-0019 (RR-0009): tests moved to area submodules.
+>
+> P5's check path updated by MB-0024 (RR-0009 constraint 2): the guard moved
+> to `templates::tests` when the registry was embedded; its assertions are
+> kept, it now runs on the embedded registry, and it gains a strict-mode
+> check (MB-0024 P4).
 
 ## Context
 
