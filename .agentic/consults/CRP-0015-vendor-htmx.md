@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "AGENTS.md Do-not-touch (`assets/` holds only vendored, pinned JS from a reviewed source; vendoring htmx is a platform decision). MB-0027 autonomy.escalate: \"this brief's whole change\" and \"which source is reviewed ... and whether to upgrade the version\" (platform-owner); \"adding a `Content-Security-Policy` header in the same PR\" (security). .agentic/runbooks/dependency-bump.md (Q3 option A adds `sha2` as a dev-dependency in `crates/kauppa-web/Cargo.toml`). The AGENTS.md wording change is an RR roll-back (MB-0027 forbidden: edit AGENTS.md)."
 ---
 ```
