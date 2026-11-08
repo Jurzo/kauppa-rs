@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: high
 urgency: high
-state: open
+state: answered
 runbook_trigger: "MB-0026 autonomy.escalate: the limits N and M, the window and the backoff (security); reading `X-Forwarded-For` behind Caddy and configuring a trusted proxy, the first exception to RR-0010's never-read-forwarded-headers stance (security); a dependency such as `actix-governor` (platform-owner; answered here: none needed); limiting in Caddy instead (security); a new configuration variable (platform-owner, Q2). feature.md escalation path `crates/kauppa-web/src/routes/auth.rs`. Routed to security, with Q2's variable and Q4 to platform."
 ---
 ```

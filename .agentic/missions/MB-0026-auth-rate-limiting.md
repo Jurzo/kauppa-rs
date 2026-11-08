@@ -12,7 +12,7 @@ non_goals:
   - "Shared or persistent limiter state across processes or restarts: the app is one process (MB-0022)."
 acceptance:
   - id: P1
-    property: "After N failed logins from one client within the window, further `POST /auth/login` from that client get 429 with a `Retry-After` header until the window passes, even with the correct password. N and the window are constants named in the RR."
+    property: "After N failed logins from one client within the window, further `POST /auth/login` from that client get 429 with a `Retry-After` header until the window passes, even with the correct password. N and the window are constants named in RR-0013."
     check: cargo test -p kauppa-web routes::auth::tests::rate_limit::per_client_login
   - id: P2
     property: "After M failed logins for one account within the window, from any mix of clients, further attempts for that account are throttled. The response is the same whether the account exists or not, so the limiter isn't an account oracle."
@@ -27,7 +27,7 @@ acceptance:
     property: "The client address comes from the connection peer unless a trusted-proxy setting says otherwise. A forwarded-for header from an untrusted peer is ignored, so a client can't pick its own key."
     check: cargo test -p kauppa-web routes::auth::tests::rate_limit::forwarded_header_needs_trusted_proxy
   - id: P6
-    property: "Throttling is logged at WARN with the reason and limiter key kind (client or account), never the email or password; no other log level or line changes."
+    property: "Throttling is logged at WARN with the reason and limiter key kind (client or account), never the email or password; no other log level or line changes, except the lines RR-0013 approves."
     check: cargo test -p kauppa-web routes::auth::tests::rate_limit::throttling_is_logged
 context:
   - crates/kauppa-web/src/routes/auth.rs
@@ -56,7 +56,8 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions:
+  - RR-0013
 ---
 ```
 

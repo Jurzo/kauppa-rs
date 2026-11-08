@@ -46,11 +46,18 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   origin, with `Sec-Fetch-Site` as a reject-only layer; MB-0018, RR-0010).
   No route is exempt without an approved RR. Safe methods stay side-effect
   free.
+- **Rate limiting.** Failed `POST /auth/login` attempts are limited per
+  client and per account, and failed `POST /auth/register` attempts per
+  client, before any database or Argon2 work (MB-0026, RR-0013). The limits
+  are constants named in RR-0013.
+- **Client addresses.** Client addresses for security decisions come from
+  the TCP peer, or from `X-Forwarded-For` only when the peer is in
+  `KAUPPA_TRUSTED_PROXIES` (right-most untrusted entry; RR-0013); never from
+  `realip_remote_addr()`.
 
 ## Rules (should)
 
 - Rotate `KAUPPA_SESSION_SECRET` on compromise; invalidates all sessions.
-- Rate-limit `/auth/login` and `/auth/register` (per-IP + per-account).
 
 ## Escalation
 
