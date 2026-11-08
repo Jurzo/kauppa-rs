@@ -14,6 +14,7 @@ use kauppa_core::domain::{NewIngredient, RecipeInput};
 use kauppa_core::password;
 use kauppa_core::repo::{CategoryRepo, RecipeRepo, ShoppingListRepo, SqlitePool, UserRepo};
 
+use crate::csrf::{OriginPolicy, Scheme};
 use crate::state::AppState;
 use crate::templates;
 
@@ -33,6 +34,9 @@ pub async fn test_state() -> web::Data<AppState> {
     web::Data::new(AppState {
         pool,
         templates: Arc::new(templates),
+        // As `main.rs` with `KAUPPA_PUBLIC_ORIGIN` unset and cookies not
+        // `Secure`: the request's own `Host`, over http.
+        origin: OriginPolicy::SameHost(Scheme::Http),
     })
 }
 

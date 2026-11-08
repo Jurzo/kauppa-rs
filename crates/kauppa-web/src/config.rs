@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::csrf::{OriginPolicy, PublicOrigin};
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Settings {
     pub bind: String,
@@ -8,6 +10,22 @@ pub struct Settings {
     /// Must be at least 64 bytes (actix-session requirement for the master key).
     pub session_secret: String,
     pub cookie_secure: bool,
+    /// The one origin browsers use to reach the app, e.g.
+    /// `https://kauppa.example` (`KAUPPA_PUBLIC_ORIGIN`, RR-0010). Validated
+    /// and normalized on load. Unset (or empty): the request's own `Host`.
+    #[serde(default, deserialize_with = "optional_origin")]
+    pub public_origin: Option<PublicOrigin>,
+}
+
+/// An empty `KAUPPA_PUBLIC_ORIGIN=` means unset, as in `.env.example`.
+fn optional_origin<'de, D>(deserializer: D) -> Result<Option<PublicOrigin>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Option::<String>::deserialize(deserializer)?;
+    raw.filter(|s| !s.trim().is_empty())
+        .map(|s| PublicOrigin::try_from(s).map_err(serde::de::Error::custom))
+        .transpose()
 }
 
 impl Settings {
@@ -36,5 +54,10 @@ impl Settings {
         }
 
         Ok(settings)
+    }
+
+    /// How the cross-site check learns the app's origin (RR-0010).
+    pub fn origin_policy(&self) -> OriginPolicy {
+        OriginPolicy::new(self.public_origin.clone(), self.cookie_secure)
     }
 }

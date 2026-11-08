@@ -19,6 +19,7 @@ use tracing_actix_web::TracingLogger;
 use kauppa_core::repo::SqlitePool;
 
 mod config;
+mod csrf;
 mod error;
 mod routes;
 mod state;
@@ -40,10 +41,23 @@ async fn main() -> anyhow::Result<()> {
     let pool = SqlitePool::connect(&cfg.database_url).await?;
     pool.run_migrations().await?;
 
+    let origin = cfg.origin_policy();
+    match &origin {
+        csrf::OriginPolicy::Fixed(public) => {
+            tracing::info!(origin = %public, "cross-site check uses KAUPPA_PUBLIC_ORIGIN");
+        }
+        csrf::OriginPolicy::SameHost(_) if cfg.cookie_secure => tracing::warn!(
+            "KAUPPA_PUBLIC_ORIGIN is unset: the cross-site check trusts each request's Host; \
+             set it behind a reverse proxy that rewrites Host"
+        ),
+        csrf::OriginPolicy::SameHost(_) => {}
+    }
+
     let templates = Arc::new(templates::build_registry()?);
     let state = web::Data::new(AppState {
         pool: pool.clone(),
         templates,
+        origin,
     });
 
     let session_key = Key::from(cfg.session_secret.as_bytes());
@@ -63,6 +77,9 @@ async fn main() -> anyhow::Result<()> {
                     .cookie_http_only(true)
                     .build(),
             )
+            // Static files (GET and HEAD only) go first: `routes::configure`
+            // puts every route behind the cross-site check, in one catch-all
+            // scope (RR-0010).
             .service(Files::new("/assets", "./assets"))
             .configure(routes::configure)
     })
