@@ -25,13 +25,13 @@ acceptance:
     property: "The Terraform in `deploy/terraform/` is formatted and validates. It declares a droplet, a block-storage volume mounted for `/data` (kept when the droplet is replaced), a reserved IP, and a cloud firewall allowing inbound 80 and 443 from anywhere and 22 only from the operator CIDRs in a variable. No secret has a default value, and every secret variable is `sensitive`."
     check: scripts/deploy/check_terraform.sh
   - id: P5
-    property: "A backup is a consistent SQLite snapshot (online `.backup` or `VACUUM INTO`, never a file copy of a live database) copied off the droplet on a schedule. A restore drill on a scratch stack brings back the users and lists that existed when the backup was taken."
+    property: "A backup is a consistent SQLite snapshot (online `.backup` or `VACUUM INTO`, never a file copy of a live database) copied off the droplet on a schedule. With WAL (MB-0025) recent commits may still be only in `kauppa.db-wal`, so the snapshot must come from SQLite, not from the files. A restore drill on a scratch stack, taken while the app is writing, brings back the users and lists that existed when the backup was taken."
     check: scripts/deploy/backup_restore_drill.sh
   - id: P6
     property: "No secret is committed: production `.env`, `*.tfvars`, Terraform state and the DigitalOcean token are ignored by git, and the operator guide says where each secret lives. The check fails if any tracked file matches those patterns."
     check: scripts/deploy/check_no_secrets.sh
   - id: P7
-    property: "`deploy/README.md` covers first deploy from an empty account (token, SSH key, DNS, `terraform apply`, secrets, first start), updating to a new version, backup and restore, rotating `KAUPPA_SESSION_SECRET`, and tearing down without losing the volume. The owner follows it for the first real deploy, and the resulting https:// site passes the P3 checks against the real domain."
+    property: "`deploy/README.md` covers first deploy from an empty account (token, SSH key, DNS, `terraform apply`, secrets, first start), updating to a new version, backup and restore, rotating `KAUPPA_SESSION_SECRET`, and tearing down without losing the volume. Its database section (MB-0025) says: the database is three files (`kauppa.db`, `kauppa.db-wal`, `kauppa.db-shm`) that stay together on the data volume; never copy, move or delete one of them while the app runs, and never copy `kauppa.db` alone as a backup; a restore stops the app, replaces `kauppa.db`, removes any stale `-wal` and `-shm`, then starts it; `synchronous=NORMAL` means a power or OS failure can lose the last few seconds of commits but not corrupt the database; and only one container may open the file. It also warns that rolling back to a binary older than the database's newest migration fails at startup, so a rollback after a migration means restoring the pre-update backup. The owner follows it for the first real deploy, and the resulting https:// site passes the P3 checks against the real domain."
     check: "manual: owner's first deploy, recorded in MB-0022's Continuity Pack (scripts/deploy/smoke_compose.sh pointed at the live URL)"
 context:
   - crates/kauppa-web/src/main.rs
@@ -86,10 +86,16 @@ Docker with Caddy, and Terraform for the infrastructure.
 
 What the app needs from its host, as of `main` at e63b4f1:
 
-- **One process, one SQLite file, local disk.** `KAUPPA_DATABASE_URL` points
-  at the file; migrations run on start. There is no WAL or busy-timeout
-  setting yet (`repo/sqlite/mod.rs`; MB-0025). Only one instance may run
-  against the file either way.
+- **One process, one SQLite database, local disk.** `KAUPPA_DATABASE_URL`
+  points at the file; migrations run on start. With MB-0025 the pool opens
+  it in WAL mode (`synchronous=NORMAL`, 10 s busy timeout), so the database
+  is three files (`kauppa.db`, `-wal`, `-shm`) that must share the volume,
+  and copying `kauppa.db` alone is not a backup. WAL needs a local
+  filesystem: the block-storage volume is fine, a network share isn't.
+  Only one instance may run against the database.
+- **Migrations are one-way.** sqlx refuses to start a binary that doesn't
+  know a migration the database already has, so rolling back the image
+  after an update with a migration needs the pre-update backup.
 - **Files read from the working directory.** Templates load from
   `./templates` and static files from `./assets` (`templates.rs`,
   `main.rs`). The image must copy both and set the working directory; this
@@ -143,7 +149,8 @@ machine or a CI runner), and the first real deploy is the owner's (P7).
    rules and variables.
 5. **Backups (P5).** A scheduled job (per the RR) taking an online
    snapshot and copying it off the droplet; the drill restores into a
-   scratch stack and logs in.
+   scratch stack and logs in. The update procedure takes a backup before
+   pulling a new image, for the one-way-migration case.
 6. **Operator guide (P7).** `deploy/README.md`; the owner's first deploy
    closes the mission.
 
