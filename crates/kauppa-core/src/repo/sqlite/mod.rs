@@ -25,6 +25,13 @@ mod product;
 mod recipe;
 mod user;
 
+#[cfg(test)]
+mod tests;
+
+/// Pool size. SQLite serializes writers, so more connections only add
+/// readers (persistence.md: don't raise without benchmarking contention).
+const MAX_CONNECTIONS: u32 = 8;
+
 #[derive(Clone, Debug)]
 pub struct SqlitePool {
     inner: sqlx::SqlitePool,
@@ -38,7 +45,7 @@ impl SqlitePool {
             .foreign_keys(true);
 
         let inner = SqlitePoolOptions::new()
-            .max_connections(8)
+            .max_connections(MAX_CONNECTIONS)
             .connect_with(options)
             .await?;
 
