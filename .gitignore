@@ -27,3 +27,24 @@ lcov.info
 
 # sqlx offline cache artifacts outside .sqlx/ metadata
 /.sqlx/.tmp
+
+# SQLite WAL side files (MB-0025): kauppa.db-wal, kauppa.db-shm
+*.db-wal
+*.db-shm
+
+# Deployment (MB-0022, RR-0014): never commit Terraform state, plans,
+# variable files or the provider cache, or the host's secrets/ files.
+# scripts/deploy/check_no_secrets.sh checks these.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+.terraformrc
+terraform.rc
+secrets/
+app.env
+backup.env
