@@ -13,8 +13,9 @@ use super::ingredient_names;
 
 /// P2: the server refuses an ingredient whose product has no category — an
 /// existing product left uncategorized by a category deletion, or a new name
-/// without a chosen category — even when a client skips the form, and adds
-/// nothing. A categorized product is accepted.
+/// with a category that isn't the user's — even when a client skips the
+/// form, and adds nothing. A categorized product is accepted. (A new name
+/// without a category is asked for one since MB-0039.)
 #[actix_web::test]
 #[allow(clippy::expect_used)]
 async fn ingredient_requires_categorized_product() {
@@ -74,11 +75,8 @@ async fn ingredient_requires_categorized_product() {
             "has no category",
         ),
         (vec![field("name", "MEHU")], "has no category"),
-        (vec![field("name", "Kaura")], "choose a category"),
-        (
-            vec![field("name", "Kaura"), field("category_id", "")],
-            "choose a category",
-        ),
+        // (A new name without a category is asked for one, MB-0039 P2:
+        // `new_product_asks_category`.)
         (
             vec![field("name", "Kaura"), field("category_id", "not-a-uuid")],
             "unknown category",
@@ -117,16 +115,20 @@ async fn ingredient_requires_categorized_product() {
     // Over htmx the rejection is the fragment, keeping the typed values.
     let resp = call_service(
         &app,
-        submit(vec![field("name", "Kaura"), field("quantity", "1 dl")])
-            .insert_header(("HX-Request", "true"))
-            .to_request(),
+        submit(vec![
+            field("name", "Kaura"),
+            field("quantity", "1 dl"),
+            field("category_id", &theirs.to_string()),
+        ])
+        .insert_header(("HX-Request", "true"))
+        .to_request(),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(!body.contains("<html"), "fragment only");
     assert!(body.contains(r#"id="ingredients""#));
-    assert!(body.contains("choose a category for the new product Kaura"));
+    assert!(body.contains("unknown category"));
     assert!(body.contains(r#"value="Kaura""#) && body.contains(r#"value="1 dl""#));
 
     // Control: a categorized product, existing or new, is accepted.

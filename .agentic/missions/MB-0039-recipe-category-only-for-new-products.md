@@ -88,3 +88,23 @@ picker.
   `HX-Request`.
 - Smoke: add an existing favorite and a new product on a phone-width
   browser.
+
+## Brief delta (2026-11-09)
+
+- P1 dropped: the owner chose P2 (see Context).
+- P4: existing tests changed, each because the add form no longer carries
+  a picker and a new name without a category is now a prompt (200), not
+  a 400:
+  - `routes::recipes::tests::editor::ingredient_requires_categorized_product`:
+    the two "new name, no / empty category → 400 choose a category" cases
+    are removed (now covered by `new_product_asks_category`); its htmx
+    rejection check uses a foreign category ("unknown category") instead.
+    The uncategorized and unknown-category rejections are unchanged.
+  - `routes::recipes::tests::suggestions::ingredient_match_hint`: the hint
+    wording ("Uses Kylmä, an existing product.", "New product — you'll
+    choose its category after adding."); the no-JavaScript ending checks a
+    rejected uncategorized name shows its hint (400) and a new name shows
+    the category prompt in place of the hint (200).
+- `Picker::optional` removed (its only user was the add form's picker);
+  `products/_category_picker` is now always `required`, as every other
+  caller already rendered it.
