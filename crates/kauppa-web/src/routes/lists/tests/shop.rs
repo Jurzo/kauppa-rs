@@ -61,9 +61,14 @@ fn rendered_groups(body: &str) -> Vec<(String, Vec<String>)> {
             .split(r#"class="product-name">"#)
             .skip(1)
             .map(|chunk| {
-                let name = chunk.split("</span>\n").next().unwrap_or_default();
-                // Drop the quantity span, if any.
-                name.rsplit("</span> ").next().unwrap_or(name).to_owned()
+                // The name runs up to the first tag: the closing `</span>`,
+                // or the quantity span that follows it (MB-0038).
+                chunk
+                    .split('<')
+                    .next()
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_owned()
             })
             .collect();
         groups.push((heading, items));

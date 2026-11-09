@@ -151,6 +151,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 .shop-toggle { display: flex; flex: 1 1 auto; gap: 0.75rem; align-items: center; min-height: 3rem;
   padding: 0.5rem 0.75rem; text-align: left; color: var(--fg); font-size: 1.05rem; }
 .shop-row.found .product-name { text-decoration: line-through; color: var(--muted); }
+/* MB-0038: quantity after the name, muted ("Maito (2 l)"); --muted keeps AA on --bg. */
+.shop-quantity { color: var(--muted); font-weight: normal; }
 .shop-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; }
 
 /* Admin portal (MB-0023) */

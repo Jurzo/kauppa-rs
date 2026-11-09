@@ -386,8 +386,12 @@ async fn edit_quantity() {
     );
 
     // The list page and the store view show both, as full pages and as
-    // fragments.
-    for uri in [base.clone(), format!("{base}/shop")] {
+    // fragments. The store view shows "(qty)" after the name (MB-0038).
+    let shop_shown = |q: &str| format!(r#"<span class="shop-quantity">({q})</span>"#);
+    for (uri, shown) in [
+        (base.clone(), &shown as &dyn Fn(&str) -> String),
+        (format!("{base}/shop"), &shop_shown),
+    ] {
         for htmx in [false, true] {
             let body = get(uri.clone(), htmx).await;
             assert_eq!(body.contains("<html"), !htmx, "{uri} htmx={htmx}");
@@ -428,9 +432,12 @@ async fn edit_quantity() {
     let resp = call_service(&app, post(oats, vec![]).to_request()).await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     assert_eq!(quantities().await[0], ("Kaura".to_owned(), None));
-    for uri in [base.clone(), format!("{base}/shop")] {
+    for (uri, class) in [
+        (base.clone(), r#"class="ingredient-quantity""#),
+        (format!("{base}/shop"), r#"class="shop-quantity""#),
+    ] {
         let body = get(uri.clone(), false).await;
-        assert!(!body.contains(r#"class="ingredient-quantity""#), "{uri}");
+        assert!(!body.contains(class), "{uri}");
     }
 
     // A removed or unknown item is a 404, and stays as it was.
