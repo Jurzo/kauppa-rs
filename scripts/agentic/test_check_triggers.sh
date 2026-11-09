@@ -16,6 +16,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CHECK="$SCRIPT_DIR/check_triggers.py"
 PYTHON="${PYTHON:-python3}"
+# Importing check_triggers must not leave a __pycache__ in the repo.
+export PYTHONDONTWRITEBYTECODE=1
 
 # Don't let a caller's git environment point the throwaway repos elsewhere.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
