@@ -2,6 +2,7 @@
 //! areas live here.
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
+mod rate_limit;
 mod register_requires_invite;
 mod request_log;
 

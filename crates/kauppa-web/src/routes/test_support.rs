@@ -17,6 +17,7 @@ use kauppa_core::password;
 use kauppa_core::repo::{CategoryRepo, RecipeRepo, ShoppingListRepo, SqlitePool, UserRepo};
 
 use crate::csrf::{OriginPolicy, Scheme};
+use crate::routes::auth::limiter::{AuthLimiter, FakeClock, TrustedProxies};
 use crate::state::AppState;
 use crate::templates;
 
@@ -30,6 +31,13 @@ pub async fn test_state() -> web::Data<AppState> {
 /// [`test_state`], plus the database URL, for a test that opens a second
 /// connection to change rows no repo method changes.
 pub async fn test_state_with_url() -> (web::Data<AppState>, String) {
+    let (state, url, _) = test_state_with_clock().await;
+    (state, url)
+}
+
+/// [`test_state_with_url`], plus the limiter's clock, which only moves when
+/// a test advances it (RR-0013 constraint 7).
+pub async fn test_state_with_clock() -> (web::Data<AppState>, String, Arc<FakeClock>) {
     let url = format!(
         "sqlite:file:web-{}?mode=memory&cache=shared",
         Uuid::new_v4()
@@ -37,14 +45,17 @@ pub async fn test_state_with_url() -> (web::Data<AppState>, String) {
     let pool = SqlitePool::connect(&url).await.expect("connect test pool");
     pool.run_migrations().await.expect("run migrations");
     let templates = templates::build_registry().expect("load templates");
+    let clock = Arc::new(FakeClock::default());
     let state = web::Data::new(AppState {
         pool,
         templates: Arc::new(templates),
         // As `main.rs` with `KAUPPA_PUBLIC_ORIGIN` unset and cookies not
         // `Secure`: the request's own `Host`, over http.
         origin: OriginPolicy::SameHost(Scheme::Http),
+        // As `main.rs` with `KAUPPA_TRUSTED_PROXIES` unset.
+        limiter: Arc::new(AuthLimiter::new(clock.clone(), TrustedProxies::default())),
     });
-    (state, url)
+    (state, url, clock)
 }
 
 /// The host `TestRequest` reports by default (actix-web's test config), and

@@ -68,14 +68,18 @@ async fn register_requires_invite_same_answer_for_every_invalid_token() {
     // invalid token never reveals which emails are taken.
     make_user(&state, "taken@example.com").await;
     let mut bodies = Vec::new();
-    for (label, token) in cases
-        .iter()
-        .flat_map(|&case| [(case, "pat@example.com"), (case, "taken@example.com")])
-        .map(|((label, token), email)| (format!("{label} ({email})"), (token, email)))
-    {
+    // Each from its own client: these are more failures than MB-0026's
+    // per-client register limit allows one client (RR-0013).
+    for (client, (label, token)) in (1u8..).zip(
+        cases
+            .iter()
+            .flat_map(|&case| [(case, "pat@example.com"), (case, "taken@example.com")])
+            .map(|((label, token), email)| (format!("{label} ({email})"), (token, email))),
+    ) {
         let (token, email) = token;
         let label = label.as_str();
-        let resp = call_service(&app, register_request(token, email).to_request()).await;
+        let req = register_request(token, email).peer_addr(([192, 0, 2, client], 50_000).into());
+        let resp = call_service(&app, req.to_request()).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{label}");
         assert_private(&resp, label);
         assert_eq!(resp.response().cookies().count(), 0, "{label}: no session");
