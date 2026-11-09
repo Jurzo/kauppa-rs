@@ -1,4 +1,4 @@
-//! MB-0006 (P1, P3–P6): the store view.
+//! MB-0006 (P1, P3–P6): the store view; MB-0038 (P1): name before quantity.
 
 use actix_web::http::{StatusCode, header};
 use uuid::Uuid;
@@ -7,7 +7,7 @@ use kauppa_core::repo::{CategoryRepo, ProductRepo, ShoppingListRepo};
 
 use crate::state::AppState;
 
-use super::ShopFixture;
+use super::{ShopFixture, shared_list};
 
 #[allow(clippy::expect_used)]
 async fn shop_fixture(state: &AppState, user: Uuid) -> ShopFixture {
@@ -475,5 +475,96 @@ async fn view_htmx_and_auth() {
     ] {
         let resp = call_service(&app, req.to_request()).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+}
+
+/// MB-0038 P1: in the store view, for an editor and a view grantee alike, an
+/// item reads as its name, then its quantity in parentheses in a muted span;
+/// an item without a quantity shows its name alone, with no empty
+/// parentheses. Holds on the full page and on the htmx fragment, in
+/// not-found and found rows, and the accessible labels name only the item.
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn name_then_quantity() {
+    use actix_web::cookie::Cookie;
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    let milk = ShoppingListRepo::add_item(&state.pool, s.owner, s.list, "Maito", Some("2 l"))
+        .await
+        .expect("item")
+        .id;
+    let login = |email: &'static str| {
+        let app = &app;
+        async move { session_cookie(&call_service(app, login_request(email).to_request()).await) }
+    };
+    let editor = login("editor@example.com").await;
+    let viewer = login("viewer@example.com").await;
+    let base = format!("/lists/{}/shop", s.list);
+    let with_quantity =
+        r#"<span class="product-name">Maito <span class="shop-quantity">(2 l)</span></span>"#;
+    let without = r#"<span class="product-name">Leipä</span>"#;
+    let assert_shape = |body: &str, what: &str| {
+        assert!(
+            body.contains(with_quantity),
+            "{what}: name then (qty)\n{body}"
+        );
+        assert!(body.contains(without), "{what}: no quantity, name alone");
+        assert!(!body.contains("()"), "{what}: no empty parentheses");
+        assert!(
+            !body.contains("ingredient-quantity"),
+            "{what}: the store view has its own class"
+        );
+    };
+    let get = |session: &Cookie<'static>, htmx: bool| {
+        let mut req = TestRequest::get().uri(&base).cookie(session.clone());
+        if htmx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        req.to_request()
+    };
+
+    // Not-found rows: full page and fragment, for both roles.
+    for (who, session) in [("editor", &editor), ("viewer", &viewer)] {
+        for htmx in [false, true] {
+            let body = body_string(call_service(&app, get(session, htmx)).await).await;
+            assert_eq!(body.contains("<html"), !htmx, "{who} htmx={htmx}");
+            assert_shape(&body, &format!("{who} htmx={htmx}"));
+        }
+    }
+    let page = body_string(call_service(&app, get(&editor, false)).await).await;
+    assert!(page.contains(r#"aria-label="Mark Maito found""#));
+    assert!(page.contains(r#"aria-label="Remove Maito — not needed""#));
+
+    // The editor checks Maito off: the returned fragment keeps the shape in
+    // a found row, and the label still names only the item.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/items/{milk}/check"))
+            .cookie(editor.clone())
+            .insert_header(("HX-Request", "true"))
+            .set_form([("checked", "true")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let fragment = body_string(resp).await;
+    assert!(!fragment.contains("<html"));
+    assert!(fragment.contains(r#"<li class="product-row shop-row found">"#));
+    assert!(fragment.contains(r#"aria-label="Mark Maito not found""#));
+    assert_shape(&fragment, "editor fragment after check");
+
+    // The viewer sees the found row the same way.
+    for htmx in [false, true] {
+        let body = body_string(call_service(&app, get(&viewer, htmx)).await).await;
+        assert!(body.contains("1 of 2 found"), "viewer htmx={htmx}");
+        assert_shape(&body, &format!("viewer found htmx={htmx}"));
     }
 }
