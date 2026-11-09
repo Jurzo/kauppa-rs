@@ -54,6 +54,11 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   the TCP peer, or from `X-Forwarded-For` only when the peer is in
   `KAUPPA_TRUSTED_PROXIES` (right-most untrusted entry; RR-0013); never from
   `realip_remote_addr()`.
+- **Deployment secrets.** No secret value passes through Terraform
+  variables, resources, data sources, `user_data` or plan files. On the
+  host, secrets live only in 0600 files under the data volume's `secrets/`
+  directory; the session secret is generated there and never leaves it.
+  The container refuses the dev session secret (MB-0022, RR-0014).
 
 ## Rules (should)
 

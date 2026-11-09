@@ -1,0 +1,117 @@
+# kauppa-rs production stack (MB-0022; RR-0014): the app, Caddy in front of
+# it, and the backup job. Settings come from deploy/.env (copy
+# deploy/.env.example; git-ignored). Secrets come from files on the data
+# volume, never from this file or deploy/.env:
+#   ${KAUPPA_DATA_ROOT}/secrets/app.env     KAUPPA_SESSION_SECRET (cloud-init)
+#   ${KAUPPA_DATA_ROOT}/secrets/backup.env  the backup Spaces key (operator)
+#
+# Only Caddy publishes ports (80, 443). The app sits on an internal network
+# with no published port and no route out.
+
+name: kauppa
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  kauppa:
+    # Pin one sha-<commit> tag or a digest, never :main (RR-0014 Q1).
+    image: ${KAUPPA_IMAGE:?set KAUPPA_IMAGE in deploy/.env, e.g. ghcr.io/jurzo/kauppa-rs:sha-<commit>}
+    restart: unless-stopped
+    env_file:
+      - ${KAUPPA_DATA_ROOT:?set KAUPPA_DATA_ROOT in deploy/.env}/secrets/app.env
+    environment:
+      KAUPPA_BIND: 0.0.0.0:8080
+      KAUPPA_DATABASE_URL: sqlite:///data/kauppa.db
+      KAUPPA_LOG_LEVEL: ${KAUPPA_LOG_LEVEL:-info}
+      KAUPPA_COOKIE_SECURE: "true"
+      KAUPPA_PUBLIC_ORIGIN: ${KAUPPA_PUBLIC_ORIGIN:?set KAUPPA_PUBLIC_ORIGIN in deploy/.env, e.g. https://kauppa.example}
+      # After MB-0026 merges: trust X-Forwarded-For only from Caddy's network
+      # (RR-0013). Must equal the `internal` subnet below.
+      # KAUPPA_TRUSTED_PROXIES: 172.30.53.0/24
+    volumes:
+      # db/ holds kauppa.db, kauppa.db-wal and kauppa.db-shm: one directory,
+      # one volume, one app container (MB-0025).
+      - ${KAUPPA_DATA_ROOT:?set KAUPPA_DATA_ROOT in deploy/.env}/db:/data
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    logging: *logging
+
+  caddy:
+    image: caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee
+    restart: unless-stopped
+    depends_on:
+      kauppa:
+        condition: service_healthy
+    ports:
+      - "${KAUPPA_HTTP_PORT:-80}:80"
+      - "${KAUPPA_HTTPS_PORT:-443}:443"
+    environment:
+      KAUPPA_DOMAIN: ${KAUPPA_DOMAIN:?set KAUPPA_DOMAIN in deploy/.env, e.g. kauppa.example}
+      KAUPPA_TLS: ${KAUPPA_TLS:?set KAUPPA_TLS in deploy/.env to your email (Let's Encrypt) or "internal"}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+      - edge
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  backup:
+    # Built on the host from deploy/backup (pinned Alpine; no compiling).
+    build: ./backup
+    image: kauppa-backup:local
+    restart: unless-stopped
+    env_file:
+      - ${KAUPPA_DATA_ROOT:?set KAUPPA_DATA_ROOT in deploy/.env}/secrets/backup.env
+    environment:
+      BACKUP_TARGET: spaces:${KAUPPA_BACKUP_BUCKET:?set KAUPPA_BACKUP_BUCKET in deploy/.env}
+      BACKUP_SPACES_ENDPOINT: ${KAUPPA_BACKUP_ENDPOINT:-ams3.digitaloceanspaces.com}
+    volumes:
+      # Read-write: a WAL reader maps kauppa.db-shm (RR-0014 Q4). The job only
+      # reads through SQLite; it never copies, moves or deletes these files.
+      - ${KAUPPA_DATA_ROOT:?set KAUPPA_DATA_ROOT in deploy/.env}/db:/data
+    networks:
+      - egress
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+networks:
+  # App <-> Caddy. No route out, and a pinned subnet for MB-0026's
+  # KAUPPA_TRUSTED_PROXIES (RR-0013).
+  internal:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.53.0/24
+  # Caddy's published ports and ACME.
+  edge: {}
+  # The backup job's uploads to Spaces.
+  egress: {}
+
+volumes:
+  # Certificates and ACME account. On the droplet's own disk: a replaced
+  # droplet re-issues its certificate.
+  caddy_data:
+  caddy_config:
