@@ -30,7 +30,7 @@ acceptance:
     property: "Throttling is logged at WARN with the reason and limiter key kind (client or account), never the email or password; no other log level or line changes, except the lines RR-0013 approves."
     check: cargo test -p kauppa-web routes::auth::tests::rate_limit::throttling_is_logged
 context:
-  - crates/kauppa-web/src/routes/auth.rs
+  - crates/kauppa-web/src/routes/auth/
   - crates/kauppa-web/src/main.rs
   - crates/kauppa-web/src/config.rs
   - crates/kauppa-web/src/csrf/mod.rs
