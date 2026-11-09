@@ -75,6 +75,17 @@ MB-0013 built the same pattern for recipe ingredients: a `<datalist>` of
 the user's product names outside the swapped fragment, and `name_key`
 matching. MB-0013's non-goals named shopping-list items as a later reuse.
 
+Owner decisions 2026-11-09 (answering the escalations): only favorites
+match, not recipe-created products; a favorite whose category was deleted
+follows `add_product` (linked, uncategorized). On a shared list categories
+are always the list owner's: only the owner sets them, and editors see the
+owner's categories on items ("Only owner can set the category and editor
+sees owners categories for the items"). So the owner's typed text matches
+the owner's favorites, and an `edit` grantee's text stays a free-form item
+with no suggestions, as today; editors' favorite matching is deferred to
+CRP-0024 (it would need `add_product` at `edit`, an RR-0002 change).
+Acceptance ids are unchanged; P4 checks this split.
+
 ## Conceptual plan
 
 1. **Clarify (S1).** Owner questions above (shared lists, which products
