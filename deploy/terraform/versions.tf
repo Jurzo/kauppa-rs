@@ -23,7 +23,7 @@ terraform {
 
   backend "s3" {
     endpoints = {
-      s3 = "https://ams3.digitaloceanspaces.com"
+      s3 = "https://fra1.digitaloceanspaces.com"
     }
     key    = "kauppa-rs/terraform.tfstate"
     region = "us-east-1" # ignored by Spaces; required by the S3 backend

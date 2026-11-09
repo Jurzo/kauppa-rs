@@ -95,9 +95,10 @@ because they are yours.
 ### 3.3 Spaces: state bucket and keys
 
 1. Control panel → Spaces Object Storage → enable the subscription.
-2. **State bucket**, by hand: create a bucket in **ams3**, e.g.
-   `kauppa-tfstate-<you>`, file listing restricted, then turn **versioning on**
-   for it (bucket settings). It must not be the backup bucket.
+2. **State bucket**, by hand: create a bucket in **fra1** (the region of the
+   backend endpoint in `terraform/versions.tf`), e.g. `kauppa-tfstate-<you>`,
+   file listing restricted, then turn **versioning on** for it (bucket
+   settings). It must not be the backup bucket.
 3. **State key**: Spaces → Access Keys → *Create Access Key* → *Limited
    Access*, scoped to the state bucket only, Read/Write/Delete.
 4. **Terraform's Spaces key**: Terraform creates the backup bucket and its
