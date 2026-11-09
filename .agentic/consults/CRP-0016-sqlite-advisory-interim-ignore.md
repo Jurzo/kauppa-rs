@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: low
 urgency: high
-state: open
+state: answered
 runbook_trigger: "CI trigger path `deny.toml` (platform:lint-config); RR-0007 constraint 2 (`[advisories] ignore` stays empty unless a later RR approves an entry); MB-0041 autonomy.escalate (interim ignore → security) and forbidden (no ignore without an approved RR)"
 ---
 ```
