@@ -10,9 +10,6 @@ non_goals:
   - "Changing `name_key` matching (RR-0003) or the suggestions (MB-0013)."
   - "JavaScript beyond htmx."
 acceptance:
-  - id: P1
-    property: "While the typed name matches an existing product, the add form's category picker is disabled or hidden (per the owner's choice); when the name is new it is enabled, and when blank it is in its initial state. Without htmx the form still works: the server ignores the picker for an existing product as today."
-    check: cargo test -p kauppa-web routes::recipes::tests::editor::picker_follows_match
   - id: P2
     property: "If the owner chooses the ask-after-submit flow instead: submitting a new product's name without a category answers with a category prompt for that ingredient (keeping name and quantity) rather than an error, and choosing a category there adds it; an existing product is added in one step."
     check: cargo test -p kauppa-web routes::recipes::tests::editor::new_product_asks_category
@@ -72,6 +69,13 @@ P2 drops the picker from the add form and asks for a category only after
 the server finds the name is new. P2 also works without htmx and on a
 slow phone where the hint arrives late. The owner chooses at acceptance;
 the unchosen property is dropped in a brief delta.
+
+Owner chose P2 on 2026-11-09 ("P2, ask after submit"; brief accepted the
+same day). P1 (picker follows typing) is dropped from the acceptance list;
+the remaining ids keep their numbers. P3: the existing-but-uncategorized
+case keeps today's behaviour (the error pointing to Favorites). The match
+hint stays as an informational hint, reworded so it no longer mentions a
+picker.
 
 ## Conceptual plan
 
