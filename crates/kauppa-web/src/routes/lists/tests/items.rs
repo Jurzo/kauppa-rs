@@ -261,7 +261,7 @@ async fn htmx_fragments() {
         assert!(body.contains("<html") && body.contains(message), "{uri}");
     }
 
-    // The page shows the builder with the favorites picker.
+    // The page shows the builder with the favorites as suggestions (MB-0036).
     let page = body_string(
         call_service(
             &app,
@@ -274,7 +274,7 @@ async fn htmx_fragments() {
     )
     .await;
     assert!(page.contains("<html") && page.contains(&fragment_id));
-    assert!(page.contains(&format!(r#"<option value="{}">Maito</option>"#, maito.id)));
+    assert!(page.contains(r#"<option value="Maito"></option>"#));
 }
 
 /// MB-0021 P2: an active item's quantity is edited inline on the list page.

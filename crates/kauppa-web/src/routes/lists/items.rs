@@ -1,11 +1,12 @@
-//! Item handlers on the list page (MB-0004, MB-0005, MB-0021): add free text, a favorite or a recipe; assign a category; edit a quantity; remove and restore.
+//! Item handlers on the list page (MB-0004, MB-0005, MB-0021, MB-0036): add free text or a favorite from one field, or a recipe; assign a category; edit a quantity; remove and restore.
 
 use actix_identity::Identity;
 use actix_web::{HttpRequest, HttpResponse, post, web};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use kauppa_core::repo::ShoppingListRepo;
+use kauppa_core::domain::ListAccess;
+use kauppa_core::repo::{ProductRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
@@ -67,7 +68,30 @@ fn parse_product(raw: &str) -> CoreResult<Uuid> {
     }
 }
 
-/// Add a free-text item; it stays uncategorized until a category is chosen.
+/// The list owner's favorite that `text` names by `name_key` (RR-0003), if
+/// the user owns the list (MB-0036). Only favorites match, not recipe-created
+/// products. A grantee's text never matches: on a shared list the catalog
+/// and categories are the owner's, and `add_product` is the owner's alone
+/// (CRP-0024 asks whether editors should match the owner's favorites).
+async fn owner_favorite(
+    state: &AppState,
+    user: Uuid,
+    list_id: Uuid,
+    text: &str,
+) -> CoreResult<Option<Uuid>> {
+    if text.trim().is_empty()
+        || ShoppingListRepo::access(&state.pool, user, list_id).await? != ListAccess::Owner
+    {
+        return Ok(None);
+    }
+    let product = ProductRepo::find_by_name(&state.pool, user, text).await?;
+    Ok(product.filter(|p| p.is_favorite).map(|p| p.id))
+}
+
+/// Add an item from the one add field (MB-0036): text naming one of the
+/// owner's favorites adds that favorite as `add_favorite` does (its name and
+/// category copied now); any other text is a free-text item, uncategorized
+/// until a category is chosen. `add_product` and `add_item` authorize.
 #[post("/{id}/items")]
 pub async fn add_item(
     req: HttpRequest,
@@ -78,9 +102,16 @@ pub async fn add_item(
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let list_id = path.into_inner();
-    let outcome =
-        ShoppingListRepo::add_item(&state.pool, user, list_id, &form.text, Some(&form.quantity))
-            .await;
+    let quantity = Some(form.quantity.as_str());
+    let outcome = match owner_favorite(&state, user, list_id, &form.text).await {
+        Ok(Some(product)) => {
+            ShoppingListRepo::add_product(&state.pool, user, list_id, product, quantity).await
+        }
+        Ok(None) => {
+            ShoppingListRepo::add_item(&state.pool, user, list_id, &form.text, quantity).await
+        }
+        Err(e) => Err(e),
+    };
     let draft = if outcome.is_ok() {
         ItemDraft::default()
     } else {
@@ -94,7 +125,9 @@ pub async fn add_item(
     respond_item(&state, &req, user, list_id, outcome, draft).await
 }
 
-/// Add one of the user's favorites, copying its name and category now.
+/// Add one of the user's favorites by id, copying its name and category now.
+/// The list page no longer has this form (MB-0036: the add field matches
+/// favorites by name); the route stays for pages loaded before that change.
 #[post("/{id}/favorites")]
 pub async fn add_favorite(
     req: HttpRequest,
