@@ -138,7 +138,10 @@ async fn register_requires_invite_valid_token_creates_one_account() {
     let page = body_string(resp).await;
     assert_eq!(hidden_invite(&page).as_deref(), Some(token.as_str()));
     assert!(
-        page.contains("<form method=\"post\" action=\"/auth/register\">"),
+        // MB-0029 (RR-0018): the boosted form swaps its 4xx page into <body>.
+        page.contains(
+            "<form method=\"post\" action=\"/auth/register\" hx-ext=\"response-targets\" hx-target-4xx=\"body\">"
+        ),
         "{page}"
     );
 

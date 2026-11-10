@@ -1,5 +1,7 @@
 {{#> layout page_title="Invitations" page_signed_in=true}}
-<section>
+{{!-- RR-0018: a new invitation's one-time link is in this page's HTML, so
+htmx never snapshots it into its history cache; Back refetches. --}}
+<section hx-history="false">
   <header class="section-header">
     <h1>Invitations</h1>
   </header>
@@ -17,7 +19,8 @@
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
-  <form class="add-product" method="post" action="/admin/invitations">
+  <form class="add-product" method="post" action="/admin/invitations"
+        hx-ext="response-targets" hx-target-4xx="body">
     <label>Note (optional)
       <input name="note" type="text" maxlength="200" autocomplete="off"
              placeholder="Who it's for" value="{{note}}" />
