@@ -43,7 +43,6 @@ actix-web = { version = "4", default-features = false, features = [
     "compress-brotli",
     "compress-gzip",
 ] }
-actix-files = "0.7.4"
 actix-session = { version = "0.10", features = ["cookie-session"] }
 actix-identity = "0.8"
 tracing-actix-web = "0.7"
@@ -59,7 +58,7 @@ sqlx = { version = "0.8", default-features = false, features = [
 ] }
 
 # Templating
-handlebars = { version = "6", features = ["dir_source"] }
+handlebars = "6"
 
 # Observability
 tracing = "0.1"

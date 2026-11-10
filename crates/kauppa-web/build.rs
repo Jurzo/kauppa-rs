@@ -7,9 +7,11 @@ use std::fmt::Write as _;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// Content types for `assets/`, by extension, as `actix-files` 0.7 served
-/// them (`mime_guess`, plus `; charset=utf-8` on `text/css`, `text/plain` and
-/// `text/html`). The build fails on a file whose extension isn't here.
+/// Content types for `assets/`, by extension: the contract, pinned to what
+/// `actix-files` 0.7 served before MB-0024 (`mime_guess`, plus
+/// `; charset=utf-8` on `text/css`, `text/plain` and `text/html`). The build
+/// fails on a file whose
+/// extension isn't here.
 const CONTENT_TYPES: &[(&str, &str)] = &[
     ("css", "text/css; charset=utf-8"),
     ("js", "text/javascript"),
@@ -29,7 +31,7 @@ fn main() -> io::Result<()> {
     code.push_str("/// source names it: relative path, `/`-separated, without `.hbs`.\n");
     code.push_str("const TEMPLATES: &[(&str, &str)] = &[\n");
     for (name, path) in files(&templates)? {
-        // As `register_templates_directory` with default options: `.hbs`
+        // As handlebars' directory source named them before MB-0024: `.hbs`
         // files, minus hidden (`.x`) and temporary (`#x`) ones.
         let Some(stem) = name.strip_suffix(".hbs") else {
             continue;
@@ -53,7 +55,7 @@ fn main() -> io::Result<()> {
         String::from("/// `(path under /assets/, content type, bytes)` for every asset.\n");
     code.push_str("const ASSETS: &[(&str, &str, &[u8])] = &[\n");
     for (name, path) in files(&assets)? {
-        // `actix-files` refuses hidden files by default; so does the build.
+        // Hidden files are never served (as before MB-0024).
         if name.split('/').any(|seg| seg.starts_with('.')) {
             continue;
         }
