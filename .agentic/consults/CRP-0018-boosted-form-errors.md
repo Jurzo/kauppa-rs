@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0029 autonomy.escalate: choosing the mechanism (global `htmx-config` `responseHandling`, per-form attributes, or the response-targets extension, a new vendored file) → platform-owner; any change to an auth handler's status, headers or body (`crates/kauppa-web/src/routes/auth/`, security trigger path) → security; a mechanism needing inline script or eval (MB-0031's CSP) → security. RR-0015 constraint 1 (adding another vendored file needs an RR) and Does not cover (`htmx-config`, `hx-*` behaviour changes). AGENTS.md Do-not-touch (adding a vendored file is a platform decision)."
 ---
 ```
