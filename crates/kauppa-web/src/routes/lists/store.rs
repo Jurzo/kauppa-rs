@@ -11,6 +11,7 @@ use kauppa_core::repo::ShoppingListRepo;
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::request::{current_user, is_hx, wants_fragment};
 use crate::state::AppState;
 
@@ -52,6 +53,7 @@ struct ShopItem {
 /// fragment.
 async fn render_shop(
     state: &AppState,
+    ui: &Ui,
     user: Uuid,
     list_id: Uuid,
     fragment: bool,
@@ -91,9 +93,10 @@ async fn render_shop(
     } else {
         "lists/shop"
     };
-    let body = state.templates.render(template, &view)?;
+    let body = ui.render(state, template, &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -102,6 +105,7 @@ async fn render_shop(
 /// with 400 for rejected input. `NotFound` is a 404.
 async fn respond_shop<T>(
     state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     list_id: Uuid,
@@ -113,13 +117,22 @@ async fn respond_shop<T>(
         Err(e) => return Err(e.into()),
     };
     if is_hx(req) {
-        render_shop(state, user, list_id, true, StatusCode::OK, error).await
+        render_shop(state, ui, user, list_id, true, StatusCode::OK, error).await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, format!("/lists/{list_id}/shop")))
             .finish())
     } else {
-        render_shop(state, user, list_id, false, StatusCode::BAD_REQUEST, error).await
+        render_shop(
+            state,
+            ui,
+            user,
+            list_id,
+            false,
+            StatusCode::BAD_REQUEST,
+            error,
+        )
+        .await
     }
 }
 
@@ -136,6 +149,7 @@ fn parse_checked(raw: &str) -> CoreResult<bool> {
 pub async fn shop(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
@@ -143,6 +157,7 @@ pub async fn shop(
     let fragment = wants_fragment(&req);
     render_shop(
         &state,
+        &ui,
         user,
         path.into_inner(),
         fragment,
@@ -158,6 +173,7 @@ pub async fn shop(
 pub async fn check_item(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
     form: web::Form<CheckForm>,
@@ -170,7 +186,7 @@ pub async fn check_item(
         }
         Err(e) => Err(e),
     };
-    respond_shop(&state, &req, user, list_id, outcome).await
+    respond_shop(&state, &ui, &req, user, list_id, outcome).await
 }
 
 /// Remove an item from the store view (soft delete; it can be restored from
@@ -179,11 +195,12 @@ pub async fn check_item(
 pub async fn remove_from_shop(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::remove_item(&state.pool, user, list_id, item_id).await;
-    respond_shop(&state, &req, user, list_id, outcome).await
+    respond_shop(&state, &ui, &req, user, list_id, outcome).await
 }

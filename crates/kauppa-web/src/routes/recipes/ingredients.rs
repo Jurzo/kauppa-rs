@@ -12,6 +12,7 @@ use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo};
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::products::parse_category;
 use crate::routes::request::{current_user, is_hx, wants_fragment};
 use crate::state::AppState;
@@ -91,6 +92,7 @@ async fn check_ingredient(
 pub async fn add_ingredient(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<IngredientForm>,
@@ -102,7 +104,7 @@ pub async fn add_ingredient(
             RecipeRepo::add_ingredient(&state.pool, user, recipe_id, &new).await
         }
         Ok(Checked::NeedsCategory) => {
-            return ask_category(&state, &req, user, recipe_id, form.into_inner()).await;
+            return ask_category(&state, &ui, &req, user, recipe_id, form.into_inner()).await;
         }
         Err(e) => Err(e),
     };
@@ -120,7 +122,7 @@ pub async fn add_ingredient(
         }
     };
     respond(
-        &state,
+        &ui,
         &req,
         user,
         recipe_id,
@@ -137,6 +139,7 @@ pub async fn add_ingredient(
 /// doesn't swap 4xx. Nothing is written.
 async fn ask_category(
     state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     recipe_id: Uuid,
@@ -153,7 +156,16 @@ async fn ask_category(
         ..Feedback::default()
     };
     let fragment = is_hx(req).then_some(Section::Ingredients);
-    render_show(state, user, recipe_id, fragment, StatusCode::OK, feedback).await
+    render_show(
+        state,
+        ui,
+        user,
+        recipe_id,
+        fragment,
+        StatusCode::OK,
+        feedback,
+    )
+    .await
 }
 
 /// The match hint for the name typed into the add form, as a fragment for
@@ -163,6 +175,7 @@ async fn ask_category(
 pub async fn ingredient_match(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     query: web::Query<MatchQuery>,
@@ -177,14 +190,18 @@ pub async fn ingredient_match(
     }
     let categories = CategoryRepo::list_for_owner(&state.pool, user).await?;
     let hint = match_hint(&state, user, &query.name, &categories).await?;
-    let body = state.templates.render("recipes/_match_hint", &hint)?;
-    Ok(HttpResponse::Ok().content_type("text/html").body(body))
+    let body = ui.render(&state, "recipes/_match_hint", &hint)?;
+    Ok(HttpResponse::Ok()
+        .content_type("text/html")
+        .insert_header(VARY)
+        .body(body))
 }
 
 #[post("/{id}/ingredients/{ingredient}/quantity")]
 pub async fn set_quantity(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
     form: web::Form<QuantityForm>,
@@ -200,7 +217,7 @@ pub async fn set_quantity(
     )
     .await;
     respond(
-        &state,
+        &ui,
         &req,
         user,
         recipe_id,
@@ -216,6 +233,7 @@ pub async fn set_quantity(
 pub async fn move_ingredient(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
     form: web::Form<MoveForm>,
@@ -225,7 +243,7 @@ pub async fn move_ingredient(
     let outcome =
         RecipeRepo::move_ingredient(&state.pool, user, recipe_id, ingredient_id, form.dir).await;
     respond(
-        &state,
+        &ui,
         &req,
         user,
         recipe_id,
@@ -240,6 +258,7 @@ pub async fn move_ingredient(
 pub async fn remove_ingredient(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
 ) -> WebResult<HttpResponse> {
@@ -247,7 +266,7 @@ pub async fn remove_ingredient(
     let (recipe_id, ingredient_id) = path.into_inner();
     let outcome = RecipeRepo::remove_ingredient(&state.pool, user, recipe_id, ingredient_id).await;
     respond(
-        &state,
+        &ui,
         &req,
         user,
         recipe_id,

@@ -1,5 +1,6 @@
 pub mod category;
 pub mod invitation;
+pub mod language;
 pub mod ordering;
 pub mod password_rule;
 pub mod product;
@@ -11,6 +12,7 @@ pub mod user;
 
 pub use category::Category;
 pub use invitation::{CreatedInvitation, Invitation, InvitationState, InvitationUser, Registered};
+pub use language::Language;
 pub use ordering::Direction;
 pub use password_rule::{
     PASSWORD_MAX_CHARS, PASSWORD_MIN_CHARS, PasswordLengthError, check_new_password_length,

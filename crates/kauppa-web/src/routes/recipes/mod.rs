@@ -42,6 +42,7 @@ use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo}
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::products::Picker;
 use crate::routes::request::{current_user, is_hx};
 use crate::state::AppState;
@@ -435,6 +436,7 @@ fn add_to_list_view(
 /// Render the editor as the full page or, for htmx, one section's fragment.
 async fn render_show(
     state: &AppState,
+    ui: &Ui,
     user: Uuid,
     recipe_id: Uuid,
     fragment: Option<Section>,
@@ -444,22 +446,21 @@ async fn render_show(
     let detail = RecipeRepo::get(&state.pool, user, recipe_id).await?;
     let mut view = show_view(state, user, detail, feedback).await?;
     let body = match fragment {
-        Some(Section::Details) => state
-            .templates
-            .render(Section::Details.template(), &view.details)?,
-        Some(Section::Ingredients) => state
-            .templates
-            .render(Section::Ingredients.template(), &view.ingredients)?,
-        Some(Section::AddToList) => state
-            .templates
-            .render(Section::AddToList.template(), &view.add_to_list)?,
+        Some(Section::Details) => ui.render(state, Section::Details.template(), &view.details)?,
+        Some(Section::Ingredients) => {
+            ui.render(state, Section::Ingredients.template(), &view.ingredients)?
+        }
+        Some(Section::AddToList) => {
+            ui.render(state, Section::AddToList.template(), &view.add_to_list)?
+        }
         None => {
             view.suggestions = ProductRepo::suggestion_names(&state.pool, user).await?;
-            state.templates.render("recipes/show", &view)?
+            ui.render(state, "recipes/show", &view)?
         }
     };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -469,7 +470,7 @@ async fn render_show(
 /// 4xx status. Success is the fragment for htmx, else a 303 back to the page.
 /// `NotFound` (another user's recipe or ingredient) is a 404.
 async fn respond<T>(
-    state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     recipe_id: Uuid,
@@ -477,6 +478,7 @@ async fn respond<T>(
     outcome: CoreResult<T>,
     draft: Draft,
 ) -> WebResult<HttpResponse> {
+    let state = ui.state();
     let (status, error) = match outcome {
         Ok(_) => (StatusCode::OK, None),
         Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, Some(m)),
@@ -496,6 +498,7 @@ async fn respond<T>(
     if is_hx(req) {
         render_show(
             state,
+            ui,
             user,
             recipe_id,
             Some(section),
@@ -508,7 +511,7 @@ async fn respond<T>(
             .append_header((header::LOCATION, format!("/recipes/{recipe_id}")))
             .finish())
     } else {
-        render_show(state, user, recipe_id, None, status, feedback).await
+        render_show(state, ui, user, recipe_id, None, status, feedback).await
     }
 }
 
@@ -524,15 +527,18 @@ fn summaries(recipes: Vec<Recipe>) -> Vec<RecipeSummary> {
 }
 
 #[get("")]
-pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpResponse> {
+pub async fn index(state: web::Data<AppState>, ui: Ui, id: Identity) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let recipes = RecipeRepo::list_for_owner(&state.pool, user).await?;
     let view = IndexView {
         recipes: summaries(recipes),
         new: NewRecipeView::default(),
     };
-    let body = state.templates.render("recipes/index", &view)?;
-    Ok(HttpResponse::Ok().content_type("text/html").body(body))
+    let body = ui.render(&state, "recipes/index", &view)?;
+    Ok(HttpResponse::Ok()
+        .content_type("text/html")
+        .insert_header(VARY)
+        .body(body))
 }
 
 /// Create a recipe from its title and open it in the editor: `HX-Redirect`
@@ -541,6 +547,7 @@ pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpRe
 pub async fn create(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     form: web::Form<RecipeForm>,
 ) -> WebResult<HttpResponse> {
@@ -572,30 +579,33 @@ pub async fn create(
         error: Some(message),
     };
     let body = if is_hx(&req) {
-        state.templates.render("recipes/_new", &new)?
+        ui.render(&state, "recipes/_new", &new)?
     } else {
         let recipes = RecipeRepo::list_for_owner(&state.pool, user).await?;
         let view = IndexView {
             recipes: summaries(recipes),
             new,
         };
-        state.templates.render("recipes/index", &view)?
+        ui.render(&state, "recipes/index", &view)?
     };
     let status = if is_hx(&req) { StatusCode::OK } else { status };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
 #[get("/{id}")]
 pub async fn show(
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     render_show(
         &state,
+        &ui,
         user,
         path.into_inner(),
         None,
@@ -609,6 +619,7 @@ pub async fn show(
 pub async fn update(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<RecipeForm>,
@@ -624,16 +635,7 @@ pub async fn update(
     } else {
         Draft::Details(form.into_inner())
     };
-    respond(
-        &state,
-        &req,
-        user,
-        recipe_id,
-        Section::Details,
-        outcome,
-        draft,
-    )
-    .await
+    respond(&ui, &req, user, recipe_id, Section::Details, outcome, draft).await
 }
 
 /// Delete a recipe with its ingredients (MB-0012) and land on `/recipes`:

@@ -22,6 +22,7 @@ mod config;
 mod csp;
 mod csrf;
 mod error;
+mod i18n;
 mod routes;
 mod state;
 mod telemetry;
@@ -72,12 +73,13 @@ async fn main() -> anyhow::Result<()> {
     // login costs (RR-0013 sub-answer 7).
     routes::auth::dummy_hash()?;
 
-    let templates = Arc::new(templates::build_registry()?);
+    let templates = Arc::new(templates::Templates::load()?);
     let state = web::Data::new(AppState {
         pool: pool.clone(),
         templates,
         origin,
         limiter: Arc::new(limiter),
+        cookie_secure: cfg.cookie_secure,
     });
 
     let session_key = Key::from(cfg.session_secret.as_bytes());

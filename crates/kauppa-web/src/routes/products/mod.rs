@@ -28,6 +28,7 @@ use kauppa_core::repo::{CategoryRepo, ProductRepo};
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::request::{current_user, is_hx};
 use crate::state::AppState;
 
@@ -264,6 +265,7 @@ impl CatalogView {
 /// Render the catalog as the full page or, for htmx, the `#favorites` fragment.
 async fn render(
     state: &AppState,
+    ui: &Ui,
     user: Uuid,
     fragment: bool,
     status: StatusCode,
@@ -279,9 +281,10 @@ async fn render(
     } else {
         "products/index"
     };
-    let body = state.templates.render(template, &view)?;
+    let body = ui.render(state, template, &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -291,6 +294,7 @@ async fn render(
 /// the fragment for htmx, else a 303 back to the page.
 async fn respond<T>(
     state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     outcome: CoreResult<T>,
@@ -307,26 +311,36 @@ async fn respond<T>(
     }
 
     if is_hx(req) {
-        render(state, user, true, StatusCode::OK, draft, error).await
+        render(state, ui, user, true, StatusCode::OK, draft, error).await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, "/favorites"))
             .finish())
     } else {
-        render(state, user, false, status, draft, error).await
+        render(state, ui, user, false, status, draft, error).await
     }
 }
 
 #[get("")]
-pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpResponse> {
+pub async fn index(state: web::Data<AppState>, ui: Ui, id: Identity) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    render(&state, user, false, StatusCode::OK, Draft::default(), None).await
+    render(
+        &state,
+        &ui,
+        user,
+        false,
+        StatusCode::OK,
+        Draft::default(),
+        None,
+    )
+    .await
 }
 
 #[post("")]
 pub async fn create(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     form: web::Form<CreateForm>,
 ) -> WebResult<HttpResponse> {
@@ -345,26 +359,28 @@ pub async fn create(
         },
         category_id,
     };
-    respond(&state, &req, user, outcome, draft).await
+    respond(&state, &ui, &req, user, outcome, draft).await
 }
 
 #[post("/{id}/rename")]
 pub async fn rename(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = ProductRepo::rename(&state.pool, user, path.into_inner(), &form.name).await;
-    respond(&state, &req, user, outcome, Draft::default()).await
+    respond(&state, &ui, &req, user, outcome, Draft::default()).await
 }
 
 #[post("/{id}/category")]
 pub async fn recategorize(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<CategoryForm>,
@@ -376,7 +392,7 @@ pub async fn recategorize(
         }
         Err(e) => Err(e),
     };
-    respond(&state, &req, user, outcome, Draft::default()).await
+    respond(&state, &ui, &req, user, outcome, Draft::default()).await
 }
 
 /// Move a product one step up or down within its category.
@@ -384,6 +400,7 @@ pub async fn recategorize(
 pub async fn move_product(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<MoveForm>,
@@ -391,7 +408,7 @@ pub async fn move_product(
     let user = current_user(&id)?;
     let outcome =
         ProductRepo::move_within_category(&state.pool, user, path.into_inner(), form.dir).await;
-    respond(&state, &req, user, outcome, Draft::default()).await
+    respond(&state, &ui, &req, user, outcome, Draft::default()).await
 }
 
 /// Make a recipe-created product a favorite, in its own category (MB-0014).
@@ -399,22 +416,24 @@ pub async fn move_product(
 pub async fn make_favorite(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = ProductRepo::make_favorite(&state.pool, user, path.into_inner()).await;
-    respond(&state, &req, user, outcome, Draft::default()).await
+    respond(&state, &ui, &req, user, outcome, Draft::default()).await
 }
 
 #[post("/{id}/delete")]
 pub async fn delete(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = ProductRepo::delete(&state.pool, user, path.into_inner()).await;
-    respond(&state, &req, user, outcome, Draft::default()).await
+    respond(&state, &ui, &req, user, outcome, Draft::default()).await
 }

@@ -614,7 +614,8 @@ async fn existing_users_unaffected() {
             .fetch_all(&raw)
             .await
             .unwrap();
-    assert_eq!(versions, (1..=8).collect::<Vec<i64>>());
+    // 1–8 in order; later migrations (0009, MB-0035) follow.
+    assert_eq!(versions[..8], (1..=8).collect::<Vec<i64>>());
 
     assert_eq!(dump(raw.clone()).await, before, "no existing row changed");
     for user in [&owner, &friend] {

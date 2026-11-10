@@ -14,6 +14,8 @@ mod category;
 #[cfg(test)]
 mod invite;
 #[cfg(test)]
+mod language;
+#[cfg(test)]
 mod list;
 #[cfg(test)]
 mod product;
@@ -30,9 +32,9 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, CreatedInvitation, Direction, HiddenProductGroup, Ingredient, Invitation, ListAccess,
-    ListGroup, ListItem, ListShare, NewIngredient, Product, ProductGroup, Recipe, RecipeDetail,
-    RecipeInput, Registered, ShareRole, SharedList, ShoppingList, User,
+    Category, CreatedInvitation, Direction, HiddenProductGroup, Ingredient, Invitation, Language,
+    ListAccess, ListGroup, ListItem, ListShare, NewIngredient, Product, ProductGroup, Recipe,
+    RecipeDetail, RecipeInput, Registered, ShareRole, SharedList, ShoppingList, User,
 };
 
 #[async_trait]
@@ -50,6 +52,15 @@ pub trait UserRepo: Send + Sync {
         display_name: &str,
         password_hash: &str,
     ) -> CoreResult<User>;
+
+    /// The language the user chose (MB-0035, RR-0023): `None` when they
+    /// never chose one, when the stored value isn't a supported language,
+    /// or when there is no such user.
+    async fn language(&self, user_id: Uuid) -> CoreResult<Option<Language>>;
+
+    /// Stores the user's language; `None` clears the choice. `NotFound`
+    /// when there is no such user.
+    async fn set_language(&self, user_id: Uuid, language: Option<Language>) -> CoreResult<()>;
 }
 
 /// Invitations to create an account (MB-0023, RR-0012).
