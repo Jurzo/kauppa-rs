@@ -1,24 +1,24 @@
-{{#> layout page_title="Register"}}
+{{#> layout page_title=(t "auth.register_title")}}
 {{!-- RR-0018: the invitation token is in this page's HTML, so htmx never
 snapshots it into its history cache; Back refetches. --}}
 <section class="form-card" hx-history="false">
-  <h1>Create an account</h1>
+  <h1>{{t "auth.create_account"}}</h1>
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
   {{#if invite}}
     <form method="post" action="/auth/register" hx-target-4xx="body">
       <input type="hidden" name="invite" value="{{invite}}" />
-      <label>Display name<input type="text" name="display_name" required value="{{display_name}}" /></label>
-      <label>Email<input type="email" name="email" required autocomplete="email" value="{{email}}" /></label>
-      <label>Password<input type="password" name="password" required minlength="{{password_min}}" autocomplete="new-password" /></label>
-      <button type="submit" class="button primary">Create account</button>
+      <label>{{t "auth.display_name"}}<input type="text" name="display_name" required value="{{display_name}}" /></label>
+      <label>{{t "auth.email"}}<input type="email" name="email" required autocomplete="email" value="{{email}}" /></label>
+      <label>{{t "auth.password"}}<input type="password" name="password" required minlength="{{password_min}}" autocomplete="new-password" /></label>
+      <button type="submit" class="button primary">{{t "auth.create_account_button"}}</button>
     </form>
   {{else}}
     {{#unless error}}
-      <p>Registration needs an invitation. Ask whoever runs this site for an invitation link, then open it.</p>
+      <p>{{t "auth.register_needs_invite"}}</p>
     {{/unless}}
   {{/if}}
-  <p>Already have one? <a href="/auth/login">Sign in</a>.</p>
+  <p>{{t "auth.have_account"}} <a href="/auth/login">{{t "auth.sign_in"}}</a>.</p>
 </section>
 {{/layout}}

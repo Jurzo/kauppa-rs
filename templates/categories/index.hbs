@@ -1,8 +1,8 @@
-{{#> layout page_title="Categories" page_signed_in=true page_nav="categories"}}
+{{#> layout page_title=(t "categories.title") page_signed_in=true page_nav="categories"}}
 <section>
   <header class="section-header">
-    <h1>Categories</h1>
-    <p class="muted">Group your products — produce, cold, baking, frozen, spices…</p>
+    <h1>{{t "categories.title"}}</h1>
+    <p class="muted">{{t "categories.intro"}}</p>
   </header>
 
   {{> categories/_section }}
