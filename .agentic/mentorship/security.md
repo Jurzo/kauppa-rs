@@ -20,6 +20,10 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
 - **Session store.** `actix-session` with `CookieSessionStore`, keyed by a
   >=64-byte secret from `KAUPPA_SESSION_SECRET`. Cookies: `HttpOnly`,
   `SameSite=Lax`, `Secure` behind TLS (`KAUPPA_COOKIE_SECURE=true`).
+  The one other cookie is `kauppa_lang` (MB-0035, RR-0023): unsigned, its
+  value only `en` or `fi` (anything else ignored, never echoed), `Path=/`,
+  `SameSite=Lax`, `HttpOnly`, `Secure` with `KAUPPA_COOKIE_SECURE=true`, one
+  year; set only by `POST /language`. The language is never a session field.
 - **Authorization.** Every per-user resource query authorizes the acting user
   against the resource. For owner-only resources that means `owner_id =
   $current_user`. For shared shopping lists (RR-0002) the predicate is "owner

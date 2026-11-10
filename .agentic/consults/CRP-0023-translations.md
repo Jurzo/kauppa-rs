@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0035 autonomy.escalate: the translation mechanism, a crate or an in-house helper (platform-owner; dependency-bump.md if a crate is chosen: options A and C add one, the recommended B adds none); where the language preference lives (data-owner; a `users` column is a new migration `0009_user_language.sql`, feature.md escalation path `migrations/**`, migration runbook entry gate); a language cookie or session field (security; the recommendation is a new `kauppa_lang` cookie set by a handler, with no change to the session middleware or its cookie settings); how core errors become user text (owner); the switcher's place in the layout (owner, interacts with MB-0040). feature.md escalation paths touched by the conversion: `crates/kauppa-web/src/routes/auth/` (login/register strings, `INVALID_LOGIN` and friends) and `crates/kauppa-web/src/routes/admin/` (security), and `crates/kauppa-web/src/main.rs` (the registry line in `AppState` changes; the session middleware block does not). Routed to platform, with Q3 to data-owner, Q4–Q5 to security and Q6–Q10 to the owner."
 ---
 ```
