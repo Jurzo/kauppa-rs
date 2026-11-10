@@ -1,7 +1,7 @@
-{{#> layout page_title="Recipes" page_signed_in=true page_nav="recipes"}}
+{{#> layout page_title=(t "recipes.title") page_signed_in=true page_nav="recipes"}}
 <section>
   <header class="section-header">
-    <h1>Recipes</h1>
+    <h1>{{t "recipes.title"}}</h1>
   </header>
 
   {{> recipes/_new new }}
@@ -10,10 +10,10 @@
     {{#each recipes}}
       <article class="card">
         <h2><a href="/recipes/{{this.id}}">{{this.title}}</a></h2>
-        {{#if this.servings}}<p class="muted">Serves {{this.servings}}</p>{{/if}}
+        {{#if this.servings}}<p class="muted">{{t "recipes.serves" count=this.servings}}</p>{{/if}}
       </article>
     {{else}}
-      <p class="empty">No recipes yet. Name your first one above.</p>
+      <p class="empty">{{t "recipes.empty"}}</p>
     {{/each}}
   </div>
 </section>

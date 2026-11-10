@@ -23,6 +23,7 @@ use serde_json::Value;
 
 use kauppa_core::domain::Language;
 
+pub mod messages;
 mod request;
 
 #[cfg(test)]

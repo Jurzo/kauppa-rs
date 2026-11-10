@@ -1,5 +1,6 @@
 //! `RecipeRepo` on SQLite.
 
+use crate::{Conflict, Entity, Invalid};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::Row;
@@ -37,12 +38,10 @@ fn row_to_recipe(row: &SqliteRow) -> CoreResult<Recipe> {
 fn clean_recipe(input: &RecipeInput) -> CoreResult<RecipeInput> {
     let title = input.title.trim();
     if title.is_empty() {
-        return Err(CoreError::Invalid(
-            "recipe title must not be empty".to_owned(),
-        ));
+        return Err(CoreError::Invalid(Invalid::TitleEmpty));
     }
     if input.servings.is_some_and(|n| n < 1) {
-        return Err(CoreError::Invalid("servings must be at least 1".to_owned()));
+        return Err(CoreError::Invalid(Invalid::ServingsTooFew));
     }
     Ok(RecipeInput {
         title: title.to_owned(),
@@ -189,7 +188,7 @@ impl RecipeRepo for SqlitePool {
         recipe_id: Uuid,
         ingredient: &NewIngredient,
     ) -> CoreResult<Ingredient> {
-        let name = clean_name("product", &ingredient.product_name)?;
+        let name = clean_name(Entity::Product, &ingredient.product_name)?;
         let owner = owner_id.to_string();
         let recipe = recipe_id.to_string();
         let now = Utc::now();
@@ -210,7 +209,9 @@ impl RecipeRepo for SqlitePool {
             (row.try_get("id")?, row.try_get("name")?)
         } else {
             let category = ingredient.category_id.ok_or_else(|| {
-                CoreError::Invalid(format!("choose a category for the new product {name}"))
+                CoreError::Invalid(Invalid::NewProductNeedsCategory {
+                    name: name.to_owned(),
+                })
             })?;
             // A new product, hidden from favorites, appended at the end of an
             // owned category; nothing is inserted for a foreign one.
@@ -235,7 +236,12 @@ impl RecipeRepo for SqlitePool {
             .bind(category.to_string())
             .fetch_optional(&mut *tx)
             .await
-            .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?
+            .map_err(|e| {
+                conflict_on_unique(e, || Conflict::Exists {
+                    entity: Entity::Product,
+                    name: name.to_owned(),
+                })
+            })?
             .ok_or_else(unknown_category)?;
             (row.try_get("id")?, name.to_owned())
         };
@@ -323,7 +329,7 @@ impl RecipeRepo for SqlitePool {
         // Rewrite the whole list densely, which also heals gaps left by removals.
         for (index, id) in ids.iter().enumerate() {
             let position = i64::try_from(index)
-                .map_err(|_| CoreError::Invalid("too many ingredients".to_owned()))?;
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Ingredient)))?;
             sqlx::query(r"UPDATE ingredients SET position = ?1 WHERE id = ?2 AND recipe_id = ?3")
                 .bind(position)
                 .bind(id)

@@ -1,5 +1,6 @@
 //! `UserRepo` on SQLite.
 
+use crate::Conflict;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sqlx::Row;
@@ -99,7 +100,7 @@ where
     .bind(now)
     .execute(executor)
     .await
-    .map_err(|e| conflict_on_unique(e, || "email already registered".to_owned()))?;
+    .map_err(|e| conflict_on_unique(e, || Conflict::EmailTaken))?;
 
     Ok(User {
         id,

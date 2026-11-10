@@ -2,12 +2,12 @@
 <section>
   <header class="section-header">
     <h1>{{title}}</h1>
-    <a href="/recipes">All recipes</a>
+    <a href="/recipes">{{t "recipes.all"}}</a>
   </header>
 
   {{> recipes/_details details }}
 
-  <h2>Ingredients</h2>
+  <h2>{{t "recipes.ingredients"}}</h2>
   {{> recipes/_ingredients ingredients }}
   {{!-- MB-0013: the ingredient name input's suggestions (list="…"). Outside
         #ingredients so htmx edits of that section don't re-send them. --}}
@@ -17,13 +17,13 @@
     {{/each}}
   </datalist>
 
-  <h2>Add to a list</h2>
+  <h2>{{t "recipes.add_to_list"}}</h2>
   {{> recipes/_add_to_list add_to_list }}
 
   <form class="recipe-delete" method="post" action="/recipes/{{details.id}}/delete"
         hx-post="/recipes/{{details.id}}/delete" hx-target="this" hx-swap="none"
-        hx-confirm="Delete the recipe “{{title}}” and its ingredients? The products stay in your catalog.">
-    <button type="submit" class="link danger">Delete recipe</button>
+        hx-confirm="{{t "recipes.delete_confirm" title=title}}">
+    <button type="submit" class="link danger">{{t "recipes.delete"}}</button>
   </form>
 </section>
 {{/layout}}

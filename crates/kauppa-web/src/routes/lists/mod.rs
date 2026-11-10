@@ -44,6 +44,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use kauppa_core::Invalid;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -280,12 +281,12 @@ async fn respond_item<T>(
 ) -> WebResult<HttpResponse> {
     let error = match outcome {
         Ok(_) => None,
-        Err(CoreError::Invalid(m)) => Some(m),
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, list_id = %list_id, reason = %m, "list item rejected");
+            Some(ui.invalid(&m)?)
+        }
         Err(e) => return Err(e.into()),
     };
-    if let Some(reason) = &error {
-        tracing::debug!(user_id = %user, list_id = %list_id, %reason, "list item rejected");
-    }
 
     if is_hx(req) {
         render_list(ui, user, list_id, true, StatusCode::OK, draft, error).await
@@ -307,9 +308,9 @@ pub fn parse_multiplier(raw: &str) -> CoreResult<f64> {
     if raw.is_empty() {
         return Ok(1.0);
     }
-    raw.replace(',', ".").parse::<f64>().map_err(|_| {
-        CoreError::Invalid("the multiplier must be a number, e.g. 2 or 1,5".to_owned())
-    })
+    raw.replace(',', ".")
+        .parse::<f64>()
+        .map_err(|_| CoreError::Invalid(Invalid::MultiplierNotNumber))
 }
 
 impl ListCard {
@@ -375,12 +376,12 @@ async fn respond<T>(
 ) -> WebResult<HttpResponse> {
     let outcome = match outcome {
         Ok(value) => Ok(value),
-        Err(CoreError::Invalid(m)) => Err(m),
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, reason = %m, "list input rejected");
+            Err(ui.invalid(&m)?)
+        }
         Err(e) => return Err(e.into()),
     };
-    if let Err(reason) = &outcome {
-        tracing::debug!(user_id = %user, %reason, "list input rejected");
-    }
 
     match outcome {
         _ if is_hx(req) => {

@@ -3,9 +3,9 @@
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
-  <label>New recipe
+  <label>{{t "recipes.new"}}
     <input id="new-recipe-title" name="title" type="text" required
-           autocomplete="off" placeholder="e.g. Pannukakku" value="{{title}}" />
+           autocomplete="off" placeholder="{{t "recipes.title_placeholder"}}" value="{{title}}" />
   </label>
-  <button type="submit" class="button primary">Create</button>
+  <button type="submit" class="button primary">{{t "common.create"}}</button>
 </form>

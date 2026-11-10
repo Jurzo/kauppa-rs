@@ -3,27 +3,27 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
   {{#if added}}
-    <p role="status">Added {{added.items}} to {{added.list_name}} — <a href="/lists/{{added.list_id}}">open list</a></p>
+    <p role="status">{{#if added.list_name}}{{t "recipes.added" count=added.count list=added.list_name}}{{else}}{{t "recipes.added_to_the_list" count=added.count}}{{/if}} — <a href="/lists/{{added.list_id}}">{{t "recipes.open_list"}}</a></p>
   {{/if}}
 
   {{#if has_lists}}
     <form class="add-product" method="post" action="/recipes/{{recipe_id}}/add-to-list"
           hx-post="/recipes/{{recipe_id}}/add-to-list" hx-target="#add-to-list" hx-swap="outerHTML">
-      <label>List
+      <label>{{t "recipes.list"}}
         <select name="list_id" required>
-          <option value="" disabled{{#unless has_selection}} selected{{/unless}}>Choose a list</option>
+          <option value="" disabled{{#unless has_selection}} selected{{/unless}}>{{t "recipes.choose_list"}}</option>
           {{#each lists}}
             <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
           {{/each}}
         </select>
       </label>
-      <label>Times
+      <label>{{t "common.times"}}
         <input name="multiplier" type="text" inputmode="decimal" autocomplete="off"
                value="{{#if multiplier}}{{multiplier}}{{else}}1{{/if}}" />
       </label>
-      <button type="submit" class="button">Add ingredients</button>
+      <button type="submit" class="button">{{t "common.add_ingredients"}}</button>
     </form>
   {{else}}
-    <p class="empty">No shopping lists yet — <a href="/lists">create a list</a> first.</p>
+    <p class="empty">{{t "recipes.no_lists"}} <a href="/lists">{{t "recipes.create_list"}}</a>{{t "common.first"}}</p>
   {{/if}}
 </div>

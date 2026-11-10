@@ -3,15 +3,15 @@
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
-  <label>Title
+  <label>{{t "recipes.title_label"}}
     <input name="title" type="text" required value="{{title}}" />
   </label>
-  <label>Servings
+  <label>{{t "recipes.servings"}}
     <input name="servings" type="number" min="1" step="1" inputmode="numeric" value="{{servings}}" />
   </label>
-  <label class="recipe-instructions">Instructions
+  <label class="recipe-instructions">{{t "recipes.instructions"}}
     <textarea name="instructions" rows="6">{{instructions}}</textarea>
   </label>
-  <button type="submit" class="button primary">Save</button>
-  {{#if saved}}<p class="muted" role="status">Saved.</p>{{/if}}
+  <button type="submit" class="button primary">{{t "common.save"}}</button>
+  {{#if saved}}<p class="muted" role="status">{{t "recipes.saved"}}</p>{{/if}}
 </form>

@@ -5,6 +5,7 @@
 use actix_identity::Identity;
 use actix_web::http::header;
 use actix_web::{HttpResponse, post, web};
+use kauppa_core::Invalid;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -43,7 +44,7 @@ pub async fn switch(
     form: web::Form<LanguageForm>,
 ) -> WebResult<HttpResponse> {
     let lang = Language::parse(&form.lang)
-        .ok_or_else(|| WebError::Core(CoreError::Invalid("unsupported language".to_owned())))?;
+        .ok_or_else(|| WebError::Core(CoreError::Invalid(Invalid::Language)))?;
     let user = id
         .and_then(|i| i.id().ok())
         .and_then(|raw| Uuid::parse_str(&raw).ok());

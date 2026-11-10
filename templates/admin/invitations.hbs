@@ -1,16 +1,16 @@
-{{#> layout page_title="Invitations" page_signed_in=true}}
+{{#> layout page_title=(t "invitations.title") page_signed_in=true}}
 {{!-- RR-0018: a new invitation's one-time link is in this page's HTML, so
 htmx never snapshots it into its history cache; Back refetches. --}}
 <section hx-history="false">
   <header class="section-header">
-    <h1>Invitations</h1>
+    <h1>{{t "invitations.title"}}</h1>
   </header>
-  <p class="muted">An invitation link lets one person create an account. Send it to them yourself; anyone who has the link can use it until it is used, revoked or expires.</p>
+  <p class="muted">{{t "invitations.intro"}}</p>
 
   {{#if created}}
     <div class="invite-created" role="status">
-      <p><strong>Invitation created{{#if created.note}} ({{created.note}}){{/if}}.</strong> Copy the link now: it is shown only this once. It works for one account until {{created.expires}}.</p>
-      <label>Invitation link
+      <p><strong>{{#if created.note}}{{t "invitations.created_with_note" note=created.note}}{{else}}{{t "invitations.created"}}{{/if}}</strong> {{t "invitations.copy_now" expires=created.expires}}</p>
+      <label>{{t "invitations.link"}}
         <input class="invite-link" type="text" readonly value="{{created.link}}" />
       </label>
     </div>
@@ -21,38 +21,38 @@ htmx never snapshots it into its history cache; Back refetches. --}}
   {{/if}}
   <form class="add-product" method="post" action="/admin/invitations"
         hx-target-4xx="body">
-    <label>Note (optional)
+    <label>{{t "invitations.note_label"}}
       <input name="note" type="text" maxlength="200" autocomplete="off"
-             placeholder="Who it's for" value="{{note}}" />
+             placeholder="{{t "invitations.note_placeholder"}}" value="{{note}}" />
     </label>
-    <button type="submit" class="button primary">Create invitation</button>
+    <button type="submit" class="button primary">{{t "invitations.create"}}</button>
   </form>
 
-  <h2>All invitations ({{count}})</h2>
+  <h2>{{t "invitations.all" count=count}}</h2>
   <ul class="product-list">
     {{#each invitations}}
       <li class="product-row">
         <span class="product-name">
-          {{#if this.note}}{{this.note}}{{else}}<span class="muted">No note</span>{{/if}}
+          {{#if this.note}}{{this.note}}{{else}}<span class="muted">{{t "invitations.no_note"}}</span>{{/if}}
           <span class="muted">· {{this.state}}</span>
           <span class="muted invite-meta">
-            Created {{this.created}}.
+            {{t "invitations.created_at" at=this.created}}
             {{#if this.used}}
-              Used {{this.used}}{{#if this.used_by}} by {{this.used_by.display_name}} ({{this.used_by.email}}){{/if}}.
+              {{#if this.used_by}}{{t "invitations.used_by" at=this.used name=this.used_by.display_name email=this.used_by.email}}{{else}}{{t "invitations.used_at" at=this.used}}{{/if}}
             {{else}}
-              Expires {{this.expires}}.
+              {{t "invitations.expires_at" at=this.expires}}
             {{/if}}
           </span>
         </span>
         {{#if this.pending}}
           <form class="row-actions" method="post" action="/admin/invitations/{{this.id}}/revoke"
-                hx-confirm="Revoke this invitation? Its link stops working.">
-            <button type="submit" class="link danger">Revoke<span class="visually-hidden"> invitation{{#if this.note}} {{this.note}}{{/if}}</span></button>
+                hx-confirm="{{t "invitations.revoke_confirm"}}">
+            <button type="submit" class="link danger">{{t "invitations.revoke"}}<span class="visually-hidden"> {{#if this.note}}{{t "invitations.revoke_hidden_note" note=this.note}}{{else}}{{t "invitations.revoke_hidden"}}{{/if}}</span></button>
           </form>
         {{/if}}
       </li>
     {{else}}
-      <li class="product-row empty">No invitations yet.</li>
+      <li class="product-row empty">{{t "invitations.empty"}}</li>
     {{/each}}
   </ul>
 </section>

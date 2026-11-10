@@ -3,21 +3,21 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
   {{#if notice}}
-    <p class="notice" role="status">If an account uses that email, it can now open this list. Reload to see who has access.</p>
+    <p class="notice" role="status">{{t "sharing.notice"}}</p>
   {{/if}}
 
   <form class="add-product" method="post" action="/lists/{{id}}/shares"
         hx-post="/lists/{{id}}/shares" hx-target="#share-form-{{id}}" hx-swap="outerHTML">
-    <label>Email
+    <label>{{t "auth.email"}}
       <input name="email" type="email" required autocomplete="off"
-             placeholder="name@example.com" value="{{email}}" />
+             placeholder="{{t "sharing.email_placeholder"}}" value="{{email}}" />
     </label>
-    <label>Access
+    <label>{{t "sharing.access"}}
       <select name="role">
-        <option value="view"{{#unless edit_selected}} selected{{/unless}}>Can view</option>
-        <option value="edit"{{#if edit_selected}} selected{{/if}}>Can edit items</option>
+        <option value="view"{{#unless edit_selected}} selected{{/unless}}>{{t "sharing.option_view"}}</option>
+        <option value="edit"{{#if edit_selected}} selected{{/if}}>{{t "sharing.option_edit"}}</option>
       </select>
     </label>
-    <button type="submit" class="button primary">Share</button>
+    <button type="submit" class="button primary">{{t "sharing.share"}}</button>
   </form>
 </div>

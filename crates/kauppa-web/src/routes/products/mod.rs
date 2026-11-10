@@ -20,6 +20,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use kauppa_core::{Entity, Invalid};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -66,11 +67,9 @@ struct MoveForm {
 pub fn parse_category(raw: &str) -> CoreResult<Uuid> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err(CoreError::Invalid(
-            "choose a category for the product".to_owned(),
-        ));
+        return Err(CoreError::Invalid(Invalid::ChooseCategory));
     }
-    Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown category".to_owned()))
+    Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::Category)))
 }
 
 /// What the "add" form shows after a response: the category is kept after an
@@ -111,44 +110,21 @@ struct ProductView {
     id: Uuid,
     name: String,
     picker: Picker,
-    /// The delete button's `hx-confirm` text.
-    delete_confirm: String,
-    /// Shown next to the delete button, for products recipes use.
-    delete_warning: Option<String>,
+    /// How many of the user's recipes use the product: the delete
+    /// confirmation and warning name it (MB-0014 P5), in the template.
+    recipe_count: i64,
 }
 
 impl ProductView {
     /// `recipe_count` is how many of the user's recipes use the product; the
     /// delete confirmation names it (MB-0014 P5).
     fn new(categories: &[Category], product: Product, recipe_count: i64) -> Self {
-        let mut delete_confirm = format!("Delete “{}”?", product.name);
-        let delete_warning = (recipe_count > 0).then(|| {
-            format!(
-                "Used in {}. Deleting it keeps the ingredient in those recipes, \
-                 by name and quantity, no longer linked to a product.",
-                recipes(recipe_count)
-            )
-        });
-        if let Some(warning) = &delete_warning {
-            delete_confirm.push(' ');
-            delete_confirm.push_str(warning);
-        }
         Self {
             picker: Picker::new(categories, product.category_id),
             id: product.id,
             name: product.name,
-            delete_confirm,
-            delete_warning,
+            recipe_count,
         }
-    }
-}
-
-/// "1 recipe", "2 recipes".
-fn recipes(count: i64) -> String {
-    if count == 1 {
-        "1 recipe".to_owned()
-    } else {
-        format!("{count} recipes")
     }
 }
 
@@ -165,7 +141,6 @@ struct HiddenGroupView {
 struct HiddenProductView {
     #[serde(flatten)]
     product: ProductView,
-    usage: String,
     can_favorite: bool,
 }
 
@@ -236,11 +211,6 @@ impl CatalogView {
                         .products
                         .into_iter()
                         .map(|u| HiddenProductView {
-                            usage: if u.recipe_count == 0 {
-                                "Not used in any recipe".to_owned()
-                            } else {
-                                format!("Used in {}", recipes(u.recipe_count))
-                            },
                             can_favorite,
                             product: ProductView::new(categories, u.product, u.recipe_count),
                         })
@@ -302,13 +272,17 @@ async fn respond<T>(
 ) -> WebResult<HttpResponse> {
     let (status, error) = match outcome {
         Ok(_) => (StatusCode::OK, None),
-        Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, Some(m)),
-        Err(CoreError::Conflict(m)) => (StatusCode::CONFLICT, Some(m)),
+        // Logged in English, shown in the request's language (MB-0035).
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, reason = %m, "favorites input rejected");
+            (StatusCode::BAD_REQUEST, Some(ui.invalid(&m)?))
+        }
+        Err(CoreError::Conflict(c)) => {
+            tracing::debug!(user_id = %user, reason = %c, "favorites input rejected");
+            (StatusCode::CONFLICT, Some(ui.conflict(&c)?))
+        }
         Err(e) => return Err(e.into()),
     };
-    if let Some(reason) = &error {
-        tracing::debug!(user_id = %user, %reason, "favorites input rejected");
-    }
 
     if is_hx(req) {
         render(state, ui, user, true, StatusCode::OK, draft, error).await

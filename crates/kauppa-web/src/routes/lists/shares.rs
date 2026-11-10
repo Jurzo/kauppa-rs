@@ -197,7 +197,7 @@ pub async fn share(
             }
             None
         }
-        Err(CoreError::Invalid(m)) => Some(m),
+        Err(CoreError::Invalid(m)) => Some(ui.invalid(&m)?),
         Err(e) => return Err(e.into()),
     };
 

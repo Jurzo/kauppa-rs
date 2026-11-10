@@ -3,11 +3,11 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
 
-  <p class="muted" role="status">{{found}} of {{total}} found</p>
+  <p class="muted" role="status">{{t "shop.progress" found=found total=total}}</p>
 
   {{#each groups}}
     <section class="product-group">
-      <h2>{{#if this.name}}{{this.name}}{{else}}Uncategorized{{/if}}</h2>
+      <h2>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</h2>
       <ul class="product-list">
         {{#each this.items}}
           <li class="product-row shop-row{{#if this.checked}} found{{/if}}">
@@ -16,20 +16,20 @@
                   hx-post="/lists/{{../../id}}/shop/items/{{this.id}}/check" hx-target="#shop-{{../../id}}" hx-swap="outerHTML">
               <button type="submit" class="link shop-toggle" name="checked"
                       value="{{#if this.checked}}false{{else}}true{{/if}}" aria-pressed="{{this.checked}}"
-                      aria-label="{{#if this.checked}}Mark {{this.text}} not found{{else}}Mark {{this.text}} found{{/if}}">
+                      aria-label="{{#if this.checked}}{{t "shop.mark_not_found" item=this.text}}{{else}}{{t "shop.mark_found" item=this.text}}{{/if}}">
                 <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
                 <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               </button>
             </form>
             <form class="row-actions" method="post" action="/lists/{{../../id}}/shop/items/{{this.id}}/remove"
                   hx-post="/lists/{{../../id}}/shop/items/{{this.id}}/remove" hx-target="#shop-{{../../id}}" hx-swap="outerHTML">
-              <button type="submit" class="link" aria-label="Remove {{this.text}} — not needed">✕</button>
+              <button type="submit" class="link" aria-label="{{t "shop.remove" item=this.text}}">✕</button>
             </form>
             {{else}}
             <span class="shop-toggle">
               <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
               <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
-              {{#if this.checked}}<span class="visually-hidden">(found)</span>{{/if}}
+              {{#if this.checked}}<span class="visually-hidden">{{t "shop.found_hidden"}}</span>{{/if}}
             </span>
             {{/if}}
           </li>
@@ -37,6 +37,6 @@
       </ul>
     </section>
   {{else}}
-    <p class="empty">Nothing to fetch. <a href="/lists/{{id}}">Add items</a>.</p>
+    <p class="empty">{{t "shop.empty"}} <a href="/lists/{{id}}">{{t "shop.add_items"}}</a>.</p>
   {{/each}}
 </div>

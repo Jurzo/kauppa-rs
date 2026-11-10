@@ -1,16 +1,16 @@
-{{#> layout page_title="Home" page_signed_in=signed_in}}
+{{#> layout page_title=(t "home.title") page_signed_in=signed_in}}
 <section class="hero">
   <h1>kauppa</h1>
-  <p>Shopping lists and recipes, built with Rust and htmx.</p>
+  <p>{{t "home.tagline"}}</p>
   {{#unless signed_in}}
     <p>
-      <a class="button primary" href="/auth/login">Sign in</a>
+      <a class="button primary" href="/auth/login">{{t "auth.sign_in"}}</a>
     </p>
-    <p class="muted">Accounts are by invitation.</p>
+    <p class="muted">{{t "home.invite_only"}}</p>
   {{else}}
     <p>
-      <a class="button primary" href="/lists">Your lists</a>
-      <a class="button" href="/recipes">Your recipes</a>
+      <a class="button primary" href="/lists">{{t "home.your_lists"}}</a>
+      <a class="button" href="/recipes">{{t "home.your_recipes"}}</a>
     </p>
   {{/unless}}
 </section>

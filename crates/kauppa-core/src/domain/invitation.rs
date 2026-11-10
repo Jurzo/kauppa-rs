@@ -4,6 +4,7 @@
 //! link can register once, with any email. Its state is derived from its
 //! timestamps, never stored.
 
+use crate::Invalid;
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -110,9 +111,9 @@ pub fn clean_note(note: Option<&str>) -> CoreResult<Option<String>> {
         return Ok(None);
     };
     if note.chars().count() > NOTE_MAX_CHARS {
-        return Err(CoreError::Invalid(format!(
-            "a note can be at most {NOTE_MAX_CHARS} characters"
-        )));
+        return Err(CoreError::Invalid(Invalid::NoteTooLong {
+            max: NOTE_MAX_CHARS,
+        }));
     }
     Ok(Some(note.to_owned()))
 }

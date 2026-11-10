@@ -4,6 +4,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use kauppa_core::Invalid;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -73,10 +74,9 @@ async fn check_ingredient(
     let existing = ProductRepo::find_by_name(&state.pool, user, &form.name).await?;
     if let Some(product) = &existing {
         if product.category_id.is_none() {
-            return Err(CoreError::Invalid(format!(
-                "{} has no category — choose one for it on Favorites first",
-                product.name
-            )));
+            return Err(CoreError::Invalid(Invalid::ProductUncategorized {
+                name: product.name.clone(),
+            }));
         }
     } else if chosen.is_none() {
         return Ok(Checked::NeedsCategory);
