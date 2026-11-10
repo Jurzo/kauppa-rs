@@ -139,6 +139,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 /* MB-0013: what the typed ingredient name will do, on its own line. */
 .add-product .match-hint { flex-basis: 100%; margin: 0; color: var(--muted); }
 .add-product .match-hint:empty { display: none; }
+/* MB-0039: the category prompt for a new product, on its own line. */
+.add-product .category-prompt { flex-basis: 100%; margin: 0; font-weight: 600; }
 
 /* Shopping lists (MB-0004, MB-0007) */
 .add-product select { min-width: 10rem; }
