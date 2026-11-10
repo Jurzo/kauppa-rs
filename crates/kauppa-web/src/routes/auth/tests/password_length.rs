@@ -121,7 +121,11 @@ async fn assert_rejected(passwords: &[(&str, String)]) {
             body.contains(&format!("value=\"{email}\"")),
             "{label}: email"
         );
-        assert!(!body.contains(pw.as_str()), "{label}: password echoed");
+        // (An empty or all-space password is in any page; the empty field
+        // below covers those.)
+        if !pw.trim().is_empty() {
+            assert!(!body.contains(pw.as_str()), "{label}: password echoed");
+        }
         let field = body
             .split("<input")
             .find(|i| i.contains("type=\"password\""))
@@ -139,8 +143,12 @@ async fn assert_rejected(passwords: &[(&str, String)]) {
     // Nothing of the password reaches the log: not the password, not its
     // length; at most a field-less line.
     let text = log.text();
+    assert!(
+        text.contains("registration rejected: password length"),
+        "the field-less DEBUG line: {text}"
+    );
     for (label, pw) in passwords {
-        if !pw.is_empty() {
+        if !pw.trim().is_empty() {
             assert!(!text.contains(pw.as_str()), "{label}: password logged");
         }
     }

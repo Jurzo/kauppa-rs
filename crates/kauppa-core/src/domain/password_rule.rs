@@ -43,8 +43,14 @@ impl std::error::Error for PasswordLengthError {}
 
 /// Checks a new password's length against the rule.
 pub fn check_new_password_length(password: &str) -> Result<(), PasswordLengthError> {
-    let _ = password;
-    Ok(())
+    let chars = password.chars().count();
+    if chars < PASSWORD_MIN_CHARS {
+        Err(PasswordLengthError::TooShort)
+    } else if chars > PASSWORD_MAX_CHARS {
+        Err(PasswordLengthError::TooLong)
+    } else {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
