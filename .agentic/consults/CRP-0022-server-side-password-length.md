@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "feature.md escalation path `crates/kauppa-web/src/routes/auth/` (security). MB-0034 autonomy.escalate: the minimum and maximum, and whether length counts characters, bytes or grapheme clusters (security); putting the rule in `password.rs` rather than the domain layer or the handler (security); the order of the check relative to the rate limiter and the invitation check (RR-0012 sub-answers 2 and 7, constraint 4; RR-0013 sub-answer 1)."
 ---
 ```
