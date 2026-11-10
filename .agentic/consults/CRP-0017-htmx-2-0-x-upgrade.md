@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "AGENTS.md Do-not-touch (upgrading a vendored file is a platform decision); RR-0015 Does not cover (any htmx version other than 2.0.3) and constraints 2–3 (new file, constants and integrity together under an RR, verified against registry integrity, docs SRI and, from 2.0.11, the GitHub release digest); MB-0030 autonomy.escalate (version and source → platform-owner; release notes that change boost, history, swap defaults or responseHandling → owner). The AGENTS.md wording change is an RR roll-back (MB-0030 forbidden: edit AGENTS.md except as the RR's roll-back)."
 ---
 ```
