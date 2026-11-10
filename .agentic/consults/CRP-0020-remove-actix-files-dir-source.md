@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: ".agentic/runbooks/dependency-bump.md (\"Changing enabled features\": handlebars `dir_source`; removing a crate: `actix-files`; entry gate 2–3: CRP open, RR approved before the PR); CI trigger paths `Cargo.toml`, `crates/kauppa-web/Cargo.toml`, `deploy/Dockerfile`; RR-0011 sub-answer 2 and constraint 5; MB-0032 autonomy.escalate (the removal → platform-owner; the image contents and MB-0022 P1's wording → owner)"
 ---
 ```
