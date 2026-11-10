@@ -6,42 +6,42 @@
   {{#if can_edit}}
   <form class="add-product" method="post" action="/lists/{{id}}/items"
         hx-post="/lists/{{id}}/items" hx-target="#list-{{id}}" hx-swap="outerHTML">
-    <label>Item
+    <label>{{t "lists.item"}}
       <input id="new-item" name="text" type="text" required autocomplete="off"
-             {{#if is_owner}}list="favorite-suggestions" {{/if}}placeholder="e.g. Maito or Kynttilät"
+             {{#if is_owner}}list="favorite-suggestions" {{/if}}placeholder="{{t "lists.item_placeholder"}}"
              value="{{draft.text}}" />
     </label>
-    <label>Quantity
-      <input name="quantity" type="text" autocomplete="off" placeholder="optional"
+    <label>{{t "common.quantity"}}
+      <input name="quantity" type="text" autocomplete="off" placeholder="{{t "common.optional"}}"
              value="{{draft.quantity}}" />
     </label>
-    <button type="submit" class="button primary">Add</button>
+    <button type="submit" class="button primary">{{t "common.add"}}</button>
   </form>
   {{else}}
-    <p class="muted">Shared with you to view.</p>
+    <p class="muted">{{t "lists.view_shared"}}</p>
   {{/if}}
 
   {{#if is_owner}}
   {{#unless favorite_count}}
-    <p class="muted">Save <a href="/favorites">favorites</a> to get them as suggestions while you type.</p>
+    <p class="muted">{{t "lists.favorites_hint_before"}} <a href="/favorites">{{t "lists.favorites_hint_link"}}</a>{{t "lists.favorites_hint_after"}}</p>
   {{/unless}}
 
   {{#if recipes}}
     <form class="add-product" method="post" action="/lists/{{id}}/recipes"
           hx-post="/lists/{{id}}/recipes" hx-target="#list-{{id}}" hx-swap="outerHTML">
-      <label>Recipe
+      <label>{{t "lists.recipe"}}
         <select name="recipe_id" required>
-          <option value="" disabled selected>Choose a recipe</option>
+          <option value="" disabled selected>{{t "lists.choose_recipe"}}</option>
           {{#each recipes}}
             <option value="{{this.id}}">{{this.title}}</option>
           {{/each}}
         </select>
       </label>
-      <label>Times
+      <label>{{t "common.times"}}
         <input name="multiplier" type="text" inputmode="decimal" autocomplete="off"
                value="{{#if draft.multiplier}}{{draft.multiplier}}{{else}}1{{/if}}" />
       </label>
-      <button type="submit" class="button">Add ingredients</button>
+      <button type="submit" class="button">{{t "common.add_ingredients"}}</button>
     </form>
   {{/if}}
   {{/if}}
@@ -51,47 +51,47 @@
       <li class="product-row">
         <span class="product-name">
           {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}
-          <span class="muted">· {{#if this.category}}{{this.category}}{{else}}Uncategorized{{/if}}</span>
+          <span class="muted">· {{#if this.category}}{{this.category}}{{else}}{{t "common.uncategorized"}}{{/if}}</span>
         </span>
         {{#if ../can_edit}}
         <details class="product-edit">
-          <summary>{{#if ../is_owner}}{{#if this.category}}Edit{{else}}Choose category{{/if}}{{else}}Edit{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
+          <summary>{{#if ../is_owner}}{{#if this.category}}{{t "common.edit"}}{{else}}{{t "lists.choose_category"}}{{/if}}{{else}}{{t "common.edit"}}{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
           {{#if ../is_owner}}
           {{#if ../has_categories}}
             <form method="post" action="/lists/{{../id}}/items/{{this.id}}/category"
                   hx-post="/lists/{{../id}}/items/{{this.id}}/category" hx-target="#list-{{../id}}" hx-swap="outerHTML">
-              <label>Category
+              <label>{{t "common.category"}}
                 {{> products/_category_picker this.picker }}
               </label>
-              <button type="submit" class="button">Set</button>
+              <button type="submit" class="button">{{t "common.set"}}</button>
             </form>
           {{else}}
-            <p class="muted"><a href="/categories">Create a category</a> to group items.</p>
+            <p class="muted"><a href="/categories">{{t "lists.create_category_link"}}</a>{{t "lists.create_category_after"}}</p>
           {{/if}}
           {{/if}}
           <form method="post" action="/lists/{{../id}}/items/{{this.id}}/quantity"
                 hx-post="/lists/{{../id}}/items/{{this.id}}/quantity" hx-target="#list-{{../id}}" hx-swap="outerHTML">
-            <label>Quantity
-              <input name="quantity" type="text" autocomplete="off" placeholder="e.g. 2 dl"
+            <label>{{t "common.quantity"}}
+              <input name="quantity" type="text" autocomplete="off" placeholder="{{t "common.quantity_placeholder"}}"
                      value="{{this.quantity}}" />
             </label>
-            <button type="submit" class="button">Save</button>
+            <button type="submit" class="button">{{t "common.save"}}</button>
           </form>
           <form method="post" action="/lists/{{../id}}/items/{{this.id}}/remove"
                 hx-post="/lists/{{../id}}/items/{{this.id}}/remove" hx-target="#list-{{../id}}" hx-swap="outerHTML">
-            <button type="submit" class="link danger">Remove</button>
+            <button type="submit" class="link danger">{{t "common.remove"}}</button>
           </form>
         </details>
         {{/if}}
       </li>
     {{else}}
-      <li class="product-row empty">No items yet.</li>
+      <li class="product-row empty">{{t "lists.no_items"}}</li>
     {{/each}}
   </ul>
 
   {{#if removed}}
     <details class="removed-items">
-      <summary>Removed ({{removed_count}})</summary>
+      <summary>{{t "lists.removed" count=removed_count}}</summary>
       <ul class="product-list">
         {{#each removed}}
           <li class="product-row">
@@ -99,7 +99,7 @@
             {{#if ../can_edit}}
             <form class="row-actions" method="post" action="/lists/{{../id}}/items/{{this.id}}/restore"
                   hx-post="/lists/{{../id}}/items/{{this.id}}/restore" hx-target="#list-{{../id}}" hx-swap="outerHTML">
-              <button type="submit" class="link">Restore</button>
+              <button type="submit" class="link">{{t "lists.restore"}}</button>
             </form>
             {{/if}}
           </li>
@@ -108,5 +108,5 @@
     </details>
   {{/if}}
 
-  <p class="muted">Updated {{updated}}</p>
+  <p class="muted">{{t "lists.updated" date=updated}}</p>
 </div>

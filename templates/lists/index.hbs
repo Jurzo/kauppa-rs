@@ -1,8 +1,8 @@
-{{#> layout page_title="Lists" page_signed_in=true page_nav="lists"}}
+{{#> layout page_title=(t "lists.title") page_signed_in=true page_nav="lists"}}
 <section>
   <header class="section-header">
-    <h1>Shopping lists</h1>
-    <p class="muted">Most recently updated first.</p>
+    <h1>{{t "lists.heading"}}</h1>
+    <p class="muted">{{t "lists.order_hint"}}</p>
   </header>
 
   {{> lists/_index }}

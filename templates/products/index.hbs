@@ -1,8 +1,8 @@
-{{#> layout page_title="Favorites" page_signed_in=true page_nav="favorites"}}
+{{#> layout page_title=(t "products.title") page_signed_in=true page_nav="favorites"}}
 <section>
   <header class="section-header">
-    <h1>Favorites</h1>
-    <p class="muted">Your saved products, grouped by category.</p>
+    <h1>{{t "products.title"}}</h1>
+    <p class="muted">{{t "products.intro"}}</p>
   </header>
 
   {{> products/_catalog }}

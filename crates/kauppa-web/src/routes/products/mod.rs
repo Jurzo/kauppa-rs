@@ -111,44 +111,21 @@ struct ProductView {
     id: Uuid,
     name: String,
     picker: Picker,
-    /// The delete button's `hx-confirm` text.
-    delete_confirm: String,
-    /// Shown next to the delete button, for products recipes use.
-    delete_warning: Option<String>,
+    /// How many of the user's recipes use the product: the delete
+    /// confirmation and warning name it (MB-0014 P5), in the template.
+    recipe_count: i64,
 }
 
 impl ProductView {
     /// `recipe_count` is how many of the user's recipes use the product; the
     /// delete confirmation names it (MB-0014 P5).
     fn new(categories: &[Category], product: Product, recipe_count: i64) -> Self {
-        let mut delete_confirm = format!("Delete “{}”?", product.name);
-        let delete_warning = (recipe_count > 0).then(|| {
-            format!(
-                "Used in {}. Deleting it keeps the ingredient in those recipes, \
-                 by name and quantity, no longer linked to a product.",
-                recipes(recipe_count)
-            )
-        });
-        if let Some(warning) = &delete_warning {
-            delete_confirm.push(' ');
-            delete_confirm.push_str(warning);
-        }
         Self {
             picker: Picker::new(categories, product.category_id),
             id: product.id,
             name: product.name,
-            delete_confirm,
-            delete_warning,
+            recipe_count,
         }
-    }
-}
-
-/// "1 recipe", "2 recipes".
-fn recipes(count: i64) -> String {
-    if count == 1 {
-        "1 recipe".to_owned()
-    } else {
-        format!("{count} recipes")
     }
 }
 
@@ -165,7 +142,6 @@ struct HiddenGroupView {
 struct HiddenProductView {
     #[serde(flatten)]
     product: ProductView,
-    usage: String,
     can_favorite: bool,
 }
 
@@ -236,11 +212,6 @@ impl CatalogView {
                         .products
                         .into_iter()
                         .map(|u| HiddenProductView {
-                            usage: if u.recipe_count == 0 {
-                                "Not used in any recipe".to_owned()
-                            } else {
-                                format!("Used in {}", recipes(u.recipe_count))
-                            },
                             can_favorite,
                             product: ProductView::new(categories, u.product, u.recipe_count),
                         })

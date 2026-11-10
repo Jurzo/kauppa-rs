@@ -1,5 +1,5 @@
 <select name="category_id" required>
-  <option value="" disabled{{#unless has_selection}} selected{{/unless}}>Choose a category</option>
+  <option value="" disabled{{#unless has_selection}} selected{{/unless}}>{{t "common.choose_category"}}</option>
   {{#each options}}
     <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
   {{/each}}

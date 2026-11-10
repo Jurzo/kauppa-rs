@@ -1,25 +1,25 @@
 <details class="product-edit">
-  <summary>Edit<span class="visually-hidden"> {{name}}</span></summary>
+  <summary>{{t "common.edit"}}<span class="visually-hidden"> {{name}}</span></summary>
   <form method="post" action="/favorites/{{id}}/rename"
         hx-post="/favorites/{{id}}/rename" hx-target="#favorites" hx-swap="outerHTML">
-    <label>Name
+    <label>{{t "common.name"}}
       <input name="name" type="text" required value="{{name}}" />
     </label>
-    <button type="submit" class="button">Rename</button>
+    <button type="submit" class="button">{{t "common.rename"}}</button>
   </form>
   <form method="post" action="/favorites/{{id}}/category"
         hx-post="/favorites/{{id}}/category" hx-target="#favorites" hx-swap="outerHTML">
-    <label>Category
+    <label>{{t "common.category"}}
       {{> products/_category_picker picker }}
     </label>
-    <button type="submit" class="button">Change</button>
+    <button type="submit" class="button">{{t "common.change"}}</button>
   </form>
   <form method="post" action="/favorites/{{id}}/delete"
         hx-post="/favorites/{{id}}/delete" hx-target="#favorites" hx-swap="outerHTML"
-        hx-confirm="{{delete_confirm}}">
-    {{#if delete_warning}}
-      <p class="muted">{{delete_warning}}</p>
+        hx-confirm="{{t "common.delete_confirm" name=name}}{{#if recipe_count}} {{t "products.delete_warning" count=recipe_count}}{{/if}}">
+    {{#if recipe_count}}
+      <p class="muted">{{t "products.delete_warning" count=recipe_count}}</p>
     {{/if}}
-    <button type="submit" class="link danger">Delete</button>
+    <button type="submit" class="link danger">{{t "common.delete"}}</button>
   </form>
 </details>

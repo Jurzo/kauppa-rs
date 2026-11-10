@@ -237,9 +237,11 @@ struct ListOption {
 #[derive(Debug, Serialize)]
 struct AddedView {
     list_id: Uuid,
-    list_name: String,
-    /// The count with its noun: "1 item", "5 items".
-    items: String,
+    /// `None` if the list vanished meanwhile; the template then says "the
+    /// list" (MB-0035).
+    list_name: Option<String>,
+    /// How many items were added; the template picks the plural.
+    count: usize,
 }
 
 /// What a form shows after a rejected submission: the typed values, for
@@ -407,12 +409,8 @@ fn add_to_list_view(
         list_name: lists
             .iter()
             .find(|l| l.id == list_id)
-            .map_or_else(|| "the list".to_owned(), |l| l.name.clone()),
-        items: if count == 1 {
-            "1 item".to_owned()
-        } else {
-            format!("{count} items")
-        },
+            .map(|l| l.name.clone()),
+        count,
     });
     let lists: Vec<ListOption> = lists
         .into_iter()

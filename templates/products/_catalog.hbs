@@ -6,23 +6,23 @@
   {{#if has_categories}}
     <form class="add-product" method="post" action="/favorites"
           hx-post="/favorites" hx-target="#favorites" hx-swap="outerHTML">
-      <label>Product
+      <label>{{t "products.product"}}
         <input id="new-product-name" name="name" type="text" required
-               autocomplete="off" placeholder="e.g. Kahvi" value="{{add.name}}" />
+               autocomplete="off" placeholder="{{t "products.placeholder"}}" value="{{add.name}}" />
       </label>
-      <label>Category
+      <label>{{t "common.category"}}
         {{> products/_category_picker add.picker }}
       </label>
-      <button type="submit" class="button primary">Add</button>
+      <button type="submit" class="button primary">{{t "common.add"}}</button>
     </form>
   {{else}}
-    <p class="empty">Favorites are grouped by category —
-      <a href="/categories">create a category</a> first.</p>
+    <p class="empty">{{t "products.needs_category"}}
+      <a href="/categories">{{t "common.create_category_lower"}}</a>{{t "common.first"}}</p>
   {{/if}}
 
   {{#each groups}}
     <section class="product-group">
-      <h2>{{#if this.name}}{{this.name}}{{else}}Uncategorized{{/if}}</h2>
+      <h2>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</h2>
       <ul class="product-list">
         {{#each this.products}}
           <li class="product-row">
@@ -30,9 +30,9 @@
             <form class="row-actions" method="post" action="/favorites/{{this.id}}/move"
                   hx-post="/favorites/{{this.id}}/move" hx-target="#favorites" hx-swap="outerHTML">
               <button id="product-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
-                      aria-label="Move {{this.name}} up"{{#if @first}} disabled{{/if}}>↑</button>
+                      aria-label="{{t "common.move_up" name=this.name}}"{{#if @first}} disabled{{/if}}>↑</button>
               <button id="product-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
-                      aria-label="Move {{this.name}} down"{{#if @last}} disabled{{/if}}>↓</button>
+                      aria-label="{{t "common.move_down" name=this.name}}"{{#if @last}} disabled{{/if}}>↓</button>
             </form>
             {{> products/_product_edit this }}
           </li>
@@ -41,30 +41,29 @@
     </section>
   {{else}}
     {{#if has_categories}}
-      <p class="empty">No favorites yet. Add your first above.</p>
+      <p class="empty">{{t "products.empty"}}</p>
     {{/if}}
   {{/each}}
 
   {{#if has_hidden}}
     <section id="recipe-products" class="recipe-products" aria-labelledby="recipe-products-heading">
-      <h2 id="recipe-products-heading">From recipes</h2>
-      <p class="muted">Products added as recipe ingredients. They aren't favorites
-        until you make them one.</p>
+      <h2 id="recipe-products-heading">{{t "products.from_recipes"}}</h2>
+      <p class="muted">{{t "products.from_recipes_intro"}}</p>
       {{#each hidden}}
         <section class="product-group">
-          <h3>{{#if this.name}}{{this.name}}{{else}}Uncategorized{{/if}}</h3>
+          <h3>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</h3>
           <ul class="product-list">
             {{#each this.products}}
               <li id="recipe-product-{{this.id}}" class="product-row">
                 <span class="product-name">{{this.name}}</span>
-                <span class="product-usage muted">{{this.usage}}</span>
+                <span class="product-usage muted">{{#if this.recipe_count}}{{t "products.usage" count=this.recipe_count}}{{else}}{{t "products.unused"}}{{/if}}</span>
                 {{#if this.can_favorite}}
                   <form class="row-actions" method="post" action="/favorites/{{this.id}}/favorite"
                         hx-post="/favorites/{{this.id}}/favorite" hx-target="#favorites" hx-swap="outerHTML">
-                    <button type="submit" class="link make-favorite">Make favorite<span class="visually-hidden"> {{this.name}}</span></button>
+                    <button type="submit" class="link make-favorite">{{t "products.make_favorite"}}<span class="visually-hidden"> {{this.name}}</span></button>
                   </form>
                 {{else}}
-                  <span class="product-usage error">No category: set one under Edit</span>
+                  <span class="product-usage error">{{t "products.no_category"}}</span>
                 {{/if}}
                 {{> products/_product_edit this }}
               </li>

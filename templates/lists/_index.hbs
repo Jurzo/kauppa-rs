@@ -5,11 +5,11 @@
 
   <form class="add-category" method="post" action="/lists"
         hx-post="/lists" hx-target="#lists" hx-swap="outerHTML">
-    <label>New list
+    <label>{{t "lists.new"}}
       <input id="new-list" name="name" type="text" required
-             autocomplete="off" placeholder="e.g. Viikonloppu" value="{{draft_name}}" />
+             autocomplete="off" placeholder="{{t "lists.placeholder"}}" value="{{draft_name}}" />
     </label>
-    <button type="submit" class="button primary">Create</button>
+    <button type="submit" class="button primary">{{t "common.create"}}</button>
   </form>
 
   <ul class="product-list">
@@ -18,33 +18,33 @@
         <a class="product-name" href="/lists/{{this.id}}">{{this.name}}</a>
         <span class="muted">{{this.updated}}</span>
         <details class="product-edit">
-          <summary>Edit<span class="visually-hidden"> {{this.name}}</span></summary>
+          <summary>{{t "common.edit"}}<span class="visually-hidden"> {{this.name}}</span></summary>
           <form method="post" action="/lists/{{this.id}}/rename"
                 hx-post="/lists/{{this.id}}/rename" hx-target="#lists" hx-swap="outerHTML">
-            <label>Name
+            <label>{{t "common.name"}}
               <input name="name" type="text" required value="{{this.name}}" />
             </label>
-            <button type="submit" class="button">Rename</button>
+            <button type="submit" class="button">{{t "common.rename"}}</button>
           </form>
           <form method="post" action="/lists/{{this.id}}/delete"
                 hx-post="/lists/{{this.id}}/delete" hx-target="#lists" hx-swap="outerHTML"
-                hx-confirm="Delete the list “{{this.name}}” and its items?">
-            <button type="submit" class="link danger">Delete</button>
+                hx-confirm="{{t "lists.delete_confirm" name=this.name}}">
+            <button type="submit" class="link danger">{{t "common.delete"}}</button>
           </form>
         </details>
       </li>
     {{else}}
-      <li class="product-row empty">No lists yet. Create your first one above.</li>
+      <li class="product-row empty">{{t "lists.empty"}}</li>
     {{/each}}
   </ul>
 
   {{#if shared}}
-    <h2>Shared with you</h2>
+    <h2>{{t "lists.shared_with_you"}}</h2>
     <ul class="product-list">
       {{#each shared}}
         <li class="product-row">
           <a class="product-name" href="/lists/{{this.id}}">{{this.name}}</a>
-          <span class="muted">{{this.owner_name}} · {{#if this.can_edit}}can edit items{{else}}view only{{/if}} · {{this.updated}}</span>
+          <span class="muted">{{this.owner_name}} · {{#if this.can_edit}}{{t "sharing.can_edit_items"}}{{else}}{{t "lists.view_only"}}{{/if}} · {{this.updated}}</span>
         </li>
       {{/each}}
     </ul>
