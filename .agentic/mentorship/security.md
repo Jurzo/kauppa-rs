@@ -38,6 +38,14 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   invitation in the same transaction (`InvitationRepo::register`; MB-0023,
   RR-0012). Handlers never call `UserRepo::create`. Invitation tokens are 256
   bits from `OsRng`, stored only as hex SHA-256, and never logged.
+- **Password length.** New passwords are 15 to 128 Unicode scalar
+  values, counted on the string exactly as submitted (no
+  normalization, no trimming), checked on the server by the
+  `kauppa-core` domain rule (`PASSWORD_MIN_CHARS`,
+  `PASSWORD_MAX_CHARS`) after the token-shape check and before
+  `password::hash` (MB-0034, RR-0022). Forms take `minlength` from
+  the same constant and set no `maxlength`. Login never applies the
+  rule. The password and its length are never logged or echoed.
 - **Admin.** Admin status lives in the `admins` table and is checked from
   the database on every `/admin` request, never cached in the session. It is
   granted from the host (`kauppa-web admin grant`), never by a web request
