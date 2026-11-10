@@ -1,6 +1,6 @@
 //! MB-0024 P1/P2 (templates) and P4; MB-0016 P5; MB-0027 P1/P2 (vendored
 //! htmx); MB-0040 P1/P2 (navigation panel); MB-0029 P1/P2/P5 (boosted
-//! form errors, secret pages).
+//! form errors, secret pages); MB-0031 P2 (CSP).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -104,6 +104,102 @@ fn registry_is_embedded() {
         let on_disk = std::fs::read_to_string(source_dir().join(format!("{name}.hbs")))
             .expect("template on disk");
         assert_eq!(*source, on_disk, "{name}");
+    }
+}
+
+/// The one `htmx-config` meta tag (MB-0031, RR-0019 sub-answer 5).
+const HTMX_CONFIG: &str = r#"<meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}' />"#;
+
+/// The indicator rules htmx 2.0.11 would inject as a `<style>`, which
+/// `style-src 'self'` blocks; `app.css` carries them instead (RR-0019
+/// constraint 7: re-copy them when the vendored htmx changes).
+const INDICATOR_CSS: [&str; 2] = [
+    ".htmx-indicator{opacity:0;visibility:hidden}",
+    ".htmx-request .htmx-indicator,.htmx-request.htmx-indicator{opacity:1;visibility:visible;transition:opacity 200ms ease-in}",
+];
+
+/// MB-0031 P2 (RR-0019): htmx runs under the Content-Security-Policy.
+/// The layout has exactly one `htmx-config`, before the htmx script, with
+/// `allowEval`, `allowScriptTags` and `includeIndicatorStyles` off; the
+/// indicator rules are in `app.css`, as htmx 2.0.11 writes them; and no
+/// template has inline script, style, event handler or eval-based htmx
+/// feature (RR-0019 constraint 3).
+#[test]
+fn csp_compatible_templates() {
+    let (_, layout) = TEMPLATES
+        .iter()
+        .find(|(name, _)| *name == "layout")
+        .expect("layout");
+    assert_eq!(
+        layout.matches(HTMX_CONFIG).count(),
+        1,
+        "layout's htmx-config"
+    );
+    let config = layout.find(HTMX_CONFIG).expect("htmx-config");
+    let script = layout.find("<script").expect("htmx script");
+    assert!(config < script, "htmx-config comes before the htmx script");
+    assert!(config < layout.find("</head>").expect("</head>"));
+
+    // htmx itself would inject exactly these rules (spaces aside).
+    let htmx = std::fs::read_to_string(
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
+            .join(HTMX_PATH.trim_start_matches('/')),
+    )
+    .expect("vendored htmx");
+    let htmx: String = htmx.split_whitespace().collect();
+    assert!(
+        htmx.contains("`.${t}{opacity:0;visibility:hidden}`"),
+        "htmx's own rule"
+    );
+    assert!(
+        htmx.contains(
+            "`.${n}.${t},.${n}.${t}{opacity:1;visibility:visible;transition:opacity200msease-in}`"
+        ),
+        "htmx's own rule"
+    );
+    let css = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/app.css"))
+        .expect("app.css");
+    for rule in INDICATOR_CSS {
+        assert!(css.contains(rule), "app.css lacks {rule}");
+    }
+
+    for (name, source) in TEMPLATES {
+        let lower = source.to_ascii_lowercase();
+        assert!(
+            lower.matches("htmx-config").count() == usize::from(*name == "layout"),
+            "{name}: the one htmx-config lives in layout.hbs"
+        );
+        for tag in script_tags(source) {
+            assert!(attr(tag, "src").is_some(), "{name}: inline script {tag}");
+        }
+        for word in [
+            "<style",
+            " style=",
+            "javascript:",
+            "hx-on",
+            "js:",
+            "hx-vals='js",
+            "eval(",
+        ] {
+            assert!(!lower.contains(word), "{name}: `{word}` breaks the CSP");
+        }
+        // Event handler attributes (`onclick=`, `onsubmit=`, …).
+        for (at, _) in lower.match_indices(" on") {
+            let rest = &lower[at + 3..];
+            let len = rest
+                .find(|c: char| !c.is_ascii_alphabetic())
+                .unwrap_or(rest.len());
+            assert!(
+                len == 0 || !rest[len..].starts_with('='),
+                "{name}: inline event handler at byte {at}"
+            );
+        }
+        // `hx-trigger` filters (`click[ctrlKey]`) are evaluated as script.
+        for (at, _) in lower.match_indices("hx-trigger=\"") {
+            let value = &lower[at + 12..];
+            let value = &value[..value.find('"').expect("closed hx-trigger")];
+            assert!(!value.contains('['), "{name}: hx-trigger filter {value}");
+        }
     }
 }
 

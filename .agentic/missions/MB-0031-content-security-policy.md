@@ -14,7 +14,7 @@ acceptance:
     property: "Every response with an HTML body (full pages, fragments, error pages, 404s from the catch-all) carries the approved `Content-Security-Policy`, with at least `default-src 'self'`, `script-src 'self'` (no `'unsafe-inline'`, no `'unsafe-eval'`), `object-src 'none'`, `base-uri 'none'`, `form-action 'self'` and `frame-ancestors 'none'`."
     check: cargo test -p kauppa-web csp::tests::every_html_response_has_csp
   - id: P2
-    property: "htmx runs under the policy: `htmx-config` sets `allowEval` false and `includeIndicatorStyles` false, the indicator rules live in `app.css`, and no template has inline `<script>`, `<style>`, `style=` or `on*=` attributes."
+    property: "htmx runs under the policy: `htmx-config` sets `allowEval`, `allowScriptTags` and `includeIndicatorStyles` false (RR-0019), the indicator rules live in `app.css`, and no template has inline `<script>`, `<style>`, `style=` or `on*=` attributes."
     check: cargo test -p kauppa-web templates::tests::csp_compatible_templates
   - id: P3
     property: "The header is added in one place that every route passes through (including `/assets` and the 404 catch-all) and can't be bypassed by a new route; the existing route tests pass unchanged."
@@ -50,7 +50,7 @@ mentorship:
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions: [RR-0019]
 ---
 ```
 
@@ -69,13 +69,14 @@ scripts).
 Where the header goes is a security decision: middleware in `main.rs`
 covers tests and local runs, Caddy covers only the deployed stack.
 
-Order: after MB-0030 (htmx upgrade) and MB-0029 (form errors under htmx),
-which both touch `<head>` and htmx's configuration.
+Order: after MB-0030 (htmx upgrade); independent of MB-0029 and
+MB-0040, which share the one `htmx-config` tag if they add keys
+(RR-0019).
 
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to security (policy, placement, other headers),
-   with the `htmx-config` question to platform-owner.
+   with the `htmx-config` question to platform-owner. Answered by RR-0019.
 2. Header in the approved place; `htmx-config`; indicator CSS.
 3. Tests for coverage and template compatibility; browser check (P4).
 
