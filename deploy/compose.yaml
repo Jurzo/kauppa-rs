@@ -29,9 +29,13 @@ services:
       KAUPPA_LOG_LEVEL: ${KAUPPA_LOG_LEVEL:-info}
       KAUPPA_COOKIE_SECURE: "true"
       KAUPPA_PUBLIC_ORIGIN: ${KAUPPA_PUBLIC_ORIGIN:?set KAUPPA_PUBLIC_ORIGIN in deploy/.env, e.g. https://kauppa.example}
-      # After MB-0026 merges: trust X-Forwarded-For only from Caddy's network
-      # (RR-0013). Must equal the `internal` subnet below.
-      # KAUPPA_TRUSTED_PROXIES: 172.30.53.0/24
+      # The auth limiter (MB-0026) keys logins by the client address Caddy
+      # puts in X-Forwarded-For, trusted only from Caddy's network (RR-0013
+      # constraint 8). Must equal the `internal` subnet below, exactly:
+      # scripts/deploy/smoke_compose.sh checks it. The Caddyfile has no
+      # trusted_proxies, so Caddy overwrites any address a client sends.
+      # Unset or wrong, every client shares one login bucket (README §3.9).
+      KAUPPA_TRUSTED_PROXIES: 172.30.53.0/24
     volumes:
       # db/ holds kauppa.db, kauppa.db-wal and kauppa.db-shm: one directory,
       # one volume, one app container (MB-0025).
@@ -98,8 +102,8 @@ services:
     logging: *logging
 
 networks:
-  # App <-> Caddy. No route out, and a pinned subnet for MB-0026's
-  # KAUPPA_TRUSTED_PROXIES (RR-0013).
+  # App <-> Caddy. No route out, and a pinned subnet: the app's
+  # KAUPPA_TRUSTED_PROXIES above must equal it (RR-0013).
   internal:
     internal: true
     ipam:
