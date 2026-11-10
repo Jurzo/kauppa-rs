@@ -13,13 +13,13 @@ non_goals:
 acceptance:
   - id: P1
     property: "The list page has one add form (item text and optional quantity) for users who can edit; the separate favorite `<select>` form is gone."
-    check: cargo test -p kauppa-web routes::lists::tests::items::single_add_form
+    check: cargo test -p kauppa-web routes::lists::tests::add_field::single_add_form
   - id: P2
     property: "The item field offers the user's favorites as suggestions (a `<datalist>` or the approach the RR picks), outside the list fragment so htmx swaps don't resend them."
-    check: cargo test -p kauppa-web routes::lists::tests::items::favorite_suggestions
+    check: cargo test -p kauppa-web routes::lists::tests::add_field::favorite_suggestions
   - id: P3
     property: "Submitting text whose `name_key` equals one of the favorites adds that favorite exactly as the old favorite form did (product link, its name and category copied, quantity kept); any other text adds a free-form, uncategorized item as today."
-    check: cargo test -p kauppa-web routes::lists::tests::items::add_resolves_favorite
+    check: cargo test -p kauppa-web routes::lists::tests::add_field::add_resolves_favorite
   - id: P4
     property: "Whose favorites are suggested and matched follows the RR for shared lists (owner's or the editor's own), and a `view` grantee still can't add anything (403)."
     check: cargo test -p kauppa-web routes::lists::tests::sharing_roles::add_follows_roles
@@ -74,6 +74,17 @@ name and category (MB-0004). The two-step choice is slow on a phone.
 MB-0013 built the same pattern for recipe ingredients: a `<datalist>` of
 the user's product names outside the swapped fragment, and `name_key`
 matching. MB-0013's non-goals named shopping-list items as a later reuse.
+
+Owner decisions 2026-11-09 (answering the escalations): only favorites
+match, not recipe-created products; a favorite whose category was deleted
+follows `add_product` (linked, uncategorized). On a shared list categories
+are always the list owner's: only the owner sets them, and editors see the
+owner's categories on items ("Only owner can set the category and editor
+sees owners categories for the items"). So the owner's typed text matches
+the owner's favorites, and an `edit` grantee's text stays a free-form item
+with no suggestions, as today; editors' favorite matching is deferred to
+CRP-0024 (it would need `add_product` at `edit`, an RR-0002 change).
+Acceptance ids are unchanged; P4 checks this split.
 
 ## Conceptual plan
 
