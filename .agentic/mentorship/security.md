@@ -26,6 +26,7 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   OR a `list_shares` grantee with sufficient role (`view` < `edit`)", computed
   by a single centralized helper that every list / list-item read and write
   goes through — a query that filters on `owner_id` alone is a review failure.
+  An `edit` grant may match the owner's favorites by name (RR-0024).
   Never trust a client-supplied `owner_id` or role.
 - **Input.** Deserialize into typed structs; reject on invalid. For HTML
   rendering, handlebars escapes by default — never use `{{{raw}}}` on
@@ -37,6 +38,14 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   invitation in the same transaction (`InvitationRepo::register`; MB-0023,
   RR-0012). Handlers never call `UserRepo::create`. Invitation tokens are 256
   bits from `OsRng`, stored only as hex SHA-256, and never logged.
+- **Password length.** New passwords are 15 to 128 Unicode scalar
+  values, counted on the string exactly as submitted (no
+  normalization, no trimming), checked on the server by the
+  `kauppa-core` domain rule (`PASSWORD_MIN_CHARS`,
+  `PASSWORD_MAX_CHARS`) after the token-shape check and before
+  `password::hash` (MB-0034, RR-0022). Forms take `minlength` from
+  the same constant and set no `maxlength`. Login never applies the
+  rule. The password and its length are never logged or echoed.
 - **Admin.** Admin status lives in the `admins` table and is checked from
   the database on every `/admin` request, never cached in the session. It is
   granted from the host (`kauppa-web admin grant`), never by a web request

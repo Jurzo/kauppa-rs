@@ -66,6 +66,9 @@ These carry over from CRP-0002 regardless of wording and bind MB-0008:
    failure.
 2. **Role semantics.** `view` = read-only; `edit` = add / check / remove but not
    re-share and not delete the list; only the owner shares, revokes, deletes.
+   Amended by RR-0024: `edit`'s add also matches typed text against the list
+   owner's favorites by `name_key`, silently. Adding by product id and every
+   other read of the owner's catalog stay owner-only.
 3. **Enumeration-safe invites.** Sharing to an unknown email returns the same
    generic result as success — never reveal whether an account exists.
 4. **Revocation is immediate.** Deleting a share row removes access on the next
@@ -88,3 +91,4 @@ These carry over from CRP-0002 regardless of wording and bind MB-0008:
 ## Supersession and history
 
 Status: active. Superseded by: none.
+Amended by RR-0024 (scope and constraint 2); not superseded.

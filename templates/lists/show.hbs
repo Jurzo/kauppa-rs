@@ -8,5 +8,14 @@
   </header>
 
   {{> lists/_list list }}
+  {{#if list.is_owner}}
+  {{!-- MB-0036: the add field's suggestions (list="…"), the owner's
+        favorites. Outside #list-{id} so htmx swaps don't re-send them. --}}
+  <datalist id="favorite-suggestions">
+    {{#each suggestions}}
+      <option value="{{this}}"></option>
+    {{/each}}
+  </datalist>
+  {{/if}}
 </section>
 {{/layout}}

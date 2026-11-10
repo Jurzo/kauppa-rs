@@ -18,7 +18,8 @@ const SERVED_AS: &[(&str, &str)] = &[
     ("app.css", "text/css; charset=utf-8"),
     ("manifest.webmanifest", "application/manifest+json"),
     // MB-0027 (RR-0015): mime_guess 2.0.5 maps `js` to `text/javascript`.
-    ("vendor/htmx-2.0.3.min.js", "text/javascript"),
+    // MB-0030 (RR-0017): htmx 2.0.11 replaces 2.0.3.
+    ("vendor/htmx-2.0.11.min.js", "text/javascript"),
 ];
 
 /// The workspace's `assets/` folder, for comparison only.
@@ -56,7 +57,8 @@ fn get(uri: &str) -> TestRequest {
 /// MB-0024 P1/P2: every file in `assets/` is served at the same
 /// `/assets/<path>`, byte for byte, with its pinned [`SERVED_AS`] content
 /// type, and the embedded list holds nothing else. `cargo test` runs in
-/// the crate directory, which has no `assets/`.
+/// the crate directory, which has no `assets/`. MB-0030 P3: the replaced
+/// htmx 2.0.3 URL is gone.
 #[actix_web::test]
 async fn serves_every_asset() {
     assert!(!Path::new("./assets").exists());
@@ -87,6 +89,13 @@ async fn serves_every_asset() {
         let body = read_body(res).await;
         let bytes = std::fs::read(source_dir().join(name)).expect("asset on disk");
         assert_eq!(body.as_ref(), bytes.as_slice(), "{uri}");
+    }
+
+    // MB-0030 P3 (RR-0017): the replaced htmx file is no longer served.
+    let old_htmx = "/assets/vendor/htmx-2.0.3.min.js";
+    for method in [Method::GET, Method::HEAD] {
+        let res = call_service(&app, get(old_htmx).method(method.clone()).to_request()).await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND, "{method} {old_htmx}");
     }
 }
 
