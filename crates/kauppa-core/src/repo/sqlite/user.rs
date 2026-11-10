@@ -5,9 +5,9 @@ use chrono::{DateTime, Utc};
 use sqlx::Row;
 use uuid::Uuid;
 
-use crate::CoreResult;
-use crate::domain::User;
+use crate::domain::{Language, User};
 use crate::repo::UserRepo;
+use crate::{CoreError, CoreResult};
 
 use super::{SqlitePool, conflict_on_unique, parse_uuid};
 
@@ -49,6 +49,27 @@ impl UserRepo for SqlitePool {
         password_hash: &str,
     ) -> CoreResult<User> {
         insert_user(&self.inner, email, display_name, password_hash, Utc::now()).await
+    }
+
+    async fn language(&self, user_id: Uuid) -> CoreResult<Option<Language>> {
+        let stored: Option<Option<String>> =
+            sqlx::query_scalar(r"SELECT language FROM users WHERE id = ?1")
+                .bind(user_id.to_string())
+                .fetch_optional(&self.inner)
+                .await?;
+        Ok(stored.flatten().as_deref().and_then(Language::parse))
+    }
+
+    async fn set_language(&self, user_id: Uuid, language: Option<Language>) -> CoreResult<()> {
+        let done = sqlx::query(r"UPDATE users SET language = ?2 WHERE id = ?1")
+            .bind(user_id.to_string())
+            .bind(language.map(Language::tag))
+            .execute(&self.inner)
+            .await?;
+        if done.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+        Ok(())
     }
 }
 
