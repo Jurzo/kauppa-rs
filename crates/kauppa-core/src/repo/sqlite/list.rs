@@ -418,6 +418,19 @@ impl ShoppingListRepo for SqlitePool {
         Ok(item)
     }
 
+    async fn add_owner_favorite_by_name(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        text: &str,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        // RED STUB (MB-0036 tests first): authorizes, then adds free text.
+        let (tx, _grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        tx.commit().await?;
+        self.add_item(user_id, list_id, text, quantity).await
+    }
+
     async fn add_recipe(
         &self,
         user_id: Uuid,

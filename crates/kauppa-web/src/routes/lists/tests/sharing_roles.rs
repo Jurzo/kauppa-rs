@@ -630,13 +630,12 @@ async fn quantity_follows_roles() {
     assert_eq!(before.0.as_deref(), Some("5 kpl"));
 }
 
-/// MB-0036 P4: on a shared list, only the owner's own favorites are suggested
-/// and matched (owner decision 2026-11-09: categories on a shared list are the
-/// owner's; editors' favorite matching is deferred to CRP-0024). An `edit`
-/// grantee's text — even a favorite's name, theirs or the owner's — is a
-/// free-form, uncategorized item until the owner sets a category, which the
-/// editor then sees; editors get no suggestions. A `view` grantee can't add
-/// (403, nothing changes).
+/// MB-0036 P4 (amended by RR-0024): on a shared list, an `edit` grantee's
+/// typed name that matches one of the list owner's favorites by `name_key`
+/// adds the owner's product with the owner's category, which the editor then
+/// sees; their own favorite's name and the owner's non-favorite (recipe-made)
+/// product stay free-form, and a match answers like a non-match. Only the
+/// owner gets suggestions. A `view` grantee can't add (403, nothing changes).
 #[actix_web::test]
 #[allow(clippy::expect_used, clippy::too_many_lines)]
 async fn add_follows_roles() {
@@ -699,41 +698,40 @@ async fn add_follows_roles() {
         }
     }
 
-    // The editor's text is free-form: the owner's favorite's name (plain)
-    // and their own favorite's name (htmx) alike.
-    let resp = call_service(
-        &app,
-        TestRequest::post()
+    // The editor's text: the owner's favorite's name matches (plain post);
+    // their own favorite's name and the owner's recipe-made "Kaura" don't
+    // (htmx). Both answer the same way as a match.
+    for (text, htmx) in [("maito", false), ("Omena", true), ("kaura", true)] {
+        let mut req = TestRequest::post()
             .uri(&add_uri)
             .cookie(editor.clone())
-            .set_form([("text", "maito")])
-            .to_request(),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-    let resp = call_service(
-        &app,
-        TestRequest::post()
-            .uri(&add_uri)
-            .cookie(editor.clone())
-            .insert_header(("HX-Request", "true"))
-            .set_form([("text", "Omena")])
-            .to_request(),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = body_string(resp).await;
-    assert!(body.contains(&format!(r#"id="list-{}""#, s.list)) && !body.contains("<datalist"));
+            .set_form([("text", text)]);
+        if htmx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        let resp = call_service(&app, req.to_request()).await;
+        if htmx {
+            assert_eq!(resp.status(), StatusCode::OK, "{text}");
+            let body = body_string(resp).await;
+            assert!(
+                body.contains(&format!(r#"id="list-{}""#, s.list)) && !body.contains("<datalist")
+            );
+        } else {
+            assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{text}");
+        }
+    }
+    let kylma = Some("Kylmä".to_owned());
     assert_eq!(
         items().await,
         [
             ("Leipä".to_owned(), None, None),
-            ("maito".to_owned(), None, None),
+            ("Maito".to_owned(), kylma.clone(), Some(s.product)),
             ("Omena".to_owned(), None, None),
+            ("kaura".to_owned(), None, None),
         ]
     );
 
-    // The owner's text matches the owner's favorite.
+    // The owner's text matches the owner's favorite too.
     let resp = call_service(
         &app,
         TestRequest::post()
@@ -745,38 +743,16 @@ async fn add_follows_roles() {
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     assert_eq!(
-        items().await[3],
-        (
-            "Maito".to_owned(),
-            Some("Kylmä".to_owned()),
-            Some(s.product)
-        )
+        items().await[4],
+        ("Maito".to_owned(), kylma, Some(s.product))
     );
 
-    // Only the owner sets a category; the editor then sees the owner's.
-    let typed = ShoppingListRepo::items(&state.pool, s.owner, s.list, false)
-        .await
-        .expect("items")[1]
-        .id;
-    for (session, status) in [
-        (&editor, StatusCode::FORBIDDEN),
-        (&owner, StatusCode::SEE_OTHER),
-    ] {
-        let req = TestRequest::post()
-            .uri(&format!("{base}/items/{typed}/category"))
-            .cookie(session.clone())
-            .set_form([("category_id", s.category.to_string())]);
-        assert_eq!(call_service(&app, req.to_request()).await.status(), status);
-    }
-    assert_eq!(
-        items().await[1],
-        ("maito".to_owned(), Some("Kylmä".to_owned()), None)
-    );
+    // The editor sees the owner's category on the item they added.
     let body = page(&editor, true).await;
-    // The editor's row is the only lowercase "maito"; its category follows.
-    let row = &body[body.find("maito").expect("row")..];
+    let row = &body[body.find("Maito").expect("row")..];
     let category = row.find("· ").expect("category");
     assert!(row[category..].starts_with("· Kylmä"), "the editor sees it");
+    assert!(!body.contains("<datalist"));
 
     // A viewer can't add anything, over htmx or not.
     let before = list_snapshot(&state, &s).await;
