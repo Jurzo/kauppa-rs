@@ -26,6 +26,7 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   OR a `list_shares` grantee with sufficient role (`view` < `edit`)", computed
   by a single centralized helper that every list / list-item read and write
   goes through — a query that filters on `owner_id` alone is a review failure.
+  An `edit` grant may match the owner's favorites by name (RR-0024).
   Never trust a client-supplied `owner_id` or role.
 - **Input.** Deserialize into typed structs; reject on invalid. For HTML
   rendering, handlebars escapes by default — never use `{{{raw}}}` on

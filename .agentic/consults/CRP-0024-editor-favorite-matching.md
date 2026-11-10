@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "feature.md escalation trigger: shared-list authorization in `crates/kauppa-core/src/repo/sqlite/list.rs` and `crates/kauppa-web/src/routes/lists/` (RR-0002); MB-0036 autonomy.escalate (any change to list access checks or `begin_write` → security)"
 ---
 ```
