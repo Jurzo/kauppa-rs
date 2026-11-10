@@ -59,9 +59,34 @@ fn names(hb: &Registry) -> BTreeSet<String> {
     hb.get_templates().keys().cloned().collect()
 }
 
+/// Every template under `templates/`, named by handlebars' directory source
+/// rules (default options): `.hbs` files only, the `/`-separated relative
+/// path without `.hbs`, skipping hidden (`.x`) and temporary (`#x`) files.
+fn names_on_disk() -> BTreeSet<String> {
+    fn walk(dir: &Path, prefix: &str, out: &mut BTreeSet<String>) {
+        for entry in std::fs::read_dir(dir).expect("read templates dir") {
+            let path = entry.expect("dir entry").path();
+            let name = path.file_name().expect("name").to_string_lossy();
+            let rel = format!("{prefix}{name}");
+            if path.is_dir() {
+                walk(&path, &format!("{rel}/"), out);
+            } else if let Some(stem) = rel.strip_suffix(".hbs")
+                && !name.starts_with('.')
+                && !name.starts_with('#')
+            {
+                out.insert(stem.to_owned());
+            }
+        }
+    }
+    let mut out = BTreeSet::new();
+    walk(source_dir(), "", &mut out);
+    out
+}
+
 /// MB-0024 P1/P2: the registry comes from the binary, not the working
 /// directory, and holds exactly what the `templates/` folder holds, under
 /// the names directory loading gave them, so no `render` call changes.
+/// Compared with a `read_dir` walk (RR-0020), not handlebars' `dir_source`.
 #[test]
 fn registry_is_embedded() {
     // `cargo test` runs in the crate directory, which has no `templates/`:
@@ -70,11 +95,7 @@ fn registry_is_embedded() {
     let embedded = build_registry().expect("embedded registry");
     assert!(embedded.strict_mode());
 
-    let mut from_dir = Registry::new();
-    from_dir
-        .register_templates_directory(source_dir(), handlebars::DirectorySourceOptions::default())
-        .expect("directory registry");
-    assert_eq!(names(&embedded), names(&from_dir));
+    assert_eq!(names(&embedded), names_on_disk());
     assert!(names(&embedded).contains("layout"));
     assert!(names(&embedded).contains("lists/_list"));
 
