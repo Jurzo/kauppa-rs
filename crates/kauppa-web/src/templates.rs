@@ -10,7 +10,7 @@ pub type Registry = Handlebars<'static>;
 include!(concat!(env!("OUT_DIR"), "/templates.rs"));
 
 /// The registry, in strict mode, with every embedded template under the
-/// name `register_templates_directory` would give it (`lists/show`).
+/// name handlebars' directory source gave it before MB-0024 (`lists/show`).
 pub fn build_registry() -> anyhow::Result<Registry> {
     let mut hb = Handlebars::new();
     hb.set_strict_mode(true);

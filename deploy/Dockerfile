@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     cargo build --release --locked -p kauppa-web \
     && install -D -m 0755 target/release/kauppa-web /out/kauppa-web
 
-# --- runtime: binary + templates + assets, as a non-root user ---------------
+# --- runtime: the binary only, as a non-root user ---------------------------
 FROM ${RUNTIME_IMAGE}
 
 # The container user. The droplet's cloud-init creates the data directory
@@ -44,13 +44,11 @@ RUN groupadd --system --gid "${APP_UID}" kauppa \
         --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin kauppa \
     && install -d -o kauppa -g kauppa -m 0750 /data
 
-# Templates load from ./templates and static files from ./assets, relative
-# to the working directory (templates.rs, main.rs), until MB-0024 embeds
-# them. Everything here is root-owned and read-only to the app.
+# The binary embeds templates/, assets/ and migrations/ (MB-0024), so the
+# runtime stage copies no project directories (MB-0032, RR-0020). /app is an
+# empty, root-owned working directory; everything here is read-only to the
+# app.
 WORKDIR /app
-COPY templates ./templates
-COPY assets ./assets
-COPY migrations ./migrations
 COPY deploy/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY deploy/healthcheck.sh /usr/local/bin/healthcheck
 COPY --from=builder /out/kauppa-web /usr/local/bin/kauppa-web

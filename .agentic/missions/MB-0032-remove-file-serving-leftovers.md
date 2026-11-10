@@ -48,7 +48,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/templating.md@v1
-resolutions: []
+resolutions: [RR-0020]
 ---
 ```
 
@@ -72,7 +72,7 @@ stage needs them. `smoke_image.sh` currently requires them in the image
 
 1. **Clarify (S1).** CRP under the dependency-bump runbook (current state,
    target, "do nothing", the six crates), with the image question to the
-   owner.
+   owner. Answered by RR-0020.
 2. Remove the dependencies and rewrite the two tests; then the Dockerfile
    and `smoke_image.sh`.
 
