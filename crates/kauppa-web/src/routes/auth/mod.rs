@@ -29,11 +29,12 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use kauppa_core::domain::{PASSWORD_MIN_CHARS, check_new_password_length};
+use kauppa_core::domain::{Language, PASSWORD_MIN_CHARS, check_new_password_length};
 use kauppa_core::repo::{InvitationRepo, UserRepo};
 use kauppa_core::{CoreError, CoreResult, password, token};
 
 use crate::error::{WebError, WebResult};
+use crate::i18n::{COOKIE, Ui, VARY};
 use crate::state::AppState;
 
 use self::limiter::Throttled;
@@ -122,17 +123,19 @@ const EMAIL_TAKEN: &str =
     "An account already uses that email. Sign in instead, or use another email.";
 
 #[get("/login")]
-pub async fn login_form(state: web::Data<AppState>) -> WebResult<HttpResponse> {
-    let body = state
-        .templates
-        .render("auth/login", &json!({ "error": null }))?;
-    Ok(HttpResponse::Ok().content_type("text/html").body(body))
+pub async fn login_form(state: web::Data<AppState>, ui: Ui) -> WebResult<HttpResponse> {
+    let body = ui.render(&state, "auth/login", &json!({ "error": null }))?;
+    Ok(HttpResponse::Ok()
+        .content_type("text/html")
+        .insert_header(VARY)
+        .body(body))
 }
 
 #[post("/login")]
 pub async fn login_submit(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     form: web::Form<Credentials>,
 ) -> WebResult<HttpResponse> {
     // Limit before cost (RR-0013 constraint 1): client, then account, before
@@ -140,7 +143,7 @@ pub async fn login_submit(
     let client = state.limiter.client_key(req.peer_addr(), req.headers());
     let account = state.limiter.account_key(&form.email);
     if let Some(throttled) = state.limiter.check_login(client, account) {
-        return render_login_throttled(&state, throttled);
+        return render_login_throttled(&state, &ui, throttled);
     }
 
     let found = state.pool.find_by_email(&form.email).await?;
@@ -153,7 +156,7 @@ pub async fn login_submit(
     };
     let Some(user) = user else {
         state.limiter.record_login_failure(client, account);
-        return render_login_error(&state, INVALID_LOGIN);
+        return render_login_error(&state, &ui, INVALID_LOGIN);
     };
 
     Identity::login(&req.extensions(), user.id.to_string())
@@ -166,14 +169,20 @@ pub async fn login_submit(
 
 /// The 429 page: the same text whichever limiter fired (RR-0013
 /// constraint 4).
-fn render_login_throttled(state: &AppState, throttled: Throttled) -> WebResult<HttpResponse> {
-    let body = state.templates.render(
+fn render_login_throttled(
+    state: &AppState,
+    ui: &Ui,
+    throttled: Throttled,
+) -> WebResult<HttpResponse> {
+    let body = ui.render(
+        state,
         "auth/login",
         &json!({ "error": too_many_attempts(throttled) }),
     )?;
     Ok(HttpResponse::TooManyRequests()
         .insert_header((header::RETRY_AFTER, throttled.retry_after_s))
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -185,12 +194,11 @@ fn too_many_attempts(throttled: Throttled) -> String {
     }
 }
 
-fn render_login_error(state: &AppState, msg: &str) -> WebResult<HttpResponse> {
-    let body = state
-        .templates
-        .render("auth/login", &json!({ "error": msg }))?;
+fn render_login_error(state: &AppState, ui: &Ui, msg: &str) -> WebResult<HttpResponse> {
+    let body = ui.render(state, "auth/login", &json!({ "error": msg }))?;
     Ok(HttpResponse::Unauthorized()
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -200,6 +208,7 @@ fn render_login_error(state: &AppState, msg: &str) -> WebResult<HttpResponse> {
 #[get("/register")]
 pub async fn register_form(
     state: web::Data<AppState>,
+    ui: Ui,
     query: Result<web::Query<InviteQuery>, actix_web::Error>,
 ) -> HttpResponse {
     private(query.and_then(|query| {
@@ -208,7 +217,7 @@ pub async fn register_form(
             invite,
             ..RegisterView::default()
         };
-        Ok(render_register(&state, StatusCode::OK, &view)?)
+        Ok(render_register(&state, &ui, StatusCode::OK, &view)?)
     }))
 }
 
@@ -217,6 +226,7 @@ pub async fn register_form(
 pub async fn register_submit(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     form: Result<web::Form<Registration>, actix_web::Error>,
 ) -> HttpResponse {
     // Limit before cost (RR-0013 constraint 1): before the invitation check
@@ -224,11 +234,12 @@ pub async fn register_submit(
     let client = state.limiter.client_key(req.peer_addr(), req.headers());
     if let Some(throttled) = state.limiter.check_register(client) {
         return private(
-            render_register_throttled(&state, form.ok().as_deref(), throttled).map_err(Into::into),
+            render_register_throttled(&state, &ui, form.ok().as_deref(), throttled)
+                .map_err(Into::into),
         );
     }
     let result = match form {
-        Ok(form) => register(&req, &state, &form).await.map_err(Into::into),
+        Ok(form) => register(&req, &state, &ui, &form).await.map_err(Into::into),
         Err(e) => Err(e),
     };
     // Every client error is a failure (RR-0013 sub-answer 1): a missing,
@@ -248,6 +259,7 @@ pub async fn register_submit(
 /// (and what was typed) when the form could be read.
 fn render_register_throttled(
     state: &AppState,
+    ui: &Ui,
     form: Option<&Registration>,
     throttled: Throttled,
 ) -> WebResult<HttpResponse> {
@@ -259,7 +271,7 @@ fn render_register_throttled(
         email: form.map_or("", |f| f.email.as_str()),
         ..RegisterView::default()
     };
-    let mut resp = render_register(state, StatusCode::TOO_MANY_REQUESTS, &view)?;
+    let mut resp = render_register(state, ui, StatusCode::TOO_MANY_REQUESTS, &view)?;
     resp.headers_mut().insert(
         header::RETRY_AFTER,
         HeaderValue::from(throttled.retry_after_s),
@@ -271,13 +283,14 @@ fn render_register_throttled(
 async fn register(
     req: &HttpRequest,
     state: &AppState,
+    ui: &Ui,
     form: &Registration,
 ) -> WebResult<HttpResponse> {
     // MB-0026's rate-limit check runs in `register_submit`, before this.
 
     // A missing or malformed token is rejected before any DB work or Argon2.
     if !token::is_well_formed(&form.invite) {
-        return invalid_invitation(state);
+        return invalid_invitation(state, ui);
     }
     // Length before cost (RR-0022 constraint 4): reads no stored data, so it
     // answers alike whatever the invitation's state, and a refused password
@@ -292,7 +305,7 @@ async fn register(
             email: &form.email,
             ..RegisterView::default()
         };
-        return render_register(state, StatusCode::BAD_REQUEST, &view);
+        return render_register(state, ui, StatusCode::BAD_REQUEST, &view);
     }
     // A well-formed token always pays one hash before the transaction, so
     // valid and invalid ones take the same time (RR-0012 sub-answer 7).
@@ -308,7 +321,7 @@ async fn register(
     .await;
     let registered = match outcome {
         Ok(Some(registered)) => registered,
-        Ok(None) => return invalid_invitation(state),
+        Ok(None) => return invalid_invitation(state, ui),
         // Kept for invitation holders (RR-0012 sub-answer 4): a form error
         // with the invitation still in the form.
         Err(CoreError::Conflict(_)) => {
@@ -320,7 +333,7 @@ async fn register(
                 email: &form.email,
                 ..RegisterView::default()
             };
-            return render_register(state, StatusCode::CONFLICT, &view);
+            return render_register(state, ui, StatusCode::CONFLICT, &view);
         }
         Err(e) => return Err(e.into()),
     };
@@ -331,6 +344,14 @@ async fn register(
         invitation_id = %registered.invitation_id,
         "invitation used: account created"
     );
+    // The language chosen before the account existed follows it
+    // (RR-0023 sub-answer 3): from the cookie only, never from
+    // `Accept-Language`, after the register transaction committed.
+    if let Some(lang) = req.cookie(COOKIE).and_then(|c| Language::parse(c.value()))
+        && let Err(e) = UserRepo::set_language(&state.pool, registered.user.id, Some(lang)).await
+    {
+        tracing::warn!(user_id = %registered.user.id, error = ?e, "language not saved");
+    }
 
     Identity::login(&req.extensions(), registered.user.id.to_string())
         .map_err(|e| WebError::Internal(format!("session login failed: {e}")))?;
@@ -340,16 +361,17 @@ async fn register(
         .finish())
 }
 
-fn invalid_invitation(state: &AppState) -> WebResult<HttpResponse> {
+fn invalid_invitation(state: &AppState, ui: &Ui) -> WebResult<HttpResponse> {
     let view = RegisterView {
         error: Some(INVALID_INVITATION),
         ..RegisterView::default()
     };
-    render_register(state, StatusCode::BAD_REQUEST, &view)
+    render_register(state, ui, StatusCode::BAD_REQUEST, &view)
 }
 
 fn render_register(
     state: &AppState,
+    ui: &Ui,
     status: StatusCode,
     view: &RegisterView<'_>,
 ) -> WebResult<HttpResponse> {
@@ -357,9 +379,10 @@ fn render_register(
         password_min: PASSWORD_MIN_CHARS,
         ..*view
     };
-    let body = state.templates.render("auth/register", &view)?;
+    let body = ui.render(state, "auth/register", &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 

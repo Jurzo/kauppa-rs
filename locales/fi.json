@@ -1,0 +1,16 @@
+{
+  "format.date": "%-d.%-m.%Y",
+  "format.datetime": "%-d.%-m.%Y klo %-H.%M UTC",
+  "language.en": "English",
+  "language.fi": "Suomi",
+  "language.label": "Kieli",
+  "nav.categories": "Kategoriat",
+  "nav.close_menu": "Sulje valikko",
+  "nav.favorites": "Suosikit",
+  "nav.label": "Päävalikko",
+  "nav.lists": "Listat",
+  "nav.menu": "Valikko",
+  "nav.recipes": "Reseptit",
+  "nav.sign_in": "Kirjaudu sisään",
+  "nav.sign_out": "Kirjaudu ulos"
+}

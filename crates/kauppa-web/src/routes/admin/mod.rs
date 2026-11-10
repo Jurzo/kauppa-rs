@@ -27,6 +27,7 @@ use kauppa_core::domain::{Invitation, InvitationState, InvitationUser};
 use kauppa_core::repo::{AdminRepo, InvitationRepo};
 
 use crate::error::{WebError, WebResult};
+use crate::i18n::{Ui, VARY};
 use crate::state::AppState;
 
 #[cfg(test)]
@@ -107,27 +108,34 @@ struct InvitationRow {
 }
 
 impl InvitationRow {
-    fn new(invitation: Invitation, now: DateTime<Utc>) -> Self {
-        let state = invitation.state(now);
-        Self {
+    /// The row for `invitation`, its times in the request's language
+    /// (MB-0035 P5).
+    fn new(
+        invitation: Invitation,
+        now: DateTime<Utc>,
+        state: &AppState,
+        ui: &Ui,
+    ) -> WebResult<Self> {
+        let invitation_state = invitation.state(now);
+        Ok(Self {
             id: invitation.id,
-            state: state.as_str(),
-            pending: state == InvitationState::Pending,
-            created: when(invitation.created_at),
-            expires: when(invitation.expires_at),
-            used: invitation.used_at.map(when),
+            state: invitation_state.as_str(),
+            pending: invitation_state == InvitationState::Pending,
+            created: ui.datetime(state, invitation.created_at)?,
+            expires: ui.datetime(state, invitation.expires_at)?,
+            used: invitation
+                .used_at
+                .map(|t| ui.datetime(state, t))
+                .transpose()?,
             note: invitation.note,
             used_by: invitation.used_by,
-        }
+        })
     }
-}
-
-fn when(t: DateTime<Utc>) -> String {
-    t.format("%Y-%m-%d %H:%M UTC").to_string()
 }
 
 async fn render_invitations(
     state: &AppState,
+    ui: &Ui,
     status: StatusCode,
     mut view: InvitationsView,
 ) -> WebResult<HttpResponse> {
@@ -135,12 +143,13 @@ async fn render_invitations(
     view.invitations = InvitationRepo::list(&state.pool)
         .await?
         .into_iter()
-        .map(|i| InvitationRow::new(i, now))
-        .collect();
+        .map(|i| InvitationRow::new(i, now, state, ui))
+        .collect::<WebResult<_>>()?;
     view.count = view.invitations.len();
-    let body = state.templates.render("admin/invitations", &view)?;
+    let body = ui.render(state, "admin/invitations", &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -157,8 +166,9 @@ pub async fn index(_admin: RequireAdmin) -> HttpResponse {
 pub async fn invitations(
     _admin: RequireAdmin,
     state: web::Data<AppState>,
+    ui: Ui,
 ) -> WebResult<HttpResponse> {
-    render_invitations(&state, StatusCode::OK, InvitationsView::default()).await
+    render_invitations(&state, &ui, StatusCode::OK, InvitationsView::default()).await
 }
 
 /// Create an invitation and show its link, once. The answer is the page
@@ -169,6 +179,7 @@ pub async fn create_invitation(
     admin: RequireAdmin,
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     form: Result<web::Form<NoteForm>, actix_web::Error>,
 ) -> WebResult<HttpResponse> {
     let note = form.map(|f| f.into_inner().note).unwrap_or_default();
@@ -181,7 +192,7 @@ pub async fn create_invitation(
                     error: Some(message),
                     ..InvitationsView::default()
                 };
-                return render_invitations(&state, StatusCode::BAD_REQUEST, view).await;
+                return render_invitations(&state, &ui, StatusCode::BAD_REQUEST, view).await;
             }
             Err(e) => return Err(e.into()),
         };
@@ -201,11 +212,11 @@ pub async fn create_invitation(
         created: Some(CreatedView {
             link,
             note: created.invitation.note,
-            expires: when(created.invitation.expires_at),
+            expires: ui.datetime(&state, created.invitation.expires_at)?,
         }),
         ..InvitationsView::default()
     };
-    let mut resp = render_invitations(&state, StatusCode::OK, view).await?;
+    let mut resp = render_invitations(&state, &ui, StatusCode::OK, view).await?;
     let headers = resp.headers_mut();
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers.insert(

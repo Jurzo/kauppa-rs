@@ -43,7 +43,8 @@ async fn view_role_is_read_only() {
             }
             assert!(body.contains(marker), "{uri} htmx={htmx}: shows the items");
             // No form posts to the list (the layout's sign-out form is the
-            // page's only form), and no link to its sharing page.
+            // page's only form besides the language switcher, MB-0035), and
+            // no link to its sharing page.
             for control in [
                 format!(r#"action="{base}"#),
                 "hx-post".to_owned(),
@@ -54,7 +55,8 @@ async fn view_role_is_read_only() {
                     "{uri} htmx={htmx}: a viewer sees no `{control}` control"
                 );
             }
-            let forms = body.matches(r#"method="post""#).count();
+            let forms = body.matches(r#"method="post""#).count()
+                - body.matches(r#"action="/language""#).count();
             assert_eq!(
                 forms,
                 usize::from(!htmx),

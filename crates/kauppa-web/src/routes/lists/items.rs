@@ -10,6 +10,7 @@ use kauppa_core::repo::{ProductRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::Ui;
 use crate::routes::products::parse_category;
 use crate::routes::request::current_user;
 use crate::state::AppState;
@@ -91,6 +92,7 @@ async fn owner_favorite(state: &AppState, user: Uuid, text: &str) -> CoreResult<
 pub async fn add_item(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<ItemForm>,
@@ -123,7 +125,7 @@ pub async fn add_item(
             ..ItemDraft::default()
         }
     };
-    respond_item(&state, &req, user, list_id, outcome, draft).await
+    respond_item(&ui, &req, user, list_id, outcome, draft).await
 }
 
 /// Add one of the user's favorites by id, copying its name and category now.
@@ -133,6 +135,7 @@ pub async fn add_item(
 pub async fn add_favorite(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<FavoriteForm>,
@@ -146,7 +149,7 @@ pub async fn add_favorite(
         }
         Err(e) => Err(e),
     };
-    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 /// Add a recipe's ingredients, optionally multiplied (MB-0005).
@@ -154,6 +157,7 @@ pub async fn add_favorite(
 pub async fn add_recipe(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<RecipeForm>,
@@ -177,13 +181,14 @@ pub async fn add_recipe(
         },
         ..ItemDraft::default()
     };
-    respond_item(&state, &req, user, list_id, outcome, draft).await
+    respond_item(&ui, &req, user, list_id, outcome, draft).await
 }
 
 #[post("/{id}/items/{item}/category")]
 pub async fn assign_category(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
     form: web::Form<CategoryForm>,
@@ -196,7 +201,7 @@ pub async fn assign_category(
         }
         Err(e) => Err(e),
     };
-    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 /// Set or clear (blank) an item's quantity (MB-0021). The owner and `edit`
@@ -205,6 +210,7 @@ pub async fn assign_category(
 pub async fn set_item_quantity(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
     form: web::Form<QuantityForm>,
@@ -219,7 +225,7 @@ pub async fn set_item_quantity(
         Some(&form.quantity),
     )
     .await;
-    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 /// Remove an item (soft delete; it can be restored).
@@ -227,26 +233,28 @@ pub async fn set_item_quantity(
 pub async fn remove_item(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::remove_item(&state.pool, user, list_id, item_id).await;
-    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 #[post("/{id}/items/{item}/restore")]
 pub async fn restore_item(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::restore_item(&state.pool, user, list_id, item_id).await;
-    respond_item(&state, &req, user, list_id, outcome, ItemDraft::default()).await
+    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 // Sharing (MB-0008): the owner's `/lists/{id}/sharing` page, with the share

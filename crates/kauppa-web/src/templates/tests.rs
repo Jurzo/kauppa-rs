@@ -9,7 +9,15 @@ use std::path::Path;
 
 use sha2::{Digest, Sha256, Sha384};
 
-use super::{Registry, TEMPLATES, build_registry};
+use kauppa_core::domain::Language;
+
+use super::{Registry, TEMPLATES};
+use crate::i18n::I18n;
+
+/// The English registry over the embedded catalogs.
+fn build_registry() -> anyhow::Result<Registry> {
+    super::build_registry(&I18n::load()?, Language::En)
+}
 
 /// The vendored htmx (MB-0027, RR-0015; upgraded by MB-0030, RR-0017):
 /// htmx 2.0.11, 0BSD, byte-for-byte `package/dist/htmx.min.js` from the npm

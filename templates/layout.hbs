@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{html_lang}}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -23,24 +23,34 @@
       the menu button (no JavaScript); on wide screens app.css shows it
       inline and hides both buttons. Boosted navigation swaps <body>, so
       choosing an entry leaves the panel closed. --}}
-      <button type="button" class="nav-open" popovertarget="site-nav"><span class="nav-icon" aria-hidden="true">☰</span> Menu</button>
-      <nav id="site-nav" class="site-nav" popover aria-label="Main">
-        <button type="button" class="nav-close" popovertarget="site-nav" popovertargetaction="hide" aria-label="Close menu" autofocus>✕</button>
-        <a href="/lists"{{#if page_nav}}{{#if (eq page_nav "lists")}} aria-current="page"{{/if}}{{/if}}>Lists</a>
-        <a href="/recipes"{{#if page_nav}}{{#if (eq page_nav "recipes")}} aria-current="page"{{/if}}{{/if}}>Recipes</a>
-        <a href="/favorites"{{#if page_nav}}{{#if (eq page_nav "favorites")}} aria-current="page"{{/if}}{{/if}}>Favorites</a>
-        <a href="/categories"{{#if page_nav}}{{#if (eq page_nav "categories")}} aria-current="page"{{/if}}{{/if}}>Categories</a>
+      <button type="button" class="nav-open" popovertarget="site-nav"><span class="nav-icon" aria-hidden="true">☰</span> {{t "nav.menu"}}</button>
+      <nav id="site-nav" class="site-nav" popover aria-label="{{t "nav.label"}}">
+        <button type="button" class="nav-close" popovertarget="site-nav" popovertargetaction="hide" aria-label="{{t "nav.close_menu"}}" autofocus>✕</button>
+        <a href="/lists"{{#if page_nav}}{{#if (eq page_nav "lists")}} aria-current="page"{{/if}}{{/if}}>{{t "nav.lists"}}</a>
+        <a href="/recipes"{{#if page_nav}}{{#if (eq page_nav "recipes")}} aria-current="page"{{/if}}{{/if}}>{{t "nav.recipes"}}</a>
+        <a href="/favorites"{{#if page_nav}}{{#if (eq page_nav "favorites")}} aria-current="page"{{/if}}{{/if}}>{{t "nav.favorites"}}</a>
+        <a href="/categories"{{#if page_nav}}{{#if (eq page_nav "categories")}} aria-current="page"{{/if}}{{/if}}>{{t "nav.categories"}}</a>
         {{#if page_signed_in}}
           <form method="post" action="/auth/logout" class="inline">
-            <button type="submit" class="link">Sign out</button>
+            <button type="submit" class="link">{{t "nav.sign_out"}}</button>
           </form>
         {{else}}
-          <a href="/auth/login">Sign in</a>
+          <a href="/auth/login">{{t "nav.sign_in"}}</a>
         {{/if}}
       </nav>
     </header>
     <main>
       {{> @partial-block}}
     </main>
+    {{!-- MB-0035 (RR-0023 sub-answer 7): the language switcher, on every
+    page. A plain POST (no boost) so the answer is a full page load and
+    <html lang> updates; each button is named in its own language. --}}
+    <footer class="site-footer">
+      <form class="lang-switch" method="post" action="/language" hx-boost="false" aria-label="{{t "language.label"}}">
+        <input type="hidden" name="return" value="{{#if @root.request_path}}{{@root.request_path}}{{else}}/{{/if}}" />
+        <button type="submit" name="lang" value="en" lang="en" aria-pressed="{{#if (eq (html_lang) "en")}}true{{else}}false{{/if}}">{{t "language.en"}}</button>
+        <button type="submit" name="lang" value="fi" lang="fi" aria-pressed="{{#if (eq (html_lang) "fi")}}true{{else}}false{{/if}}">{{t "language.fi"}}</button>
+      </form>
+    </footer>
   </body>
 </html>

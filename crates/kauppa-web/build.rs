@@ -1,7 +1,7 @@
-//! Compiles the workspace's `templates/` and `assets/` into the binary
-//! (MB-0024): writes `include_str!`/`include_bytes!` lists to `OUT_DIR`, which
-//! `templates.rs` and `assets.rs` include. Cargo re-runs this when either
-//! folder changes.
+//! Compiles the workspace's `templates/`, `locales/` and `assets/` into the binary
+//! (MB-0024, MB-0035): writes `include_str!`/`include_bytes!` lists to
+//! `OUT_DIR`, which `templates.rs`, `i18n.rs` and `assets.rs` include. Cargo
+//! re-runs this when any of the folders changes.
 
 use std::fmt::Write as _;
 use std::io;
@@ -29,7 +29,7 @@ fn main() -> io::Result<()> {
     let mut code =
         String::from("/// `(name, source)` for every template, as handlebars' directory\n");
     code.push_str("/// source names it: relative path, `/`-separated, without `.hbs`.\n");
-    code.push_str("const TEMPLATES: &[(&str, &str)] = &[\n");
+    code.push_str("pub const TEMPLATES: &[(&str, &str)] = &[\n");
     for (name, path) in files(&templates)? {
         // As handlebars' directory source named them before MB-0024: `.hbs`
         // files, minus hidden (`.x`) and temporary (`#x`) ones.
@@ -48,6 +48,23 @@ fn main() -> io::Result<()> {
     }
     code.push_str("];\n");
     std::fs::write(out.join("templates.rs"), code)?;
+
+    // MB-0035 (RR-0023): the translation catalogs, `locales/<tag>.json`.
+    let locales = root.join("locales");
+    println!("cargo::rerun-if-changed={}", locales.display());
+    let mut code = String::from("/// `(language tag, JSON source)` for every catalog.\n");
+    code.push_str("const LOCALES: &[(&str, &str)] = &[\n");
+    for (name, path) in files(&locales)? {
+        let Some(tag) = name.strip_suffix(".json") else {
+            continue;
+        };
+        if tag.contains('/') || tag.starts_with('.') {
+            continue;
+        }
+        let _ = writeln!(code, "    ({tag:?}, include_str!({:?})),", path_str(&path)?);
+    }
+    code.push_str("];\n");
+    std::fs::write(out.join("locales.rs"), code)?;
 
     let assets = root.join("assets");
     println!("cargo::rerun-if-changed={}", assets.display());

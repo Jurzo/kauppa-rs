@@ -44,7 +44,7 @@ pub async fn test_state_with_clock() -> (web::Data<AppState>, String, Arc<FakeCl
     );
     let pool = SqlitePool::connect(&url).await.expect("connect test pool");
     pool.run_migrations().await.expect("run migrations");
-    let templates = templates::build_registry().expect("load templates");
+    let templates = templates::Templates::load().expect("load templates");
     let clock = Arc::new(FakeClock::default());
     let state = web::Data::new(AppState {
         pool,
@@ -54,6 +54,7 @@ pub async fn test_state_with_clock() -> (web::Data<AppState>, String, Arc<FakeCl
         origin: OriginPolicy::SameHost(Scheme::Http),
         // As `main.rs` with `KAUPPA_TRUSTED_PROXIES` unset.
         limiter: Arc::new(AuthLimiter::new(clock.clone(), TrustedProxies::default())),
+        cookie_secure: false,
     });
     (state, url, clock)
 }
