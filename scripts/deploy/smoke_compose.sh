@@ -10,6 +10,14 @@
 #       (RR-0014 constraint 5). Also RR-0013's follow-up: a client-sent
 #       X-Forwarded-For never reaches the app.
 #
+#   MB-0028 P1 (RR-0013 constraint 8), local mode only: compose.yaml sets
+#       KAUPPA_TRUSTED_PROXIES to exactly the `internal` network's subnet and
+#       the Caddyfile sets no trusted_proxies; failed logins through Caddy
+#       with spoofed X-Forwarded-For headers are limited under the real
+#       client's key, not the spoofed one; the app logs no "forwarded-for
+#       missing from a trusted proxy" WARN. Live mode sends no failing
+#       logins: they would lock the smoke account out of the real site.
+#
 # Two modes:
 #
 #   scripts/deploy/smoke_compose.sh
@@ -91,6 +99,47 @@ if [[ $# -ge 1 ]]; then
 fi
 
 # ============================================================= local mode ==
+
+# ------------------------------------ MB-0028 P1: static, no Docker needed ----
+section "MB-0028 P1: KAUPPA_TRUSTED_PROXIES and the Caddyfile (static)"
+
+# compose.yaml's uncommented KAUPPA_TRUSTED_PROXIES lines, value only.
+compose_trusted_proxies() {
+    { grep -E '^[[:space:]]+KAUPPA_TRUSTED_PROXIES:' deploy/compose.yaml || true; } \
+        | sed -E 's/^[[:space:]]*KAUPPA_TRUSTED_PROXIES:[[:space:]]*//; s/[[:space:]]+#.*$//; s/[[:space:]]+$//' \
+        | tr -d "\"'"
+}
+
+# The subnet(s) pinned under the top-level `networks:` -> `internal:` block.
+compose_internal_subnet() {
+    awk '
+        /^[^[:space:]#]/ { top = $1; net = "" }
+        top == "networks:" && /^  [^[:space:]#]/ { net = $1 }
+        top == "networks:" && net == "internal:" && /^[[:space:]]+(-[[:space:]]+)?subnet:/ {
+            sub(/^[[:space:]]+(-[[:space:]]+)?subnet:[[:space:]]*/, "")
+            sub(/[[:space:]]+#.*$/, "")
+            sub(/[[:space:]]+$/, "")
+            print
+        }
+    ' deploy/compose.yaml | tr -d "\"'"
+}
+
+trusted_equals_subnet() {
+    local trusted subnet
+    trusted=$(compose_trusted_proxies)
+    subnet=$(compose_internal_subnet)
+    log "    KAUPPA_TRUSTED_PROXIES=[$(xargs <<<"$trusted")] internal subnet=[$(xargs <<<"$subnet")]"
+    # One setting, one subnet, the same string: "exactly" (no wider range,
+    # no second entry, no second definition).
+    [[ -n "$subnet" && "$subnet" != *$'\n'* && "$trusted" == "$subnet" ]]
+}
+check P1 "compose.yaml: KAUPPA_TRUSTED_PROXIES equals the internal network's subnet" -- trusted_equals_subnet
+
+no_caddy_trusted_proxies() {
+    ! grep -vE '^[[:space:]]*#' deploy/Caddyfile | qgrep -E 'trusted_proxies'
+}
+check P1 "Caddyfile sets no trusted_proxies (Caddy overwrites X-Forwarded-For)" -- no_caddy_trusted_proxies
+
 require_cmd docker
 HTTP_PORT=${KAUPPA_SMOKE_HTTP_PORT:-18080}
 HTTPS_PORT=${KAUPPA_SMOKE_HTTPS_PORT:-18443}
@@ -318,6 +367,130 @@ check P3 "a client-sent X-Forwarded-For is replaced by the peer address (RR-0013
 docker rm -f "$ECHO" >/dev/null 2>&1 || true
 compose start kauppa >&2
 check P3 "the app is back and healthy" -- wait_healthy "$(compose ps -q kauppa)" 90
+
+# ------------------------- MB-0028 P1: the limiter's key behind Caddy ----
+section "MB-0028 P1: spoofed X-Forwarded-For through Caddy (RR-0013 constraint 8)"
+
+# 172.30.53.0/24-style IPv4 containment, for the runtime check below.
+ipv4_int() {
+    local IFS=. a b c d
+    read -r a b c d <<<"$1"
+    echo $(((a << 24) | (b << 16) | (c << 8) | d))
+}
+ipv4_in_net() {
+    local ip=$1 net=${2%/*} prefix=${2#*/} mask
+    [[ "$ip" =~ ^[0-9]+(\.[0-9]+){3}$ && "$net" =~ ^[0-9]+(\.[0-9]+){3}$ && "$prefix" =~ ^[0-9]+$ ]] \
+        || return 1
+    mask=$(((0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF))
+    (((($(ipv4_int "$ip")) & mask) == (($(ipv4_int "$net")) & mask)))
+}
+
+# What the running stack does, beside the static check above: the app's
+# setting equals the subnet Docker gave the `internal` network, and Caddy's
+# address on it (the peer the app sees) is inside it.
+runtime_trusted_matches() {
+    local setting subnet caddy_ip
+    setting=$(compose exec -T kauppa /bin/bash -c 'printf %s "${KAUPPA_TRUSTED_PROXIES:-}"')
+    subnet=$(docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "${PROJECT}_internal" | xargs)
+    caddy_ip=$(docker inspect -f "{{(index .NetworkSettings.Networks \"${PROJECT}_internal\").IPAddress}}" \
+        "$(compose ps -q caddy)")
+    log "    app KAUPPA_TRUSTED_PROXIES=[$setting] network subnet=[$subnet] caddy=[$caddy_ip]"
+    [[ -n "$setting" && "$setting" == "$subnet" ]] && ipv4_in_net "$caddy_ip" "$subnet"
+}
+check P1 "the app trusts exactly the internal network, and Caddy is on it" -- runtime_trusted_matches
+
+# The limits (crates/kauppa-web/src/routes/auth/limiter/mod.rs): failed
+# logins per client 10 and per account 5, both per 900 s fixed window. A
+# login is checked (client, then account) before any work; a throttled
+# request answers 429 and is NOT counted; only a 401 counts, against both
+# the client and the account. The limiter is in memory, and `compose start
+# kauppa` just above started a fresh process, so every window is empty and
+# the counts below are exact. Every request carries a different spoofed
+# X-Forwarded-For, each in its own /24 (the log shows keys as /24s).
+spoofed_login() {
+    http POST "$BASE/auth/login" -H "Origin: $ORIGIN" -H "X-Forwarded-For: $2" \
+        --data-urlencode "email=$1" --data-urlencode "password=wrong-password-$(rand_id)"
+}
+
+# (a) The brief's burst: 11 failed logins for one account (no such user;
+# known and unknown emails are keyed alike). The account limit answers
+# from the 6th on: 401 x5, then 429 x6. This holds whatever the client key
+# is, so it shows the spoofed headers don't get around the account limit,
+# not yet what the client key is; (b) and the log check show that.
+BURST_ACCOUNT="p1-burst-$PROJECT@example.test"
+BURST_A=""
+for i in $(seq 1 11); do
+    spoofed_login "$BURST_ACCOUNT" "198.18.$i.7"
+    BURST_A+="$HTTP_STATUS "
+done
+BURST_A=${BURST_A% }
+burst_a_ok() {
+    [[ "$BURST_A" == "401 401 401 401 401 429 429 429 429 429 429" ]] \
+        || { log "    got: $BURST_A"; return 1; }
+}
+check P1 "11 failed logins, one account, 11 spoofed X-Forwarded-For: 401 x5, then 429 (the 11th is 429)" -- burst_a_ok
+last_429_ok() {
+    status_is 429 && header_has '^retry-after: *[0-9]' && body_has "Too many attempts. Try again in"
+}
+check P1 "the 429 carries Retry-After and the 'Too many attempts' message" -- last_429_ok
+
+# (b) The client key: one failed login each for 6 fresh accounts, again
+# each with its own spoofed header. (a) counted 5 failures (its 401s)
+# against this client, so 5 more fill the client window to 10 and the 6th
+# is 429. No account here has more than one failure, so only the per-client
+# limit can answer 429: if a spoofed header changed the key, each request
+# would start a fresh client window and all 6 would be 401.
+BURST_B=""
+for i in $(seq 1 6); do
+    spoofed_login "p1-client-$i-$PROJECT@example.test" "198.18.$((100 + i)).7"
+    BURST_B+="$HTTP_STATUS "
+done
+BURST_B=${BURST_B% }
+burst_b_ok() {
+    [[ "$BURST_B" == "401 401 401 401 401 429" ]] || { log "    got: $BURST_B"; return 1; }
+}
+check P1 "6 more accounts, new spoofed headers: the per-client limit answers 429 at the 11th failure" -- burst_b_ok
+
+sleep 1
+APP_LOGS=$(compose logs --no-color kauppa 2>&1 || true)
+
+# The throttle WARN ("auth attempt throttled", limiter/mod.rs) has the
+# limiter and key kind; release builds log JSON with the request span, whose
+# `http.client_ip` is the limiter's client key cut to /24 (telemetry.rs).
+# All 7 throttled requests above must carry one key: the address Caddy saw
+# (what the echo upstream got in X-Forwarded-For), not a spoofed 198.18.x
+# and not Caddy's own 172.30.53.x (that would mean Caddy isn't trusted, and
+# everyone shares Caddy's bucket).
+THROTTLE_LINES=$(grep -F 'auth attempt throttled' <<<"$APP_LOGS" || true)
+CADDY_SAW=$(sed -nE 's/^xff=\[([^],]*)\].*/\1/p' <<<"$ECHOED")
+throttle_logged() {
+    qgrep -F '"key_kind":"account"' <<<"$THROTTLE_LINES" \
+        && qgrep -F '"key_kind":"client"' <<<"$THROTTLE_LINES" \
+        || { log "    throttle lines: ${THROTTLE_LINES:-none}"; return 1; }
+}
+check P1 "the app logged both throttles (key_kind account and client)" -- throttle_logged
+
+throttle_key_is_real_client() {
+    local keys want=""
+    keys=$({ grep -oE '"http\.client_ip":"[^"]*"' <<<"$THROTTLE_LINES" || true; } \
+        | sed -E 's/.*:"([^"]*)"/\1/' | sort -u)
+    [[ "$CADDY_SAW" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && want="${CADDY_SAW%.*}.0/24"
+    log "    throttled client key(s): [$(xargs <<<"$keys")]; Caddy saw [$CADDY_SAW]"
+    [[ -n "$keys" && "$keys" != *$'\n'* ]] || { log "    want exactly one key"; return 1; }
+    [[ "$keys" != 198.18.* ]] || { log "    the key is a spoofed address"; return 1; }
+    [[ "$keys" != "$(compose_internal_subnet)" ]] || { log "    the key is Caddy's own address"; return 1; }
+    [[ -z "$want" || "$keys" == "$want" ]] || { log "    want $want"; return 1; }
+}
+check P1 "the limiter keyed every throttled request by the real client, not the spoofed header" -- throttle_key_is_real_client
+
+# The shared-bucket fallback (README §3.9): logged once per process when a
+# trusted peer sends no usable X-Forwarded-For. These logs span both app
+# processes of this container (before and after the stop/start above).
+no_fallback_warn() {
+    [[ -n "$APP_LOGS" ]] || { log "    no app logs"; return 1; }
+    ! qgrep -F 'forwarded-for missing from a trusted proxy' <<<"$APP_LOGS"
+}
+check P1 "the app logged no 'forwarded-for missing from a trusted proxy' WARN" -- no_fallback_warn
 
 # ------------------------------------------------- P2: down and up again ----
 section "P2: docker compose down, up: the data stays on the volume"

@@ -13,13 +13,13 @@ non_goals:
 acceptance:
   - id: P1
     property: "The list page has one add form (item text and optional quantity) for users who can edit; the separate favorite `<select>` form is gone."
-    check: cargo test -p kauppa-web routes::lists::tests::items::single_add_form
+    check: cargo test -p kauppa-web routes::lists::tests::add_field::single_add_form
   - id: P2
     property: "The item field offers the user's favorites as suggestions (a `<datalist>` or the approach the RR picks), outside the list fragment so htmx swaps don't resend them."
-    check: cargo test -p kauppa-web routes::lists::tests::items::favorite_suggestions
+    check: cargo test -p kauppa-web routes::lists::tests::add_field::favorite_suggestions
   - id: P3
     property: "Submitting text whose `name_key` equals one of the favorites adds that favorite exactly as the old favorite form did (product link, its name and category copied, quantity kept); any other text adds a free-form, uncategorized item as today."
-    check: cargo test -p kauppa-web routes::lists::tests::items::add_resolves_favorite
+    check: cargo test -p kauppa-web routes::lists::tests::add_field::add_resolves_favorite
   - id: P4
     property: "Whose favorites are suggested and matched follows the RR for shared lists (owner's or the editor's own), and a `view` grantee still can't add anything (403)."
     check: cargo test -p kauppa-web routes::lists::tests::sharing_roles::add_follows_roles

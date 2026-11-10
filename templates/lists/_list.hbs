@@ -54,7 +54,7 @@
           <span class="muted">· {{#if this.category}}{{this.category}}{{else}}Uncategorized{{/if}}</span>
         </span>
         {{#if ../can_edit}}
-        <details class="product-edit"{{#if ../is_owner}}{{#unless this.category}}{{#if ../has_categories}} open{{/if}}{{/unless}}{{/if}}>
+        <details class="product-edit">
           <summary>{{#if ../is_owner}}{{#if this.category}}Edit{{else}}Choose category{{/if}}{{else}}Edit{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
           {{#if ../is_owner}}
           {{#if ../has_categories}}
