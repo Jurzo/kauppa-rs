@@ -9,9 +9,12 @@
 //! An open list is also where it is assembled (MB-0004): free-text items,
 //! favorites, a category per item, and soft removal with restore. Those
 //! mutations answer htmx with the re-rendered `#list-{id}` fragment, and plain
-//! requests with a 303 back to the list. A favorite's item copies its name and
-//! category at add-time (RR-0001); a free-text item stays uncategorized until
-//! the user picks a category. Adding a recipe (MB-0005) adds one item per
+//! requests with a 303 back to the list. One add field takes both (MB-0036):
+//! the owner's text that names one of their favorites (`name_key`, RR-0003)
+//! adds that favorite, whose item copies its name and category at add-time
+//! (RR-0001), and the field suggests the owner's favorites from a
+//! `<datalist>` outside the fragment; any other text is a free-text item that
+//! stays uncategorized until the owner picks a category. Adding a recipe (MB-0005) adds one item per
 //! ingredient the same way, with an optional quantity multiplier.
 //!
 //! `/lists/{id}/shop` is the store view (MB-0006): active items grouped by
@@ -24,7 +27,8 @@
 //! a user with no access gets a 404 and a grantee whose role is too weak a
 //! 403. Handlers only use the access level to decide which controls to show:
 //! a `view` grantee sees the list and the store view read-only; an `edit`
-//! grantee can add free-text items, change quantities (MB-0021), check,
+//! grantee can add free-text items (their text never matches a favorite, and
+//! they get no suggestions: MB-0036, CRP-0024), change quantities (MB-0021), check,
 //! remove and restore; favorites, recipes and categories come from the
 //! owner's catalog and stay the owner's, as do rename, delete and
 //! `/lists/{id}/sharing`. Sharing answers
@@ -114,6 +118,10 @@ struct ListCard {
 #[derive(Debug, Serialize)]
 struct ShowView {
     list: ListView,
+    /// The owner's favorite names for the add field's `<datalist>`
+    /// (MB-0036). On the page, outside `#list-{id}`, so fragments don't
+    /// resend them; empty for grantees.
+    suggestions: Vec<String>,
 }
 
 /// An open list and its builder (`lists/_list`).
@@ -125,7 +133,9 @@ struct ListView {
     items: Vec<ItemRow>,
     removed: Vec<ItemRow>,
     removed_count: usize,
-    favorites: Vec<FavoriteGroup>,
+    /// The owner's favorites, which the add field suggests (MB-0036); none
+    /// shows a hint.
+    favorite_count: usize,
     recipes: Vec<RecipeOption>,
     has_categories: bool,
     /// The owner: catalog controls and the sharing link.
@@ -143,20 +153,6 @@ struct ItemRow {
     quantity: String,
     category: Option<String>,
     picker: Picker,
-}
-
-/// Favorites for the "add a favorite" `<select>`, one `<optgroup>` per
-/// category.
-#[derive(Debug, Serialize)]
-struct FavoriteGroup {
-    name: Option<String>,
-    products: Vec<FavoriteOption>,
-}
-
-#[derive(Debug, Serialize)]
-struct FavoriteOption {
-    id: Uuid,
-    name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -185,20 +181,12 @@ fn item_row(item: ListItem, categories: &[Category]) -> ItemRow {
     }
 }
 
-fn favorite_groups(groups: Vec<ProductGroup>) -> Vec<FavoriteGroup> {
+/// The favorites' names, in the favorites page's order (by category).
+fn favorite_names(groups: Vec<ProductGroup>) -> Vec<String> {
     groups
         .into_iter()
-        .map(|g| FavoriteGroup {
-            name: g.category.map(|c| c.name),
-            products: g
-                .products
-                .into_iter()
-                .map(|p| FavoriteOption {
-                    id: p.id,
-                    name: p.name,
-                })
-                .collect(),
-        })
+        .flat_map(|g| g.products)
+        .map(|p| p.name)
         .collect()
 }
 
@@ -231,6 +219,7 @@ async fn render_list(
     };
     let card = ListCard::from(list);
     let removed_count = removed.len();
+    let suggestions = favorite_names(favorites);
     let view = ListView {
         id: card.id,
         name: card.name,
@@ -244,7 +233,7 @@ async fn render_list(
             .map(|i| item_row(i, &categories))
             .collect(),
         removed_count,
-        favorites: favorite_groups(favorites),
+        favorite_count: suggestions.len(),
         recipes: recipes
             .into_iter()
             .map(|r| RecipeOption {
@@ -261,9 +250,13 @@ async fn render_list(
     let body = if fragment {
         state.templates.render("lists/_list", &view)?
     } else {
-        state
-            .templates
-            .render("lists/show", &ShowView { list: view })?
+        state.templates.render(
+            "lists/show",
+            &ShowView {
+                list: view,
+                suggestions,
+            },
+        )?
     };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
