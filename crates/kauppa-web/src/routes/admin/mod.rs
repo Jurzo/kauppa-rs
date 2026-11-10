@@ -27,6 +27,7 @@ use kauppa_core::domain::{Invitation, InvitationState, InvitationUser};
 use kauppa_core::repo::{AdminRepo, InvitationRepo};
 
 use crate::error::{WebError, WebResult};
+use crate::i18n::messages;
 use crate::i18n::{Ui, VARY};
 use crate::state::AppState;
 
@@ -99,7 +100,7 @@ struct CreatedView {
 struct InvitationRow {
     id: Uuid,
     note: Option<String>,
-    state: &'static str,
+    state: String,
     pending: bool,
     created: String,
     expires: String,
@@ -119,7 +120,7 @@ impl InvitationRow {
         let invitation_state = invitation.state(now);
         Ok(Self {
             id: invitation.id,
-            state: invitation_state.as_str(),
+            state: ui.say(messages::invitation_state(invitation_state))?,
             pending: invitation_state == InvitationState::Pending,
             created: ui.datetime(state, invitation.created_at)?,
             expires: ui.datetime(state, invitation.expires_at)?,
@@ -186,10 +187,10 @@ pub async fn create_invitation(
     let created =
         match InvitationRepo::create(&state.pool, Some(admin.0), Some(&note), Utc::now()).await {
             Ok(created) => created,
-            Err(CoreError::Invalid(message)) => {
+            Err(CoreError::Invalid(reason)) => {
                 let view = InvitationsView {
                     note,
-                    error: Some(message),
+                    error: Some(ui.invalid(&reason)?),
                     ..InvitationsView::default()
                 };
                 return render_invitations(&state, &ui, StatusCode::BAD_REQUEST, view).await;

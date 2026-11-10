@@ -3,6 +3,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use kauppa_core::Invalid;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -113,7 +114,7 @@ async fn respond_shop<T>(
 ) -> WebResult<HttpResponse> {
     let error = match outcome {
         Ok(_) => None,
-        Err(CoreError::Invalid(m)) => Some(m),
+        Err(CoreError::Invalid(m)) => Some(ui.invalid(&m)?),
         Err(e) => return Err(e.into()),
     };
     if is_hx(req) {
@@ -140,7 +141,7 @@ fn parse_checked(raw: &str) -> CoreResult<bool> {
     match raw.trim() {
         "true" => Ok(true),
         "false" => Ok(false),
-        _ => Err(CoreError::Invalid("unknown found state".to_owned())),
+        _ => Err(CoreError::Invalid(Invalid::FoundState)),
     }
 }
 

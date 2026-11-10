@@ -10,6 +10,7 @@
 //! admin repos (MB-0023). Row parsers and checks used by more than
 //! one live here.
 
+use crate::{Conflict, Entity, Invalid};
 use chrono::{DateTime, SubsecRound, Utc};
 use sqlx::Row;
 use sqlx::sqlite::{
@@ -68,7 +69,7 @@ impl SqlitePool {
     /// `:memory:` databases (the tests) report journal mode `memory`.
     pub async fn connect(url: &str) -> CoreResult<Self> {
         let options = SqliteConnectOptions::from_str(url)
-            .map_err(|e| CoreError::Invalid(format!("bad database url: {e}")))?
+            .map_err(|e| CoreError::Storage(format!("bad database url: {e}")))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
@@ -87,7 +88,7 @@ impl SqlitePool {
         sqlx::migrate!("../../migrations")
             .run(&self.inner)
             .await
-            .map_err(|e| CoreError::Invalid(format!("migration failed: {e}")))?;
+            .map_err(|e| CoreError::Storage(format!("migration failed: {e}")))?;
         Ok(())
     }
 }
@@ -100,7 +101,7 @@ fn whole_seconds(t: DateTime<Utc>) -> DateTime<Utc> {
 }
 
 fn parse_uuid(s: &str) -> CoreResult<Uuid> {
-    Uuid::parse_str(s).map_err(|e| CoreError::Invalid(format!("invalid uuid: {e}")))
+    Uuid::parse_str(s).map_err(|e| CoreError::Storage(format!("invalid uuid: {e}")))
 }
 
 fn row_to_category(row: &SqliteRow) -> CoreResult<Category> {
@@ -133,24 +134,24 @@ fn row_to_product(row: &SqliteRow) -> CoreResult<Product> {
 
 /// Trim a user-supplied name and reject it if empty. `what` names the entity
 /// in the error message.
-fn clean_name<'a>(what: &str, name: &'a str) -> CoreResult<&'a str> {
+fn clean_name(what: Entity, name: &str) -> CoreResult<&str> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
-        return Err(CoreError::Invalid(format!("{what} name must not be empty")));
+        return Err(CoreError::Invalid(Invalid::NameEmpty(what)));
     }
     Ok(trimmed)
 }
 
 /// Map a unique-constraint violation to `Conflict`; pass other errors through.
-fn conflict_on_unique(e: sqlx::Error, message: impl FnOnce() -> String) -> CoreError {
+fn conflict_on_unique(e: sqlx::Error, reason: impl FnOnce() -> Conflict) -> CoreError {
     match &e {
-        sqlx::Error::Database(db) if db.is_unique_violation() => CoreError::Conflict(message()),
+        sqlx::Error::Database(db) if db.is_unique_violation() => CoreError::Conflict(reason()),
         _ => CoreError::Database(e),
     }
 }
 
-fn unknown_category() -> CoreError {
-    CoreError::Invalid("unknown category".to_owned())
+const fn unknown_category() -> CoreError {
+    CoreError::Invalid(Invalid::Unknown(Entity::Category))
 }
 
 // Shared by the recipe and list repos (`add_recipe` copies ingredients).

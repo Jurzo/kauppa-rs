@@ -80,13 +80,17 @@ async fn respond<T>(
 ) -> WebResult<HttpResponse> {
     let (status, error) = match outcome {
         Ok(_) => (StatusCode::OK, None),
-        Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, Some(m)),
-        Err(CoreError::Conflict(m)) => (StatusCode::CONFLICT, Some(m)),
+        // Logged in English, shown in the request's language (MB-0035).
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, reason = %m, "categories input rejected");
+            (StatusCode::BAD_REQUEST, Some(ui.invalid(&m)?))
+        }
+        Err(CoreError::Conflict(c)) => {
+            tracing::debug!(user_id = %user, reason = %c, "categories input rejected");
+            (StatusCode::CONFLICT, Some(ui.conflict(&c)?))
+        }
         Err(e) => return Err(e.into()),
     };
-    if let Some(reason) = &error {
-        tracing::debug!(user_id = %user, %reason, "categories input rejected");
-    }
 
     if is_hx(req) {
         render(state, ui, user, true, StatusCode::OK, draft_name, error).await

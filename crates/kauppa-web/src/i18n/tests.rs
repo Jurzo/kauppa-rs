@@ -40,10 +40,12 @@ fn template_keys() -> BTreeSet<(String, &'static str)> {
     keys
 }
 
-/// The keys Rust code looks up by name.
+/// The keys Rust code looks up by name: dates, the switcher's language
+/// names, and every typed reason and web message (`messages::every_text`).
 fn rust_keys() -> Vec<String> {
     let mut keys = vec!["format.date".to_owned(), "format.datetime".to_owned()];
     keys.extend(Language::ALL.map(|l| format!("language.{l}")));
+    keys.extend(super::messages::every_text().into_iter().map(|(k, _)| k));
     keys
 }
 
@@ -94,6 +96,16 @@ fn catalogs_complete() {
             en.contains_key(&key),
             "Rust uses `{key}`, which no catalog has"
         );
+    }
+    // Every Rust-built text formats in every language with the arguments
+    // Rust gives it (no placeholder left without one).
+    for lang in Language::ALL {
+        for (key, args) in super::messages::every_text() {
+            assert!(
+                i18n.text(lang, &key, &args).is_ok(),
+                "{lang}: `{key}` with {args:?}"
+            );
+        }
     }
 }
 
@@ -540,11 +552,11 @@ fn templates_have_no_literal_text() {
         scan::literal_text(r#"<b aria-label="{{#if x}}Mark {{y}}{{/if}}">✕</b>"#),
         [r#"aria-label="Mark""#]
     );
-    assert!(
+    assert_eq!(
         scan::literal_text(
             r#"{{!-- a comment --}}<h1>kauppa</h1><p>{{t "a.b"}}</p><input placeholder="{{t "c.d"}}" />↑ ·"#
-        )
-        .is_empty()
+        ),
+        Vec::<String>::new()
     );
 }
 
@@ -563,13 +575,12 @@ fn english_only(i18n: &I18n) -> Vec<String> {
         for form in entry.forms() {
             let mut rest = form;
             loop {
-                let (chunk, next) = match rest.find('{') {
-                    Some(open) => (
+                let (chunk, next) = rest.find('{').map_or((rest, None), |open| {
+                    (
                         &rest[..open],
                         rest[open..].find('}').map(|c| &rest[open + c + 1..]),
-                    ),
-                    None => (rest, None),
-                };
+                    )
+                });
                 let chunk =
                     chunk.trim_matches(|c: char| c.is_whitespace() || c.is_ascii_punctuation());
                 if chunk.chars().filter(|c| c.is_alphabetic()).count() >= 3
@@ -587,17 +598,100 @@ fn english_only(i18n: &I18n) -> Vec<String> {
     chunks.into_iter().collect()
 }
 
+/// A rejection in `pages::walk` and the message it must show: `(what,
+/// key, arguments)`.
+type Expected = (&'static str, &'static str, Vec<(&'static str, String)>);
+
+/// Every rejection [`pages::walk`] makes, with its message.
+fn expected_messages() -> Vec<Expected> {
+    let none = Vec::new;
+    let name = |n: &str| vec![("name", n.to_owned())];
+    vec![
+        ("login rejected", "auth.invalid_login", none()),
+        (
+            "register: bad invitation",
+            "auth.invalid_invitation",
+            none(),
+        ),
+        ("register: email taken", "auth.email_taken", none()),
+        (
+            "register: short password",
+            "auth.password_length",
+            vec![("min", "15".to_owned()), ("max", "128".to_owned())],
+        ),
+        ("new list (empty) (htmx)", "errors.name_empty.list", none()),
+        ("item (empty) (htmx)", "errors.name_empty.item", none()),
+        (
+            "recipe to list (none chosen) (htmx)",
+            "errors.choose_recipe",
+            none(),
+        ),
+        (
+            "recipe to list (bad times) (htmx)",
+            "errors.multiplier_not_number",
+            none(),
+        ),
+        ("share (empty) (htmx)", "errors.email_required", none()),
+        (
+            "new category (empty) (htmx)",
+            "errors.name_empty.category",
+            none(),
+        ),
+        (
+            "new category (taken) (htmx)",
+            "errors.exists.category",
+            name("Hevi"),
+        ),
+        (
+            "new favorite (no category) (htmx)",
+            "errors.choose_category",
+            none(),
+        ),
+        (
+            "new favorite (taken) (htmx)",
+            "errors.exists.product",
+            name("Maito"),
+        ),
+        ("new recipe (empty) (htmx)", "errors.title_empty", none()),
+        (
+            "recipe details (bad servings) (htmx)",
+            "errors.servings_too_few",
+            none(),
+        ),
+        (
+            "recipe to a list (none chosen) (htmx)",
+            "errors.choose_list",
+            none(),
+        ),
+        (
+            "invitation (note too long)",
+            "errors.note_too_long",
+            vec![("max", "200".to_owned())],
+        ),
+    ]
+}
+
 /// MB-0035 P4: every page and fragment, and the main rejections, render for
 /// a Finnish user: no missing key (a render error would be a 500), full
-/// pages say `<html lang="fi">`, and no English-only catalog text appears.
+/// pages say `<html lang="fi">`, no English-only catalog text appears, and
+/// each rejection shows its message in Finnish.
 #[actix_web::test]
 async fn every_page_renders_in_finnish() {
     let i18n = I18n::load().unwrap();
     let english = english_only(&i18n);
-    assert!(!english.is_empty());
+    assert_ne!(english, Vec::<String>::new());
+    let expected = expected_messages();
     let mut problems = Vec::new();
+    let mut seen = BTreeSet::new();
     for page in pages::walk(Language::Fi).await {
         let what = &page.what;
+        if let Some((_, key, args)) = expected.iter().find(|(w, ..)| w == what) {
+            seen.insert(what.clone());
+            let message = i18n.text(Language::Fi, key, args).unwrap();
+            if !scan::rendered_text(&page.body).contains(&message) {
+                problems.push(format!("{what}: no {message:?}"));
+            }
+        }
         if page.status.is_server_error() {
             problems.push(format!("{what}: {} {}", page.status, page.body));
             continue;
@@ -610,6 +704,11 @@ async fn every_page_renders_in_finnish() {
             if scan::contains_words(&text, chunk) {
                 problems.push(format!("{what}: English {chunk:?}"));
             }
+        }
+    }
+    for (what, ..) in &expected {
+        if !seen.contains(*what) {
+            problems.push(format!("{what}: not in the walk"));
         }
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));

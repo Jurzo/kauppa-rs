@@ -1,5 +1,6 @@
 //! Shared shopping lists (MB-0008, RR-0002).
 
+use crate::Invalid;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -31,7 +32,7 @@ impl ShareRole {
         match raw.trim() {
             "view" => Ok(Self::View),
             "edit" => Ok(Self::Edit),
-            _ => Err(CoreError::Invalid("choose view or edit".to_owned())),
+            _ => Err(CoreError::Invalid(Invalid::ShareRole)),
         }
     }
 }

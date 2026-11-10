@@ -34,6 +34,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use kauppa_core::Invalid;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -76,7 +77,7 @@ fn parse_recipe(form: &RecipeForm) -> CoreResult<RecipeInput> {
         Some(
             servings
                 .parse::<i64>()
-                .map_err(|_| CoreError::Invalid("servings must be a whole number".to_owned()))?,
+                .map_err(|_| CoreError::Invalid(Invalid::ServingsNotWhole))?,
         )
     };
     Ok(RecipeInput {
@@ -479,13 +480,17 @@ async fn respond<T>(
     let state = ui.state();
     let (status, error) = match outcome {
         Ok(_) => (StatusCode::OK, None),
-        Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, Some(m)),
-        Err(CoreError::Conflict(m)) => (StatusCode::CONFLICT, Some(m)),
+        // Logged in English, shown in the request's language (MB-0035).
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, recipe_id = %recipe_id, reason = %m, "recipe input rejected");
+            (StatusCode::BAD_REQUEST, Some(ui.invalid(&m)?))
+        }
+        Err(CoreError::Conflict(c)) => {
+            tracing::debug!(user_id = %user, recipe_id = %recipe_id, reason = %c, "recipe input rejected");
+            (StatusCode::CONFLICT, Some(ui.conflict(&c)?))
+        }
         Err(e) => return Err(e.into()),
     };
-    if let Some(reason) = &error {
-        tracing::debug!(user_id = %user, recipe_id = %recipe_id, %reason, "recipe input rejected");
-    }
     let feedback = Feedback {
         draft,
         saved: error.is_none() && matches!(section, Section::Details),
@@ -567,10 +572,12 @@ pub async fn create(
                     .finish()
             });
         }
-        Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, m),
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, reason = %m, "new recipe rejected");
+            (StatusCode::BAD_REQUEST, ui.invalid(&m)?)
+        }
         Err(e) => return Err(e.into()),
     };
-    tracing::debug!(user_id = %user, reason = %message, "new recipe rejected");
 
     let new = NewRecipeView {
         title: form.title.clone(),

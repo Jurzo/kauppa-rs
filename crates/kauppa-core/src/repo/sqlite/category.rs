@@ -1,5 +1,6 @@
 //! `CategoryRepo` on SQLite.
 
+use crate::{Conflict, Entity, Invalid};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::Row;
@@ -16,7 +17,7 @@ use super::{SqlitePool, clean_name, row_to_category};
 #[async_trait]
 impl CategoryRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<Category> {
-        let name = clean_name("category", name)?;
+        let name = clean_name(Entity::Category, name)?;
         let id = Uuid::new_v4();
         let id_str = id.to_string();
         let owner = owner_id.to_string();
@@ -47,7 +48,10 @@ impl CategoryRepo for SqlitePool {
         .await
         .map_err(|e| match &e {
             sqlx::Error::Database(db) if db.is_unique_violation() => {
-                CoreError::Conflict(format!("category already exists: {name}"))
+                CoreError::Conflict(Conflict::Exists {
+                    entity: Entity::Category,
+                    name: name.to_owned(),
+                })
             }
             _ => CoreError::Database(e),
         })?;
@@ -77,7 +81,7 @@ impl CategoryRepo for SqlitePool {
     }
 
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Category> {
-        let name = clean_name("category", name)?;
+        let name = clean_name(Entity::Category, name)?;
         let owner = owner_id.to_string();
         let id_str = id.to_string();
 
@@ -92,7 +96,10 @@ impl CategoryRepo for SqlitePool {
         .await
         .map_err(|e| match &e {
             sqlx::Error::Database(db) if db.is_unique_violation() => {
-                CoreError::Conflict(format!("category already exists: {name}"))
+                CoreError::Conflict(Conflict::Exists {
+                    entity: Entity::Category,
+                    name: name.to_owned(),
+                })
             }
             _ => CoreError::Database(e),
         })?;
@@ -120,7 +127,7 @@ impl CategoryRepo for SqlitePool {
 
         for (index, id) in ordered_ids.iter().enumerate() {
             let position = i64::try_from(index)
-                .map_err(|_| CoreError::Invalid("too many categories".to_owned()))?;
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Category)))?;
             sqlx::query(r"UPDATE categories SET position = ?1 WHERE id = ?2 AND owner_id = ?3")
                 .bind(position)
                 .bind(id.to_string())

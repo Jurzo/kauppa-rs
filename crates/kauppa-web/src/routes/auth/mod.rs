@@ -34,6 +34,7 @@ use kauppa_core::repo::{InvitationRepo, UserRepo};
 use kauppa_core::{CoreError, CoreResult, password, token};
 
 use crate::error::{WebError, WebResult};
+use crate::i18n::messages::Message;
 use crate::i18n::{COOKIE, Ui, VARY};
 use crate::state::AppState;
 
@@ -94,13 +95,6 @@ struct RegisterView<'a> {
     password_min: usize,
 }
 
-/// The one answer to every invalid invitation: missing, malformed, unknown,
-/// expired, revoked or used (RR-0012 constraint 4).
-const INVALID_INVITATION: &str = "This invitation link isn't valid. Ask for a new one.";
-
-/// The login error for an unknown email and for a wrong password alike.
-const INVALID_LOGIN: &str = "Invalid email or password.";
-
 /// The password the dummy hash is made from. Its value doesn't matter: a
 /// match changes nothing, since an unknown email always gets the 401.
 const DUMMY_PASSWORD: &str = "kauppa-rs dummy password for unknown emails";
@@ -118,9 +112,6 @@ pub fn dummy_hash() -> CoreResult<&'static str> {
     let hash = password::hash(DUMMY_PASSWORD)?;
     Ok(DUMMY_HASH.get_or_init(|| hash))
 }
-
-const EMAIL_TAKEN: &str =
-    "An account already uses that email. Sign in instead, or use another email.";
 
 #[get("/login")]
 pub async fn login_form(state: web::Data<AppState>, ui: Ui) -> WebResult<HttpResponse> {
@@ -156,7 +147,7 @@ pub async fn login_submit(
     };
     let Some(user) = user else {
         state.limiter.record_login_failure(client, account);
-        return render_login_error(&state, &ui, INVALID_LOGIN);
+        return render_login_error(&state, &ui, &ui.message(Message::InvalidLogin)?);
     };
 
     Identity::login(&req.extensions(), user.id.to_string())
@@ -177,7 +168,7 @@ fn render_login_throttled(
     let body = ui.render(
         state,
         "auth/login",
-        &json!({ "error": too_many_attempts(throttled) }),
+        &json!({ "error": too_many_attempts(ui, throttled)? }),
     )?;
     Ok(HttpResponse::TooManyRequests()
         .insert_header((header::RETRY_AFTER, throttled.retry_after_s))
@@ -186,12 +177,12 @@ fn render_login_throttled(
         .body(body))
 }
 
-/// "Too many attempts. Try again in N minutes." (RR-0013 sub-answer 1).
-fn too_many_attempts(throttled: Throttled) -> String {
-    match throttled.minutes() {
-        1 => "Too many attempts. Try again in 1 minute.".to_owned(),
-        n => format!("Too many attempts. Try again in {n} minutes."),
-    }
+/// "Too many attempts. Try again in N minutes." (RR-0013 sub-answer 1), in
+/// the request's language.
+fn too_many_attempts(ui: &Ui, throttled: Throttled) -> WebResult<String> {
+    ui.message(Message::TooManyAttempts {
+        minutes: throttled.minutes(),
+    })
 }
 
 fn render_login_error(state: &AppState, ui: &Ui, msg: &str) -> WebResult<HttpResponse> {
@@ -263,7 +254,7 @@ fn render_register_throttled(
     form: Option<&Registration>,
     throttled: Throttled,
 ) -> WebResult<HttpResponse> {
-    let message = too_many_attempts(throttled);
+    let message = too_many_attempts(ui, throttled)?;
     let view = RegisterView {
         invite: form.map(|f| f.invite.as_str()).filter(|t| !t.is_empty()),
         error: Some(&message),
@@ -295,9 +286,9 @@ async fn register(
     // Length before cost (RR-0022 constraint 4): reads no stored data, so it
     // answers alike whatever the invitation's state, and a refused password
     // is never hashed. Nothing of the password is logged (constraint 5).
-    if let Err(refused) = check_new_password_length(&form.password) {
+    if check_new_password_length(&form.password).is_err() {
         tracing::debug!("registration rejected: password length");
-        let message = refused.to_string();
+        let message = ui.message(Message::PasswordLength)?;
         let view = RegisterView {
             invite: Some(&form.invite),
             error: Some(&message),
@@ -326,9 +317,10 @@ async fn register(
         // with the invitation still in the form.
         Err(CoreError::Conflict(_)) => {
             tracing::debug!("registration rejected: email already registered");
+            let taken = ui.message(Message::EmailTaken)?;
             let view = RegisterView {
                 invite: Some(&form.invite),
-                error: Some(EMAIL_TAKEN),
+                error: Some(&taken),
                 display_name: &form.display_name,
                 email: &form.email,
                 ..RegisterView::default()
@@ -361,9 +353,12 @@ async fn register(
         .finish())
 }
 
+/// The one answer to every invalid invitation: missing, malformed, unknown,
+/// expired, revoked or used (RR-0012 constraint 4).
 fn invalid_invitation(state: &AppState, ui: &Ui) -> WebResult<HttpResponse> {
+    let message = ui.message(Message::InvalidInvitation)?;
     let view = RegisterView {
-        error: Some(INVALID_INVITATION),
+        error: Some(&message),
         ..RegisterView::default()
     };
     render_register(state, ui, StatusCode::BAD_REQUEST, &view)

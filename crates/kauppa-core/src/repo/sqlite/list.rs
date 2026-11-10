@@ -2,6 +2,7 @@
 //! (RR-0002 constraint 1). This is the only repository file that names the
 //! list tables (RR-0009 constraint 3); `repo::share`'s tests enforce it.
 
+use crate::{Entity, Invalid};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::Row;
@@ -278,7 +279,7 @@ impl ShoppingListRepo for SqlitePool {
 
     async fn create(&self, user_id: Uuid, name: &str) -> CoreResult<ShoppingList> {
         // A new list belongs to its creator; there is nothing to authorize.
-        let name = clean_name("list", name)?;
+        let name = clean_name(Entity::List, name)?;
         let row = sqlx::query(
             r"INSERT INTO shopping_lists (id, owner_id, name, created_at, updated_at)
               VALUES (?1, ?2, ?3, ?4, ?4)
@@ -307,7 +308,7 @@ impl ShoppingListRepo for SqlitePool {
     }
 
     async fn rename(&self, user_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList> {
-        let name = clean_name("list", name)?;
+        let name = clean_name(Entity::List, name)?;
         let (mut tx, grant) = self.begin_write(user_id, id, ListAccess::Owner).await?;
         let row = sqlx::query(
             r"UPDATE shopping_lists SET name = ?1, updated_at = ?2
@@ -354,7 +355,7 @@ impl ShoppingListRepo for SqlitePool {
         text: &str,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem> {
-        let text = clean_name("item", text)?;
+        let text = clean_name(Entity::Item, text)?;
         let id = Uuid::new_v4();
         let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
         touch_list(&mut tx, &grant).await?;
@@ -411,7 +412,7 @@ impl ShoppingListRepo for SqlitePool {
         .execute(&mut *tx)
         .await?;
         if inserted.rows_affected() == 0 {
-            return Err(CoreError::Invalid("unknown product".to_owned()));
+            return Err(CoreError::Invalid(Invalid::Unknown(Entity::Product)));
         }
         let item = fetch_item(&mut *tx, &grant, id).await?;
         tx.commit().await?;
@@ -425,7 +426,7 @@ impl ShoppingListRepo for SqlitePool {
         text: &str,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem> {
-        let text = clean_name("item", text)?;
+        let text = clean_name(Entity::Item, text)?;
         let id = Uuid::new_v4();
         // `edit` is enough (RR-0024): only the list owner's favorites are read.
         let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
@@ -463,9 +464,7 @@ impl ShoppingListRepo for SqlitePool {
         multiplier: f64,
     ) -> CoreResult<Vec<ListItem>> {
         if !(multiplier.is_finite() && multiplier > 0.0 && multiplier <= 100.0) {
-            return Err(CoreError::Invalid(
-                "the multiplier must be more than 0 and at most 100".to_owned(),
-            ));
+            return Err(CoreError::Invalid(Invalid::MultiplierRange));
         }
         let recipe = recipe_id.to_string();
         // Owner only: the recipe comes from the owner's catalog. The write
@@ -498,7 +497,9 @@ impl ShoppingListRepo for SqlitePool {
             .map(|row| row_to_ingredient(row, grant.list.owner_id))
             .collect::<CoreResult<Vec<Ingredient>>>()?;
         if ingredients.is_empty() {
-            return Err(CoreError::Invalid(format!("{title} has no ingredients")));
+            return Err(CoreError::Invalid(Invalid::NoIngredients {
+                recipe: title.clone(),
+            }));
         }
 
         let first: i64 = sqlx::query(
@@ -513,7 +514,7 @@ impl ShoppingListRepo for SqlitePool {
         for (offset, ingredient) in ingredients.into_iter().enumerate() {
             let position = first
                 + i64::try_from(offset)
-                    .map_err(|_| CoreError::Invalid("too many ingredients".to_owned()))?;
+                    .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Ingredient)))?;
             let quantity = ingredient.quantity.map(|q| {
                 if unscaled {
                     q
@@ -726,7 +727,7 @@ impl ShoppingListRepo for SqlitePool {
     ) -> CoreResult<Option<ListShare>> {
         let email = email.trim();
         if email.is_empty() {
-            return Err(CoreError::Invalid("enter an email address".to_owned()));
+            return Err(CoreError::Invalid(Invalid::EmailRequired));
         }
         let (mut tx, grant) = self
             .begin_write(user_id, list_id, ListAccess::Owner)

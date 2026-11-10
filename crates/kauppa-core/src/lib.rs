@@ -9,4 +9,4 @@ pub mod password;
 pub mod repo;
 pub mod token;
 
-pub use error::{CoreError, CoreResult};
+pub use error::{Conflict, CoreError, CoreResult, Entity, Invalid};

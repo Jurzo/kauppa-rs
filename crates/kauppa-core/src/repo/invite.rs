@@ -331,10 +331,12 @@ mod single_use_and_expiry {
         let err = InvitationRepo::register(&pool, &hash, "taken@example.com", "New", "h", now)
             .await
             .unwrap_err();
-        let CoreError::Conflict(message) = &err else {
+        let CoreError::Conflict(reason) = &err else {
             panic!("{err:?}")
         };
-        assert!(!message.contains("taken"), "{message}");
+        // A reason without the email (MB-0035 typed it; RR-0012 sub-answer 4).
+        assert_eq!(*reason, crate::Conflict::EmailTaken);
+        assert!(!reason.to_string().contains("taken"), "{reason}");
         assert!(!err.to_string().contains("example.com"), "{err}");
         assert_eq!(users(&raw).await, 1);
         assert_eq!(

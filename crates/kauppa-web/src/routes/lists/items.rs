@@ -2,6 +2,7 @@
 
 use actix_identity::Identity;
 use actix_web::{HttpRequest, HttpResponse, post, web};
+use kauppa_core::{Entity, Invalid};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -57,15 +58,19 @@ struct CategoryForm {
 
 fn parse_recipe(raw: &str) -> CoreResult<Uuid> {
     match raw.trim() {
-        "" => Err(CoreError::Invalid("choose a recipe to add".to_owned())),
-        raw => Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown recipe".to_owned())),
+        "" => Err(CoreError::Invalid(Invalid::ChooseRecipe)),
+        raw => {
+            Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::Recipe)))
+        }
     }
 }
 
 fn parse_product(raw: &str) -> CoreResult<Uuid> {
     match raw.trim() {
-        "" => Err(CoreError::Invalid("choose a favorite to add".to_owned())),
-        raw => Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown product".to_owned())),
+        "" => Err(CoreError::Invalid(Invalid::ChooseFavorite)),
+        raw => {
+            Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::Product)))
+        }
     }
 }
 

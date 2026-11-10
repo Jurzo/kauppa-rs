@@ -47,7 +47,9 @@ impl ResponseError for WebError {
             tracing::error!(error = ?self, "request error");
         }
         let safe_message = match self {
-            Self::Core(CoreError::Invalid(m) | CoreError::Conflict(m)) => m.clone(),
+            // Plain-text bodies stay English (RR-0023 sub-answer 10).
+            Self::Core(CoreError::Invalid(reason)) => reason.to_string(),
+            Self::Core(CoreError::Conflict(reason)) => reason.to_string(),
             Self::Core(CoreError::NotFound) => "not found".to_owned(),
             Self::Core(CoreError::Unauthorized) => "unauthorized".to_owned(),
             Self::Core(CoreError::Forbidden) => "forbidden".to_owned(),
@@ -71,11 +73,13 @@ mod tests {
     /// Every client error a handler can return.
     fn client_errors() -> Vec<WebError> {
         vec![
-            WebError::Core(CoreError::Invalid("bad quantity".to_owned())),
+            WebError::Core(CoreError::Invalid(kauppa_core::Invalid::Unknown(
+                kauppa_core::Entity::Item,
+            ))),
             WebError::Core(CoreError::Unauthorized),
             WebError::Core(CoreError::Forbidden),
             WebError::Core(CoreError::NotFound),
-            WebError::Core(CoreError::Conflict("email taken".to_owned())),
+            WebError::Core(CoreError::Conflict(kauppa_core::Conflict::EmailTaken)),
         ]
     }
 
@@ -161,11 +165,11 @@ mod tests {
     #[actix_web::test]
     async fn responses_unchanged() {
         let mut expected = vec![
-            (StatusCode::BAD_REQUEST, "bad quantity"),
+            (StatusCode::BAD_REQUEST, "unknown item"),
             (StatusCode::UNAUTHORIZED, "unauthorized"),
             (StatusCode::FORBIDDEN, "forbidden"),
             (StatusCode::NOT_FOUND, "not found"),
-            (StatusCode::CONFLICT, "email taken"),
+            (StatusCode::CONFLICT, "email already registered"),
         ];
         expected.extend([(StatusCode::INTERNAL_SERVER_ERROR, "internal server error"); 5]);
         let errors: Vec<_> = client_errors().into_iter().chain(server_errors()).collect();

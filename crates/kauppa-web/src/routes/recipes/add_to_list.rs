@@ -3,6 +3,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, post, web};
+use kauppa_core::{Entity, Invalid};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -30,8 +31,8 @@ struct AddToListForm {
 /// checked by the repo.
 fn parse_list(raw: &str) -> CoreResult<Uuid> {
     match raw.trim() {
-        "" => Err(CoreError::Invalid("choose a list to add to".to_owned())),
-        raw => Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown list".to_owned())),
+        "" => Err(CoreError::Invalid(Invalid::ChooseList)),
+        raw => Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::List))),
     }
 }
 
@@ -92,7 +93,7 @@ pub async fn add_recipe_to_list(
                         list_id: Uuid::parse_str(form.list_id.trim()).ok(),
                         multiplier: form.multiplier,
                     },
-                    error: Some((Section::AddToList, reason)),
+                    error: Some((Section::AddToList, ui.invalid(&reason)?)),
                     ..Feedback::default()
                 },
             )

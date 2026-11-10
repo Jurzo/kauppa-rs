@@ -20,6 +20,7 @@
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse, get, post, web};
+use kauppa_core::{Entity, Invalid};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -66,11 +67,9 @@ struct MoveForm {
 pub fn parse_category(raw: &str) -> CoreResult<Uuid> {
     let raw = raw.trim();
     if raw.is_empty() {
-        return Err(CoreError::Invalid(
-            "choose a category for the product".to_owned(),
-        ));
+        return Err(CoreError::Invalid(Invalid::ChooseCategory));
     }
-    Uuid::parse_str(raw).map_err(|_| CoreError::Invalid("unknown category".to_owned()))
+    Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::Category)))
 }
 
 /// What the "add" form shows after a response: the category is kept after an
@@ -273,13 +272,17 @@ async fn respond<T>(
 ) -> WebResult<HttpResponse> {
     let (status, error) = match outcome {
         Ok(_) => (StatusCode::OK, None),
-        Err(CoreError::Invalid(m)) => (StatusCode::BAD_REQUEST, Some(m)),
-        Err(CoreError::Conflict(m)) => (StatusCode::CONFLICT, Some(m)),
+        // Logged in English, shown in the request's language (MB-0035).
+        Err(CoreError::Invalid(m)) => {
+            tracing::debug!(user_id = %user, reason = %m, "favorites input rejected");
+            (StatusCode::BAD_REQUEST, Some(ui.invalid(&m)?))
+        }
+        Err(CoreError::Conflict(c)) => {
+            tracing::debug!(user_id = %user, reason = %c, "favorites input rejected");
+            (StatusCode::CONFLICT, Some(ui.conflict(&c)?))
+        }
         Err(e) => return Err(e.into()),
     };
-    if let Some(reason) = &error {
-        tracing::debug!(user_id = %user, %reason, "favorites input rejected");
-    }
 
     if is_hx(req) {
         render(state, ui, user, true, StatusCode::OK, draft, error).await

@@ -17,7 +17,9 @@ use uuid::Uuid;
 
 use kauppa_core::domain::Language;
 use kauppa_core::repo::UserRepo;
+use kauppa_core::{Conflict, Invalid};
 
+use super::messages::{self, Message, Text};
 use crate::error::{WebError, WebResult};
 use crate::state::AppState;
 
@@ -108,6 +110,36 @@ impl Ui {
             map.insert(REQUEST_PATH.to_owned(), Value::String(self.path.clone()));
         }
         Ok(state.templates.get(self.lang).render(name, &data)?)
+    }
+
+    /// Rust-built text in this request's language (unescaped: a view
+    /// field rendered with `{{…}}` escapes it).
+    pub fn text(&self, key: &str, args: &[(&str, String)]) -> WebResult<String> {
+        self.state
+            .templates
+            .i18n()
+            .text(self.lang, key, args)
+            .map_err(|e| WebError::Internal(e.to_string()))
+    }
+
+    /// A key and arguments from [`messages`](super::messages), as text.
+    pub fn say(&self, (key, args): Text) -> WebResult<String> {
+        self.text(&key, &args)
+    }
+
+    /// Why input was rejected, as text.
+    pub fn invalid(&self, reason: &Invalid) -> WebResult<String> {
+        self.say(messages::invalid(reason))
+    }
+
+    /// Why a write conflicted, as text.
+    pub fn conflict(&self, reason: &Conflict) -> WebResult<String> {
+        self.say(messages::conflict(reason))
+    }
+
+    /// A web-only message, as text.
+    pub fn message(&self, message: Message) -> WebResult<String> {
+        self.say(messages::message(message))
     }
 
     /// `at` in this language's date format.

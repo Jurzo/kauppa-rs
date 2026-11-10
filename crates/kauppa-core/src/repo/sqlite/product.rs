@@ -1,5 +1,6 @@
 //! `ProductRepo` on SQLite: favorites and recipe-created products.
 
+use crate::{Conflict, Entity, Invalid};
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::Row;
@@ -59,7 +60,7 @@ fn group_by_category<T>(
 #[async_trait]
 impl ProductRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str, category_id: Uuid) -> CoreResult<Product> {
-        let name = clean_name("product", name)?;
+        let name = clean_name(Entity::Product, name)?;
         let now = Utc::now();
         let owner = owner_id.to_string();
         let category = category_id.to_string();
@@ -128,7 +129,12 @@ impl ProductRepo for SqlitePool {
         .bind(name_key(name))
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
+        .map_err(|e| {
+            conflict_on_unique(e, || Conflict::Exists {
+                entity: Entity::Product,
+                name: name.to_owned(),
+            })
+        })?;
 
         let product = row
             .as_ref()
@@ -163,7 +169,7 @@ impl ProductRepo for SqlitePool {
     }
 
     async fn find_by_name(&self, owner_id: Uuid, name: &str) -> CoreResult<Option<Product>> {
-        let name = clean_name("product", name)?;
+        let name = clean_name(Entity::Product, name)?;
         let row = sqlx::query(
             r"SELECT id, owner_id, name, category_id, position, is_favorite,
                      created_at, updated_at
@@ -194,7 +200,7 @@ impl ProductRepo for SqlitePool {
     }
 
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product> {
-        let name = clean_name("product", name)?;
+        let name = clean_name(Entity::Product, name)?;
 
         let row = sqlx::query(
             r"UPDATE products SET name = ?1, name_key = ?5, updated_at = ?2
@@ -209,7 +215,12 @@ impl ProductRepo for SqlitePool {
         .bind(name_key(name))
         .fetch_optional(&self.inner)
         .await
-        .map_err(|e| conflict_on_unique(e, || format!("product already exists: {name}")))?;
+        .map_err(|e| {
+            conflict_on_unique(e, || Conflict::Exists {
+                entity: Entity::Product,
+                name: name.to_owned(),
+            })
+        })?;
 
         row.as_ref()
             .map(row_to_product)
@@ -345,7 +356,7 @@ impl ProductRepo for SqlitePool {
         // Rewrite the whole group densely, which also heals any ties or gaps.
         for (index, product_id) in ids.iter().enumerate() {
             let position = i64::try_from(index)
-                .map_err(|_| CoreError::Invalid("too many products".to_owned()))?;
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Product)))?;
             sqlx::query(r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3")
                 .bind(position)
                 .bind(product_id)
@@ -452,10 +463,9 @@ impl ProductRepo for SqlitePool {
         }
         let owned_category: Option<String> = row.try_get("owned_category")?;
         let Some(category) = owned_category else {
-            return Err(CoreError::Invalid(format!(
-                "choose a category for {} before making it a favorite",
-                product.name
-            )));
+            return Err(CoreError::Invalid(Invalid::FavoriteNeedsCategory {
+                name: product.name.clone(),
+            }));
         };
 
         let row = sqlx::query(
