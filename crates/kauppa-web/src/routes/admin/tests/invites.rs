@@ -60,7 +60,7 @@ async fn create_list_revoke() {
     assert!(
         // MB-0029 (RR-0018): the boosted form swaps its 4xx page into <body>.
         page.contains(
-            "<form class=\"add-product\" method=\"post\" action=\"/admin/invitations\"\n        hx-ext=\"response-targets\" hx-target-4xx=\"body\">"
+            "<form class=\"add-product\" method=\"post\" action=\"/admin/invitations\"\n        hx-target-4xx=\"body\">"
         ),
         "{page}"
     );

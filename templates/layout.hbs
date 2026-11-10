@@ -9,12 +9,14 @@
     <link rel="stylesheet" href="/assets/app.css" />
     <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}' />
     <script src="/assets/vendor/htmx-2.0.11.min.js" integrity="sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg" defer></script>
-    {{!-- MB-0029 (RR-0018): lets the login, register and create-invitation
-    forms show their 4xx page under htmx (hx-ext="response-targets"
-    hx-target-4xx="body" on those forms only). --}}
+    {{!-- MB-0029 (RR-0018, RR-0025): lets the login, register and
+    create-invitation forms show their 4xx page under htmx. <body> declares
+    the extension (htmx runs it only from the swap target upward, and a
+    boosted form's target is <body>); only those forms carry
+    hx-target-4xx="body", so nothing else changes. --}}
     <script src="/assets/vendor/response-targets-2.0.4.min.js" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" defer></script>
   </head>
-  <body hx-boost="true">
+  <body hx-boost="true" hx-ext="response-targets">
     <header class="topbar">
       <a class="brand" href="/">kauppa</a>
       {{!-- MB-0040: on phones the nav is a native popover panel opened by

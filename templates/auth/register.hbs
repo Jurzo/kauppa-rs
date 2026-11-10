@@ -7,7 +7,7 @@ snapshots it into its history cache; Back refetches. --}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
   {{#if invite}}
-    <form method="post" action="/auth/register" hx-ext="response-targets" hx-target-4xx="body">
+    <form method="post" action="/auth/register" hx-target-4xx="body">
       <input type="hidden" name="invite" value="{{invite}}" />
       <label>Display name<input type="text" name="display_name" required value="{{display_name}}" /></label>
       <label>Email<input type="email" name="email" required autocomplete="email" value="{{email}}" /></label>
