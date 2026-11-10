@@ -8,6 +8,10 @@
     <link rel="manifest" href="/assets/manifest.webmanifest" />
     <link rel="stylesheet" href="/assets/app.css" />
     <script src="/assets/vendor/htmx-2.0.11.min.js" integrity="sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg" defer></script>
+    {{!-- MB-0029 (RR-0018): lets the login, register and create-invitation
+    forms show their 4xx page under htmx (hx-ext="response-targets"
+    hx-target-4xx="body" on those forms only). --}}
+    <script src="/assets/vendor/response-targets-2.0.4.min.js" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" defer></script>
   </head>
   <body hx-boost="true">
     <header class="topbar">

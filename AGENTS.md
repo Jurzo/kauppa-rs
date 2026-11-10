@@ -152,8 +152,9 @@ consult.
 - `assets/` is served directly; nothing executable may be committed there
   except under `assets/vendor/`: pinned third-party JS from a reviewed
   source, byte-for-byte, with its checksum checked in the test suite (htmx
-  2.0.11 from the npm registry, RR-0017). Adding, upgrading or modifying a
-  vendored file is a platform decision.
+  2.0.11, RR-0017, and its response-targets extension 2.0.4, RR-0018, both
+  from the npm registry). Adding, upgrading or modifying a vendored file is
+  a platform decision.
 
 ---
 
