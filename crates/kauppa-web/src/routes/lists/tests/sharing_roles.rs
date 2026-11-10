@@ -749,7 +749,8 @@ async fn add_follows_roles() {
 
     // The editor sees the owner's category on the item they added.
     let body = page(&editor, true).await;
-    let row = &body[body.find("Maito").expect("row")..];
+    let rows = &body[body.find(r#"<ul class="product-list""#).expect("rows")..];
+    let row = &rows[rows.find("Maito").expect("row")..];
     let category = row.find("· ").expect("category");
     assert!(row[category..].starts_with("· Kylmä"), "the editor sees it");
     assert!(!body.contains("<datalist"));

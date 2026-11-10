@@ -68,20 +68,11 @@ fn parse_product(raw: &str) -> CoreResult<Uuid> {
     }
 }
 
-/// The list owner's favorite that `text` names by `name_key` (RR-0003), if
-/// the user owns the list (MB-0036). Only favorites match, not recipe-created
-/// products. A grantee's text never matches: on a shared list the catalog
-/// and categories are the owner's, and `add_product` is the owner's alone
-/// (CRP-0024 asks whether editors should match the owner's favorites).
-async fn owner_favorite(
-    state: &AppState,
-    user: Uuid,
-    list_id: Uuid,
-    text: &str,
-) -> CoreResult<Option<Uuid>> {
-    if text.trim().is_empty()
-        || ShoppingListRepo::access(&state.pool, user, list_id).await? != ListAccess::Owner
-    {
+/// The owner's favorite that `text` names by `name_key` (RR-0003), if any
+/// (MB-0036). Only favorites match, not recipe-created products. Called
+/// only for the list's owner, so `user`'s catalog is the list owner's.
+async fn owner_favorite(state: &AppState, user: Uuid, text: &str) -> CoreResult<Option<Uuid>> {
+    if text.trim().is_empty() {
         return Ok(None);
     }
     let product = ProductRepo::find_by_name(&state.pool, user, text).await?;
@@ -89,9 +80,13 @@ async fn owner_favorite(
 }
 
 /// Add an item from the one add field (MB-0036): text naming one of the
-/// owner's favorites adds that favorite as `add_favorite` does (its name and
-/// category copied now); any other text is a free-text item, uncategorized
-/// until a category is chosen. `add_product` and `add_item` authorize.
+/// list owner's favorites adds that favorite as `add_favorite` does (its
+/// name and category copied now); any other text is a free-text item,
+/// uncategorized until a category is chosen. The owner's text resolves
+/// through their catalog and `add_product`; anyone else's goes to
+/// `add_owner_favorite_by_name`, which matches the owner's favorites
+/// silently at `edit` and refuses a `view` grantee (RR-0024). The repo
+/// methods authorize.
 #[post("/{id}/items")]
 pub async fn add_item(
     req: HttpRequest,
@@ -103,12 +98,18 @@ pub async fn add_item(
     let user = current_user(&id)?;
     let list_id = path.into_inner();
     let quantity = Some(form.quantity.as_str());
-    let outcome = match owner_favorite(&state, user, list_id, &form.text).await {
-        Ok(Some(product)) => {
-            ShoppingListRepo::add_product(&state.pool, user, list_id, product, quantity).await
-        }
-        Ok(None) => {
-            ShoppingListRepo::add_item(&state.pool, user, list_id, &form.text, quantity).await
+    let pool = &state.pool;
+    let outcome = match ShoppingListRepo::access(pool, user, list_id).await {
+        Ok(ListAccess::Owner) => match owner_favorite(&state, user, &form.text).await {
+            Ok(Some(product)) => {
+                ShoppingListRepo::add_product(pool, user, list_id, product, quantity).await
+            }
+            Ok(None) => ShoppingListRepo::add_item(pool, user, list_id, &form.text, quantity).await,
+            Err(e) => Err(e),
+        },
+        Ok(_) => {
+            ShoppingListRepo::add_owner_favorite_by_name(pool, user, list_id, &form.text, quantity)
+                .await
         }
         Err(e) => Err(e),
     };
