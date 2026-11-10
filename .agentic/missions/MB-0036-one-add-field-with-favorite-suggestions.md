@@ -21,7 +21,7 @@ acceptance:
     property: "Submitting text whose `name_key` equals one of the favorites adds that favorite exactly as the old favorite form did (product link, its name and category copied, quantity kept); any other text adds a free-form, uncategorized item as today."
     check: cargo test -p kauppa-web routes::lists::tests::add_field::add_resolves_favorite
   - id: P4
-    property: "Whose favorites are suggested and matched follows the RR for shared lists (owner's or the editor's own), and a `view` grantee still can't add anything (403)."
+    property: "On a shared list, an `edit` grantee's typed name that matches the list owner's favorites (by `name_key`) gets the owner's product and category; editors are shown no suggestions; a `view` grantee still can't add anything (403) (RR-0024)."
     check: cargo test -p kauppa-web routes::lists::tests::sharing_roles::add_follows_roles
   - id: P5
     property: "List access still goes through the central predicate (bypass guard green)."
@@ -58,7 +58,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0024]
 ---
 ```
 
@@ -84,6 +84,10 @@ sees owners categories for the items"). So the owner's typed text matches
 the owner's favorites, and an `edit` grantee's text stays a free-form item
 with no suggestions, as today; editors' favorite matching is deferred to
 CRP-0024 (it would need `add_product` at `edit`, an RR-0002 change).
+RR-0024 (2026-11-10) answered CRP-0024: an editor's typed text matches the
+list owner's favorites by `name_key`, silently (no suggestions), adding the
+owner's product and category; adding by product id stays owner-only. It
+amends RR-0002 and P4's property.
 Acceptance ids are unchanged; P4 checks this split.
 
 ## Conceptual plan

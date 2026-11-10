@@ -217,11 +217,13 @@ pub trait ProductRepo: Send + Sync {
 ///
 /// Required access per method: reads (`get`, `access`, `items`,
 /// `store_view`) need any grant (`view`); item writes (`add_item`,
-/// `set_item_quantity`, `set_checked`, `remove_item`, `restore_item`) need
-/// `edit`; the methods
-/// that read the owner's catalog (`add_product`, `add_recipe`,
+/// `add_owner_favorite_by_name`, `set_item_quantity`, `set_checked`,
+/// `remove_item`, `restore_item`) need `edit`; the methods that take an id
+/// from the owner's catalog (`add_product`, `add_recipe`,
 /// `assign_category`) and administration (`rename`, `delete`, `shares`,
-/// `share`, `revoke`) are the owner's alone.
+/// `share`, `revoke`) are the owner's alone. The one read of the owner's
+/// catalog at `edit` is `add_owner_favorite_by_name`'s match of typed text
+/// against the owner's favorites (RR-0024).
 #[async_trait]
 pub trait ShoppingListRepo: Send + Sync {
     /// The user's own lists, most recently updated first. Lists shared with
@@ -273,6 +275,21 @@ pub trait ShoppingListRepo: Send + Sync {
         user_id: Uuid,
         list_id: Uuid,
         product_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem>;
+
+    /// Append an item from typed text (`edit`; MB-0036, RR-0024): when the
+    /// text's `name_key` (RR-0003) is one of the **list owner's** favorites,
+    /// the item is that product with its name and category copied now, as
+    /// `add_product` does; any other text — the acting user's own products,
+    /// the owner's non-favorite products included — is a free-text,
+    /// uncategorized item, as `add_item` adds. Both outcomes look alike to
+    /// the caller. Rejects empty text (`Invalid`).
+    async fn add_owner_favorite_by_name(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        text: &str,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem>;
 
