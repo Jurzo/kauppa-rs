@@ -11,7 +11,7 @@ non_goals:
   - "Upgrading htmx (MB-0030) or adding a Content-Security-Policy (MB-0031)."
 acceptance:
   - id: P1
-    property: "Every boosted full-page form whose handler answers a 4xx with a rendered page shows that page under htmx: at least login (401, 429) and register (400, 409, 429). The mechanism (htmx configuration, attributes, or an extension) is the one the RR approves (RR-0018), and a test pins it so it can't be dropped silently."
+    property: "Every boosted full-page form whose handler answers a 4xx with a rendered page shows that page under htmx: at least login (401, 429) and register (400, 409, 429). The mechanism (htmx configuration, attributes, or an extension) is the one the RR approves (RR-0018, RR-0025), and a test pins it so it can't be dropped silently."
     check: cargo test -p kauppa-web templates::tests::boosted_error_pages_swap
   - id: P2
     property: "Fragment requests that target part of a page (`hx-post` with `hx-target`, e.g. list items) don't swap a full error page into the fragment target: they keep today's behaviour or get an answer the RR defines."
@@ -50,7 +50,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: [RR-0018]
+resolutions: [RR-0018, RR-0025]
 ---
 ```
 

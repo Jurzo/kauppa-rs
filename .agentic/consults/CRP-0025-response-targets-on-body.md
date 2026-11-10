@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "RR-0018 constraint 5 (`hx-ext` never on `<body>`) blocks the only placement that works; templates under `templates/auth/` and `templates/admin/` and their route tests (security trigger paths, RR-0018 sub-answer 2)"
 ---
 ```

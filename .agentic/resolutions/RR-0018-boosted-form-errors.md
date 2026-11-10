@@ -229,3 +229,7 @@ No Mentorship Pack or Runbook change.
 Status: active once approved. Supersedes nothing. Adds a second vendored
 file under RR-0015's rules; depends on RR-0017 for ordering (and for the
 AGENTS.md wording it edits).
+
+Amended by RR-0025 (2026-11-10): `hx-ext="response-targets"` is declared on
+the layout's `<body>`, not on the forms (sub-answer 1). RR-0025 constraint
+2 replaces constraint 5.
