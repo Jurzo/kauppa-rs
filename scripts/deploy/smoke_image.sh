@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# smoke_image.sh: MB-0022 P1 and P2 against the Docker image.
+# smoke_image.sh: MB-0022 P1 and P2 against the Docker image; MB-0032 P4.
 #
 #   P1  the image builds (multi-stage, release); runs as a non-root user;
-#       contains the binary, templates/, assets/ and migrations/ but no source
-#       tree, toolchain or .env; serves the login page, /assets/app.css and a
+#       contains the binary and no templates/, assets/ or migrations/
+#       directory (embedded since MB-0024; MB-0032, RR-0020), source tree,
+#       toolchain or .env; serves the login page, /assets/app.css and a
 #       registered user's lists from a database on the /data volume.
 #   P2  the database lives on the volume: after the container is replaced by
 #       one from a rebuilt image, the user can still log in and see their
@@ -116,10 +117,8 @@ contents_ok() {
         absent() { [ ! -e "$1" ] || { echo "    must not exist: $1" >&2; rc=1; }; }
         need /usr/local/bin/kauppa-web
         [ -x /usr/local/bin/kauppa-web ] || { echo "    binary not executable" >&2; rc=1; }
-        need /app/templates/layout.hbs
-        need /app/assets/app.css
-        need /app/migrations/0001_init.sql
-        for p in /app/crates /app/Cargo.toml /app/Cargo.lock /app/target /build \
+        for p in /app/templates /app/assets /app/migrations \
+                 /app/crates /app/Cargo.toml /app/Cargo.lock /app/target /build \
                  /usr/local/cargo /usr/local/rustup /root/.cargo /app/.git /app/.env; do
             absent "$p"
         done
@@ -132,13 +131,13 @@ contents_ok() {
         exit $rc
     '
 }
-check P1 "image has binary, templates/, assets/, migrations/; no source, toolchain or .env" -- contents_ok
+check P1 "image has the binary; no templates/, assets/, migrations/, source, toolchain or .env" -- contents_ok
 
 app_files_read_only() {
     docker run --rm --entrypoint /bin/bash "$IMAGE" -c \
-        '[ ! -w /app/templates ] && [ ! -w /app/assets ] && [ ! -w /usr/local/bin/kauppa-web ]'
+        '[ ! -w /usr/local/bin/kauppa-web ]'
 }
-check P1 "templates, assets and binary are read-only to the app user" -- app_files_read_only
+check P1 "the binary is read-only to the app user" -- app_files_read_only
 
 # ------------------------------------------------- P2: secret refusals ----
 section "P2: the entrypoint refuses bad session secrets"
