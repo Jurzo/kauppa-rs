@@ -55,6 +55,17 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   origin, with `Sec-Fetch-Site` as a reject-only layer; MB-0018, RR-0010).
   No route is exempt without an approved RR. Safe methods stay side-effect
   free.
+- **Security headers.** Every response carries the Content-Security-Policy
+  `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self';
+  object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors
+  'none'`, plus `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  same-origin`, and HSTS (`max-age=31536000`) when
+  `KAUPPA_COOKIE_SECURE=true`. All of them come from one `csp::headers`
+  middleware, wrapped outermost in `main.rs` and mirrored in the test app.
+  A handler may tighten a header but never weaken it. Templates have no
+  inline script, style or event handler, and htmx runs with `allowEval`,
+  `allowScriptTags` and `includeIndicatorStyles` off (MB-0031, RR-0019).
+  Loosening the policy needs an RR.
 - **Rate limiting.** Failed `POST /auth/login` attempts are limited per
   client and per account, and failed `POST /auth/register` attempts per
   client, before any database or Argon2 work (MB-0026, RR-0013). The limits

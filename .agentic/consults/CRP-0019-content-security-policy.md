@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "Feature runbook escalation trigger `crates/kauppa-web/src/main.rs` (session middleware; the header wrap goes there) → security. MB-0031 autonomy.escalate: the policy, report-only vs enforcing and companion headers → security; placement (app middleware in `main.rs` vs Caddy `deploy/Caddyfile`) → security; adding the `htmx-config` meta (RR-0015 Does not cover) → platform-owner; any `'unsafe-inline'`, `'unsafe-eval'`, nonce or hash → security."
 ---
 ```
