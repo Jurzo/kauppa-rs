@@ -179,6 +179,13 @@ async fn every_method(
                 .map(drop),
         ),
         (
+            // The list owner's favorite's name (RR-0024).
+            "add_owner_favorite_by_name",
+            ShoppingListRepo::add_owner_favorite_by_name(pool, user, list, "maito", None)
+                .await
+                .map(drop),
+        ),
+        (
             "add_product",
             ShoppingListRepo::add_product(pool, user, list, own.product, None)
                 .await
@@ -242,7 +249,13 @@ async fn every_method(
 /// The methods `every_method` calls that only read.
 const READS: [&str; 5] = ["get", "access", "items", "items(removed)", "store_view"];
 /// The item writes an `edit` grantee may make.
-const ITEM_WRITES: [&str; 4] = ["add_item", "set_checked", "remove_item", "restore_item"];
+const ITEM_WRITES: [&str; 5] = [
+    "add_item",
+    "add_owner_favorite_by_name",
+    "set_checked",
+    "remove_item",
+    "restore_item",
+];
 
 /// MB-0008 P1: one predicate decides access, and a user who neither owns
 /// the list nor holds a grant on it is denied — as `NotFound`, so the list's
@@ -280,7 +293,7 @@ async fn central_predicate_denies_non_grantee() {
     let outcomes = every_method(&pool, stranger, &f, &own, share.id).await;
     assert_eq!(
         outcomes.len(),
-        READS.len() + 12,
+        READS.len() + 13,
         "every method is exercised"
     );
     for (method, outcome) in outcomes {
@@ -317,8 +330,9 @@ async fn central_predicate_denies_non_grantee() {
 }
 
 /// RR-0002 constraint 2 at the repo layer: `view` reads only; `edit` also
-/// writes items but can't touch the owner's catalog or administer the list;
-/// the owner can do everything. Denials of a grantee are `Forbidden`.
+/// writes items but can't touch the owner's catalog or administer the list,
+/// beyond typed text matching the owner's favorites (RR-0024); the owner can
+/// do everything. Denials of a grantee are `Forbidden`.
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
 async fn role_matrix() {
@@ -384,16 +398,21 @@ async fn role_matrix() {
         }
     }
     // The editor's writes landed; the list is still there with its grants.
-    let texts: Vec<String> = ShoppingListRepo::items(&pool, owner, f.list, false)
+    // Their "maito" is the owner's favorite, not their own (RR-0024).
+    let texts: Vec<_> = ShoppingListRepo::items(&pool, owner, f.list, false)
         .await
         .unwrap()
         .into_iter()
-        .map(|i| i.text)
+        .map(|i| (i.text, i.product_id))
         .collect();
     assert_eq!(
         texts,
-        ["Kynttilä", "Munat"],
-        "removed Leipä, restored Kynttilä, added Munat"
+        [
+            ("Kynttilä".to_owned(), None),
+            ("Munat".to_owned(), None),
+            ("Maito".to_owned(), Some(f.product)),
+        ],
+        "removed Leipä, restored Kynttilä, added Munat and the owner's Maito"
     );
     assert_eq!(
         ShoppingListRepo::get(&pool, owner, f.list)

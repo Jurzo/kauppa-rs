@@ -4,7 +4,7 @@
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
-  <form method="post" action="/auth/login">
+  <form method="post" action="/auth/login" hx-target-4xx="body">
     <label>Email<input type="email" name="email" required autocomplete="email" /></label>
     <label>Password<input type="password" name="password" required autocomplete="current-password" /></label>
     <button type="submit" class="button primary">Sign in</button>

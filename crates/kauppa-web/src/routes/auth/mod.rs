@@ -14,6 +14,9 @@
 //! both handlers consult [`limiter::AuthLimiter`] before any database
 //! lookup, invitation check or Argon2 call, and a throttled request does
 //! no other work.
+//!
+//! New passwords are length-checked (MB-0034, RR-0022) by the `kauppa-core`
+//! rule, after the token shape and before the hash; login never applies it.
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -26,6 +29,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use kauppa_core::domain::{PASSWORD_MIN_CHARS, check_new_password_length};
 use kauppa_core::repo::{InvitationRepo, UserRepo};
 use kauppa_core::{CoreError, CoreResult, password, token};
 
@@ -77,13 +81,16 @@ impl fmt::Debug for InviteQuery {
 }
 
 /// The register page (`auth/register`): the form when it has a token,
-/// otherwise "registration needs an invitation".
+/// otherwise "registration needs an invitation". `password_min` is the
+/// form's `minlength`, which [`render_register`] sets from
+/// `PASSWORD_MIN_CHARS` (RR-0022 sub-answer 7).
 #[derive(Debug, Default, Serialize)]
 struct RegisterView<'a> {
     invite: Option<&'a str>,
     error: Option<&'a str>,
     display_name: &'a str,
     email: &'a str,
+    password_min: usize,
 }
 
 /// The one answer to every invalid invitation: missing, malformed, unknown,
@@ -250,6 +257,7 @@ fn render_register_throttled(
         error: Some(&message),
         display_name: form.map_or("", |f| f.display_name.as_str()),
         email: form.map_or("", |f| f.email.as_str()),
+        ..RegisterView::default()
     };
     let mut resp = render_register(state, StatusCode::TOO_MANY_REQUESTS, &view)?;
     resp.headers_mut().insert(
@@ -270,6 +278,21 @@ async fn register(
     // A missing or malformed token is rejected before any DB work or Argon2.
     if !token::is_well_formed(&form.invite) {
         return invalid_invitation(state);
+    }
+    // Length before cost (RR-0022 constraint 4): reads no stored data, so it
+    // answers alike whatever the invitation's state, and a refused password
+    // is never hashed. Nothing of the password is logged (constraint 5).
+    if let Err(refused) = check_new_password_length(&form.password) {
+        tracing::debug!("registration rejected: password length");
+        let message = refused.to_string();
+        let view = RegisterView {
+            invite: Some(&form.invite),
+            error: Some(&message),
+            display_name: &form.display_name,
+            email: &form.email,
+            ..RegisterView::default()
+        };
+        return render_register(state, StatusCode::BAD_REQUEST, &view);
     }
     // A well-formed token always pays one hash before the transaction, so
     // valid and invalid ones take the same time (RR-0012 sub-answer 7).
@@ -295,6 +318,7 @@ async fn register(
                 error: Some(EMAIL_TAKEN),
                 display_name: &form.display_name,
                 email: &form.email,
+                ..RegisterView::default()
             };
             return render_register(state, StatusCode::CONFLICT, &view);
         }
@@ -329,7 +353,11 @@ fn render_register(
     status: StatusCode,
     view: &RegisterView<'_>,
 ) -> WebResult<HttpResponse> {
-    let body = state.templates.render("auth/register", view)?;
+    let view = RegisterView {
+        password_min: PASSWORD_MIN_CHARS,
+        ..*view
+    };
+    let body = state.templates.render("auth/register", &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
         .body(body))

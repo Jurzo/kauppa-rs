@@ -224,9 +224,10 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
     }
 }
 
-/// The `App` as `main.rs` wires it: identity + cookie session + all routes,
-/// which `routes::configure` puts behind the cross-site check. Not
-/// initialized; see [`test_app!`] and [`bare_test_app!`].
+/// The `App` as `main.rs` wires it: identity + cookie session + security
+/// headers (outermost) + all routes, which `routes::configure` puts behind
+/// the cross-site check. Not initialized; see [`test_app!`] and
+/// [`bare_test_app!`].
 macro_rules! wired_app {
     ($state:expr) => {
         actix_web::App::new()
@@ -241,6 +242,8 @@ macro_rules! wired_app {
                 .cookie_secure(false)
                 .build(),
             )
+            // As main.rs: the security headers, outermost (RR-0019).
+            .wrap(crate::csp::headers(false))
             .configure(crate::routes::configure)
     };
 }

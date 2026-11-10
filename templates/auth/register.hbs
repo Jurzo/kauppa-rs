@@ -1,15 +1,17 @@
 {{#> layout page_title="Register"}}
-<section class="form-card">
+{{!-- RR-0018: the invitation token is in this page's HTML, so htmx never
+snapshots it into its history cache; Back refetches. --}}
+<section class="form-card" hx-history="false">
   <h1>Create an account</h1>
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
   {{#if invite}}
-    <form method="post" action="/auth/register">
+    <form method="post" action="/auth/register" hx-target-4xx="body">
       <input type="hidden" name="invite" value="{{invite}}" />
       <label>Display name<input type="text" name="display_name" required value="{{display_name}}" /></label>
       <label>Email<input type="email" name="email" required autocomplete="email" value="{{email}}" /></label>
-      <label>Password<input type="password" name="password" required minlength="12" autocomplete="new-password" /></label>
+      <label>Password<input type="password" name="password" required minlength="{{password_min}}" autocomplete="new-password" /></label>
       <button type="submit" class="button primary">Create account</button>
     </form>
   {{else}}

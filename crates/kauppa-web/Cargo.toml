@@ -21,7 +21,6 @@ kauppa-core = { path = "../kauppa-core", version = "0.1" }
 
 tokio = { workspace = true }
 actix-web = { workspace = true }
-actix-files = { workspace = true }
 actix-session = { workspace = true }
 actix-identity = { workspace = true }
 tracing-actix-web = { workspace = true }

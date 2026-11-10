@@ -246,14 +246,25 @@ errors; that is expected. All commands below assume `cd /opt/kauppa/deploy`.
 
 These land with their own missions; set them when the image contains them.
 
-- **After MB-0026 (rate limiting):** uncomment
-  `KAUPPA_TRUSTED_PROXIES: 172.30.53.0/24` in `compose.yaml` (it must equal
-  the `internal` network's subnet), then `docker compose up -d`. The app then
-  keys login limits by the real client address that Caddy puts in
-  `X-Forwarded-For`; Caddy has no `trusted_proxies`, so it overwrites any
-  address a client sends. Without the setting, or with a wrong subnet, every
-  client shares one bucket behind Caddy: safe, but one attacker can slow
-  logins for everyone (RR-0013).
+- **MB-0026 (rate limiting): on by default since MB-0028.** `compose.yaml`
+  sets `KAUPPA_TRUSTED_PROXIES: 172.30.53.0/24`, which must equal the
+  `internal` network's subnet; there is nothing to set. The app keys login
+  limits by the real client address that Caddy puts in `X-Forwarded-For`;
+  Caddy has no `trusted_proxies`, so it overwrites any address a client
+  sends, and `smoke_compose.sh` checks both (§9). The image must contain
+  MB-0026 (built from `main` at or after a359fda); an older image ignores
+  the setting. A droplet started before MB-0028 gets the setting with the
+  next update (§8.1: pre-update backup, `git pull`, new image,
+  `docker compose up -d`).
+
+  **Shared-bucket fallback.** If you change the `internal` subnet, change
+  `KAUPPA_TRUSTED_PROXIES` with it, and never widen it beyond that subnet.
+  With the setting removed or not matching, the app sees Caddy as the
+  client, so every visitor shares one login bucket: safe, but one attacker
+  can slow logins for everyone (RR-0013). A trusted proxy that sends no
+  usable `X-Forwarded-For` is limited the same way, as one client, and the
+  app logs one WARN `forwarded-for missing from a trusted proxy` per
+  process (§13).
 - **After MB-0023 (invite-only registration):** bootstrap the first admin
   from the droplet (RR-0012):
 
@@ -266,9 +277,8 @@ These land with their own missions; set them when the image contains them.
   The invitation link carries a token in `?invite=`; Caddy has no access log
   and strips query strings from its own (error) logs, and the app logs paths
   only after MB-0023, so it isn't written to a log.
-- **After MB-0024 (embedded templates and assets):** the image no longer needs
-  `templates/` and `assets/` copied; changing `deploy/Dockerfile` for that is
-  an owner decision (MB-0022 escalation).
+- **Image contents:** the runtime image holds only the binary (MB-0032,
+  RR-0020).
 - **After MB-0027 (vendored htmx):** nothing to do here; until then browsers
   load htmx from unpkg, and the site works without it, more slowly.
 
@@ -295,7 +305,9 @@ KAUPPA_SMOKE_EMAIL=you@example.com KAUPPA_SMOKE_PASSWORD='...' \
 ```
 
 Then §4's droplet checks. Paste both outputs into
-`.agentic/continuity/MB-0022.md` (Evidence pointers); that closes MB-0022.
+`.agentic/continuity/MB-0028.md` (Evidence pointers; MB-0022 closed and
+moved this check to MB-0028's P4). Live mode sends no failing logins, so
+it never throttles the account you test with.
 
 ## 4. Checks after a deploy
 
@@ -457,7 +469,7 @@ With Docker (BuildKit) and curl, from the repository root:
 | Script | Checks |
 | --- | --- |
 | `scripts/deploy/smoke_image.sh` | P1, P2: image contents and user, serving from `/data`, secret refusals, data kept across a replaced container |
-| `scripts/deploy/smoke_compose.sh` | P3 (+ P2 down/up): only Caddy publishes ports, HTTP→HTTPS, cookie flags, same-origin 303, cross-site 403, no query strings in Caddy's logs, spoofed `X-Forwarded-For` dropped |
+| `scripts/deploy/smoke_compose.sh` | P3 (+ P2 down/up): only Caddy publishes ports, HTTP→HTTPS, cookie flags, same-origin 303, cross-site 403, no query strings in Caddy's logs, spoofed `X-Forwarded-For` dropped; MB-0028 P1: `KAUPPA_TRUSTED_PROXIES` equals the `internal` subnet, failed logins with spoofed `X-Forwarded-For` are limited under the real client's key, no trusted-proxy fallback WARN |
 | `scripts/deploy/smoke_compose.sh https://<domain>` | P3 against the live site (§3.11) |
 | `scripts/deploy/backup_restore_drill.sh` | P5: back up while writing, restore into a fresh stack, log in, compare |
 | `scripts/deploy/check_terraform.sh` | P4: fmt, validate, plan tests with a mocked provider, static rules (needs Terraform, no credentials) |
@@ -539,3 +551,4 @@ local copy of the last backup. It is not part of a normal teardown.
 | 403 on every form POST | `KAUPPA_PUBLIC_ORIGIN` doesn't match the URL in the browser (scheme, host, port) |
 | `kauppa-backup: FAILED` | `docker compose logs backup`; key in `secrets/backup.env`, bucket name in `.env` |
 | `docker compose config` errors about a variable | a required setting missing from `deploy/.env` (§3.8) |
+| `kauppa` logs `forwarded-for missing from a trusted proxy`, or logins throttled for everyone at once | `KAUPPA_TRUSTED_PROXIES` doesn't match the `internal` subnet, or a proxy in front sends no `X-Forwarded-For`: everyone shares one login bucket (§3.9) |

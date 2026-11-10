@@ -3,7 +3,6 @@
 
 use std::path::{Path, PathBuf};
 
-use actix_files::Files;
 use actix_web::App;
 use actix_web::http::{Method, StatusCode, header};
 use actix_web::test::{self, TestRequest, call_service, read_body};
@@ -11,13 +10,18 @@ use actix_web::test::{self, TestRequest, call_service, read_body};
 use super::{ASSETS, Assets};
 use crate::routes::test_support::{TEST_ORIGIN, test_state};
 
-/// The content type of each file in `assets/` as `actix-files` served it
-/// before MB-0024, measured on 0.7.4. A new file needs a row.
+/// The content type of each file in `assets/`: the contract (RR-0011
+/// constraint 4, RR-0020 constraint 2). The first rows were measured on
+/// `actix-files` 0.7.4, which served the folder before MB-0024. A new file
+/// needs a row.
 const SERVED_AS: &[(&str, &str)] = &[
     ("app.css", "text/css; charset=utf-8"),
     ("manifest.webmanifest", "application/manifest+json"),
     // MB-0027 (RR-0015): mime_guess 2.0.5 maps `js` to `text/javascript`.
-    ("vendor/htmx-2.0.3.min.js", "text/javascript"),
+    // MB-0030 (RR-0017): htmx 2.0.11 replaces 2.0.3.
+    ("vendor/htmx-2.0.11.min.js", "text/javascript"),
+    // MB-0029 (RR-0018): the response-targets extension.
+    ("vendor/response-targets-2.0.4.min.js", "text/javascript"),
 ];
 
 /// The workspace's `assets/` folder, for comparison only.
@@ -53,9 +57,10 @@ fn get(uri: &str) -> TestRequest {
 }
 
 /// MB-0024 P1/P2: every file in `assets/` is served at the same
-/// `/assets/<path>`, byte for byte, with the content type `actix-files`
-/// gave it, and the embedded list holds nothing else. `cargo test` runs in
-/// the crate directory, which has no `assets/`.
+/// `/assets/<path>`, byte for byte, with its pinned [`SERVED_AS`] content
+/// type, and the embedded list holds nothing else. `cargo test` runs in
+/// the crate directory, which has no `assets/`. MB-0030 P3: the replaced
+/// htmx 2.0.3 URL is gone.
 #[actix_web::test]
 async fn serves_every_asset() {
     assert!(!Path::new("./assets").exists());
@@ -65,8 +70,6 @@ async fn serves_every_asset() {
     assert!(on_disk.contains(&"app.css".to_owned()));
 
     let app = test::init_service(App::new().service(Assets)).await;
-    let reference =
-        test::init_service(App::new().service(Files::new("/assets", source_dir()))).await;
     for name in &on_disk {
         let uri = format!("/assets/{name}");
         let expected_type = SERVED_AS.iter().find(|(n, _)| n == name).map_or_else(
@@ -88,15 +91,13 @@ async fn serves_every_asset() {
         let body = read_body(res).await;
         let bytes = std::fs::read(source_dir().join(name)).expect("asset on disk");
         assert_eq!(body.as_ref(), bytes.as_slice(), "{uri}");
+    }
 
-        // Same as `actix-files` today, while it is still a dependency.
-        let old = call_service(&reference, get(&uri).to_request()).await;
-        assert_eq!(old.status(), StatusCode::OK, "{uri}");
-        assert_eq!(
-            old.headers().get(header::CONTENT_TYPE).expect("header"),
-            expected_type,
-            "{uri}"
-        );
+    // MB-0030 P3 (RR-0017): the replaced htmx file is no longer served.
+    let old_htmx = "/assets/vendor/htmx-2.0.3.min.js";
+    for method in [Method::GET, Method::HEAD] {
+        let res = call_service(&app, get(old_htmx).method(method.clone()).to_request()).await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND, "{method} {old_htmx}");
     }
 }
 

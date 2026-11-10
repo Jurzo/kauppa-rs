@@ -12,19 +12,19 @@ non_goals:
   - "Forcing existing accounts to change their password."
 acceptance:
   - id: P1
-    property: "`POST /auth/register` with a password shorter than the minimum (12 characters, as the form says, unless the RR sets another) answers 400 with the register page and a message naming the rule; no user is created, the invitation stays pending, and the password is not hashed."
+    property: "`POST /auth/register` with a password shorter than the minimum (15 characters, RR-0022) answers 400 with the register page and a message naming the rule; no user is created, the invitation stays pending, and the password is not hashed."
     check: cargo test -p kauppa-web routes::auth::tests::password_length::too_short_rejected
   - id: P2
     property: "A password longer than the maximum the RR sets answers 400 the same way, before any Argon2 work."
     check: cargo test -p kauppa-web routes::auth::tests::password_length::too_long_rejected
   - id: P3
-    property: "Passwords at the minimum and at the maximum are accepted; the length is counted as the RR defines (characters, not bytes, unless it says otherwise)."
+    property: "Passwords at the minimum and at the maximum are accepted; the length is counted as the RR defines (Unicode scalar values on the string as submitted, RR-0022)."
     check: cargo test -p kauppa-web routes::auth::tests::password_length::bounds_accepted
   - id: P4
     property: "Login doesn't apply the rule: an existing account keeps working whatever its password's length."
     check: cargo test -p kauppa-web routes::auth::tests::password_length::login_unaffected
   - id: P5
-    property: "The register page's `minlength` (and `maxlength`, if any) come from the same constants as the server check."
+    property: "The register page's `minlength` comes from the same constant as the server check, and the page has no `maxlength` (RR-0022)."
     check: cargo test -p kauppa-web routes::auth::tests::password_length::form_matches_rule
 context:
   - crates/kauppa-web/src/routes/auth/mod.rs
@@ -50,7 +50,7 @@ runbook: .agentic/runbooks/feature.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0022]
 ---
 ```
 

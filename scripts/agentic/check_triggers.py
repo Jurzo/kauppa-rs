@@ -42,18 +42,47 @@ TRIGGERS = [
 RR_RE = re.compile(r"\bRR-(\d{4,})\b")
 
 
+# A shallow clone is deepened this many commits at a time, at most this many
+# times, until the merge base is reachable.
+DEEPEN_STEP = 50
+DEEPEN_ROUNDS = 20
+
+
+def _git(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], check=False, capture_output=True, text=True)
+
+
+def _is_shallow() -> bool:
+    return _git("rev-parse", "--is-shallow-repository").stdout.strip() == "true"
+
+
+def _merge_base(base: str) -> str | None:
+    result = _git("merge-base", f"origin/{base}", "HEAD")
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 def changed_files(base: str) -> list[str]:
+    # Never fetch with --depth: in a full clone it truncates history and makes
+    # the repository shallow (MB-0033). A full clone just fetches the base; a
+    # shallow one is deepened (--deepen extends the existing boundaries) until
+    # the merge base is reachable. The explicit refspec creates origin/<base>
+    # even in a single-branch clone.
+    refspec = f"+refs/heads/{base}:refs/remotes/origin/{base}"
+    merge_base = None
+    if _is_shallow():
+        for _ in range(DEEPEN_ROUNDS):
+            fetch = _git(
+                "fetch", "--no-tags", f"--deepen={DEEPEN_STEP}", "origin", refspec
+            )
+            merge_base = _merge_base(base)
+            if merge_base or fetch.returncode != 0 or not _is_shallow():
+                break
+    else:
+        _git("fetch", "--no-tags", "origin", refspec)
+        merge_base = _merge_base(base)
+
     # Fallback: if git merge-base fails, diff against HEAD~1.
-    try:
-        subprocess.run(
-            ["git", "fetch", "--no-tags", "--depth=1", "origin", base],
-            check=False,
-            capture_output=True,
-        )
-        merge_base = subprocess.check_output(
-            ["git", "merge-base", f"origin/{base}", "HEAD"], text=True
-        ).strip()
-    except subprocess.CalledProcessError:
+    if merge_base is None:
         merge_base = "HEAD~1"
 
     out = subprocess.check_output(

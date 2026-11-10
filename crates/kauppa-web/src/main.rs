@@ -19,6 +19,7 @@ use kauppa_core::repo::SqlitePool;
 
 mod admin;
 mod config;
+mod csp;
 mod csrf;
 mod error;
 mod routes;
@@ -96,6 +97,10 @@ async fn main() -> anyhow::Result<()> {
                     .cookie_http_only(true)
                     .build(),
             )
+            // Outermost, so every response carries the security headers,
+            // including the session/identity middleware's and `/assets`
+            // (MB-0031, RR-0019). Keep it the last `.wrap`.
+            .wrap(csp::headers(cfg.cookie_secure))
             // Static files (GET and HEAD only) go first: `routes::configure`
             // puts every route behind the cross-site check, in one catch-all
             // scope (RR-0010).

@@ -1,4 +1,4 @@
-{{#> layout page_title=list.name page_signed_in=true}}
+{{#> layout page_title=list.name page_signed_in=true page_nav="lists"}}
 <section>
   <header class="section-header">
     <h1>{{list.name}}</h1>
@@ -8,5 +8,14 @@
   </header>
 
   {{> lists/_list list }}
+  {{#if list.is_owner}}
+  {{!-- MB-0036: the add field's suggestions (list="…"), the owner's
+        favorites. Outside #list-{id} so htmx swaps don't re-send them. --}}
+  <datalist id="favorite-suggestions">
+    {{#each suggestions}}
+      <option value="{{this}}"></option>
+    {{/each}}
+  </datalist>
+  {{/if}}
 </section>
 {{/layout}}

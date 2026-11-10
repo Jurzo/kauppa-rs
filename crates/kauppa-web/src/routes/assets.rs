@@ -1,12 +1,11 @@
 //! Static files under `/assets/`, compiled into the binary (MB-0024).
 //! `build.rs` lists every file in the workspace's `assets/` with its content
 //! type; this service answers `GET` and `HEAD` for exactly those paths and
-//! nothing else, the way `actix-files` did for the folder.
+//! nothing else, as the folder was served before MB-0024.
 //!
 //! It is a service factory, not a handler attribute or builder route: it
 //! registers one prefix of its own, beside `routes::configure`'s cross-site
-//! scope rather than inside it, the way `Files` was registered in `main.rs`,
-//! and it accepts no write method (MB-0018 P4).
+//! scope rather than inside it, and it accepts no write method (MB-0018 P4).
 
 use std::future::{Ready, ready};
 

@@ -58,7 +58,10 @@ async fn create_list_revoke() {
     let page = get_page().await;
     assert!(page.contains("No invitations yet"), "{page}");
     assert!(
-        page.contains("<form class=\"add-product\" method=\"post\" action=\"/admin/invitations\">"),
+        // MB-0029 (RR-0018): the boosted form swaps its 4xx page into <body>.
+        page.contains(
+            "<form class=\"add-product\" method=\"post\" action=\"/admin/invitations\"\n        hx-target-4xx=\"body\">"
+        ),
         "{page}"
     );
     assert!(page.contains("<label>Note"), "labelled field");
