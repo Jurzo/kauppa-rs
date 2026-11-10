@@ -46,7 +46,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0017]
 ---
 ```
 
@@ -67,6 +67,7 @@ configuration that should be checked against the version actually served.
 
 1. **Clarify (S1).** CRP to platform-owner: target version, release notes
    since 2.0.3 that touch the app's usage, hashes from each source.
+   Answered by RR-0017.
 2. Swap the file, constants, `integrity` and `SERVED_AS` row in one PR.
 3. Browser smoke (P4).
 

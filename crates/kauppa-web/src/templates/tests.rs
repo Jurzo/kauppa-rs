@@ -10,20 +10,23 @@ use sha2::{Digest, Sha256, Sha384};
 
 use super::{Registry, TEMPLATES, build_registry};
 
-/// The vendored htmx (MB-0027, RR-0015): htmx 2.0.3, 0BSD, byte-for-byte
-/// `package/dist/htmx.min.js` from the npm registry tarball
-/// <https://registry.npmjs.org/htmx.org/-/htmx.org-2.0.3.tgz>, whose npm
+/// The vendored htmx (MB-0027, RR-0015; upgraded by MB-0030, RR-0017):
+/// htmx 2.0.11, 0BSD, byte-for-byte `package/dist/htmx.min.js` from the npm
+/// registry tarball
+/// <https://registry.npmjs.org/htmx.org/-/htmx.org-2.0.11.tgz>, whose npm
 /// `dist.integrity` is
-/// `sha512-AeoJUAjkCVVajbfKX+3sVQBTCt8Ct4lif1T+z/tptTXo8+8yyq3QIMQQe/IT+R8ssfrO1I0DeX4CAronzCL6oA==`.
-/// Never edit the file: a new version is a new file name, new constants and
-/// a new `integrity` in `layout.hbs`, under an RR (RR-0015 constraint 2).
-const HTMX_PATH: &str = "/assets/vendor/htmx-2.0.3.min.js";
-/// SHA-256 of the file at [`HTMX_PATH`] (50,387 bytes), hex.
-const HTMX_SHA256: &str = "491955cd1810747d7d7b9ccb936400afb760e06d25d53e4572b64b6563b2784e";
-/// Its Subresource Integrity value, as htmx's docs publish it at `v2.0.3`
+/// `sha512-Thx/WtpeOQqSrqBCw/A1cwGJGg4UrVa3+sW0GmrM3p4gJgO89ecH4qtbnyzDDWFvBTqjnIMCgELTNt636dtamA==`.
+/// [`HTMX_SHA256`] equals the GitHub release `v2.0.11` asset `htmx.min.js`
+/// digest. Never edit the file: a new version is a new file name, new
+/// constants and a new `integrity` in `layout.hbs`, under an RR (RR-0015
+/// constraint 2).
+const HTMX_PATH: &str = "/assets/vendor/htmx-2.0.11.min.js";
+/// SHA-256 of the file at [`HTMX_PATH`] (52,182 bytes), hex.
+const HTMX_SHA256: &str = "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717";
+/// Its Subresource Integrity value, as htmx's docs publish it at `v2.0.11`
 /// and `layout.hbs` carries it.
 const HTMX_SRI_SHA384: &str =
-    "sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq";
+    "sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg";
 
 /// The workspace's `templates/` folder, for comparison only.
 fn source_dir() -> &'static Path {
@@ -119,7 +122,7 @@ fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     Some(&tag[start..start + len])
 }
 
-/// MB-0027 P1: every script a template loads comes from the app's own
+/// MB-0027 P1, MB-0030 P2: every script a template loads comes from the app's own
 /// `/assets/`, none is inline, and the layout loads the vendored htmx with
 /// its SRI, as rendered pages show.
 #[test]
@@ -174,15 +177,15 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// MB-0027 P2: the vendored file is exactly the published htmx 2.0.3. Its
-/// SHA-256 and its SHA-384 SRI both match the pinned values, so a changed
-/// byte fails CI.
+/// MB-0027 P2, MB-0030 P1: the vendored file is exactly the published htmx
+/// 2.0.11. Its SHA-256 and its SHA-384 SRI both match the pinned values, so
+/// a changed byte fails CI.
 #[test]
 fn vendored_htmx_checksum() {
     let file = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
         .join(HTMX_PATH.trim_start_matches('/'));
     let bytes = std::fs::read(&file).expect("vendored htmx");
-    assert_eq!(bytes.len(), 50_387);
+    assert_eq!(bytes.len(), 52_182);
 
     let sha256 = Sha256::digest(&bytes)
         .iter()
