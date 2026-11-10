@@ -171,12 +171,13 @@ fn query_value(raw: &str) -> String {
 }
 
 /// P3: the match hint names an existing product's category (any case, hidden
-/// products too) and says the picker won't apply, asks a new name for a
-/// category, flags an uncategorized product, and is empty for a blank name.
+/// products too), says a new name's category is asked for after adding
+/// (MB-0039), flags an uncategorized product, and is empty for a blank name.
 /// It is an htmx fragment wired to the name input; without htmx it is a 303
 /// to the editor, and another user's recipe is a 404. Without JavaScript the
 /// form still submits and is validated as before, and the full page shows the
-/// hint for the typed name after a rejection.
+/// hint for the typed name after a rejection (and the category prompt, not
+/// the hint, for a new name).
 #[actix_web::test]
 #[allow(clippy::expect_used, clippy::too_many_lines)]
 async fn ingredient_match_hint() {
@@ -249,12 +250,15 @@ async fn ingredient_match_hint() {
     }
 
     let cases = [
-        ("maito", "Uses Kylmä — the category picker doesn't apply"),
+        ("maito", "Uses Kylmä, an existing product."),
         ("  MAITO ", "Uses Kylmä"),
         ("kAURA", "Uses Hevi"),
         ("kahvi", "Kahvi has no category"),
-        ("Kaurajuoma", "New product — choose a category"),
-        ("Herne", "New product — choose a category"),
+        (
+            "Kaurajuoma",
+            "New product — you'll choose its category after adding.",
+        ),
+        ("Herne", "New product — you'll choose its category"),
     ];
     for (name, expected) in cases {
         let resp = call_service(&app, hint(hint_uri(recipe, name)).to_request()).await;
@@ -329,20 +333,28 @@ async fn ingredient_match_hint() {
         .expect("exists");
     assert_eq!(maito.category_id, Some(kylma), "the picker didn't apply");
 
-    // ... and a rejected new name re-renders the full page with its hint.
-    let resp = call_service(
-        &app,
+    // ... a rejected name re-renders the full page with its hint ...
+    let post = |name: &'static str| {
         TestRequest::post()
             .uri(&format!("/recipes/{recipe}/ingredients"))
             .cookie(session.clone())
-            .set_form([("name", "Kaurajuoma")])
-            .to_request(),
-    )
-    .await;
+            .set_form([("name", name)])
+            .to_request()
+    };
+    let resp = call_service(&app, post("kahvi")).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_string(resp).await;
     assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
-    assert!(body.contains("choose a category for the new product Kaurajuoma"));
-    assert!(body.contains("New product — choose a category for it."));
+    assert!(body.contains(
+        r#"aria-live="polite">Kahvi has no category — choose one for it on Favorites first.</p>"#
+    ));
+
+    // ... and a new name the category prompt in place of the hint (MB-0039).
+    let resp = call_service(&app, post("Kaurajuoma")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(body.contains("Kaurajuoma is a new product — choose its category"));
+    assert!(body.contains(EMPTY_HINT), "the prompt replaces the hint");
     assert_eq!(ingredient_names(&state, user, recipe).await, ["Maito"]);
 }

@@ -1,4 +1,5 @@
-//! MB-0004 (P5, P6): list items over HTTP, owner isolation and htmx fragments; MB-0021 (P2): editing a quantity.
+//! MB-0004 (P5, P6): list items over HTTP, owner isolation and htmx fragments; MB-0021 (P2): editing a quantity;
+//! MB-0037 (P1, P2): edit sections start closed, the uncategorized cue stays.
 
 use actix_web::http::{StatusCode, header};
 
@@ -386,8 +387,12 @@ async fn edit_quantity() {
     );
 
     // The list page and the store view show both, as full pages and as
-    // fragments.
-    for uri in [base.clone(), format!("{base}/shop")] {
+    // fragments. The store view shows "(qty)" after the name (MB-0038).
+    let shop_shown = |q: &str| format!(r#"<span class="shop-quantity">({q})</span>"#);
+    for (uri, shown) in [
+        (base.clone(), &shown as &dyn Fn(&str) -> String),
+        (format!("{base}/shop"), &shop_shown),
+    ] {
         for htmx in [false, true] {
             let body = get(uri.clone(), htmx).await;
             assert_eq!(body.contains("<html"), !htmx, "{uri} htmx={htmx}");
@@ -428,9 +433,12 @@ async fn edit_quantity() {
     let resp = call_service(&app, post(oats, vec![]).to_request()).await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
     assert_eq!(quantities().await[0], ("Kaura".to_owned(), None));
-    for uri in [base.clone(), format!("{base}/shop")] {
+    for (uri, class) in [
+        (base.clone(), r#"class="ingredient-quantity""#),
+        (format!("{base}/shop"), r#"class="shop-quantity""#),
+    ] {
         let body = get(uri.clone(), false).await;
-        assert!(!body.contains(r#"class="ingredient-quantity""#), "{uri}");
+        assert!(!body.contains(class), "{uri}");
     }
 
     // A removed or unknown item is a 404, and stays as it was.
@@ -448,4 +456,165 @@ async fn edit_quantity() {
         .await
         .expect("removed");
     assert_eq!(removed[0].quantity.as_deref(), Some("1 kg"));
+}
+
+/// Every `<details class="product-edit" …>` opening tag in `body`, up to and
+/// including its `>`.
+fn edit_section_tags(body: &str) -> Vec<&str> {
+    body.match_indices(r#"<details class="product-edit""#)
+        .map(|(start, _)| {
+            let rest = &body[start..];
+            rest.find('>').map_or(rest, |end| &rest[..=end])
+        })
+        .collect()
+}
+
+/// MB-0037 P1: on the list page and in the fragment htmx gets after adding an
+/// item, no item's edit section is rendered `open` — uncategorized or not,
+/// with or without the user having categories.
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn edit_sections_start_closed() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    // One owner with categories, one without.
+    let with = make_user(&state, "with@example.com").await;
+    let kylma = make_category(&state, with, "Kylmä").await;
+    let without = make_user(&state, "without@example.com").await;
+
+    for (user, email, has_categories) in [
+        (with, "with@example.com", true),
+        (without, "without@example.com", false),
+    ] {
+        let list = ShoppingListRepo::create(&state.pool, user, "Viikko")
+            .await
+            .expect("list")
+            .id;
+        ShoppingListRepo::add_item(&state.pool, user, list, "Leipä", None)
+            .await
+            .expect("uncategorized item");
+        let milk = ShoppingListRepo::add_item(&state.pool, user, list, "Maito", None)
+            .await
+            .expect("item")
+            .id;
+        if has_categories {
+            ShoppingListRepo::assign_category(&state.pool, user, list, milk, kylma)
+                .await
+                .expect("categorized item");
+        }
+        let session = session_cookie(&call_service(&app, login_request(email).to_request()).await);
+        let base = format!("/lists/{list}");
+
+        let resp = call_service(
+            &app,
+            TestRequest::get()
+                .uri(&base)
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let page = body_string(resp).await;
+        assert!(page.contains("<html"), "full page");
+
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri(&format!("{base}/items"))
+                .cookie(session)
+                .insert_header(("HX-Request", "true"))
+                .set_form([("text", "Kynttilät")])
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let fragment = body_string(resp).await;
+        assert!(!fragment.contains("<html"));
+        assert!(fragment.contains(&format!(r#"id="list-{list}""#)));
+
+        for (what, body, items) in [("page", &page, 2), ("fragment", &fragment, 3)] {
+            let tags = edit_section_tags(body);
+            assert_eq!(
+                tags.len(),
+                items,
+                "{email} {what}: an edit section per item"
+            );
+            for tag in tags {
+                assert_eq!(
+                    tag, r#"<details class="product-edit">"#,
+                    "{email} {what}: edit section starts closed"
+                );
+            }
+        }
+    }
+}
+
+/// MB-0037 P2: with the edit section closed, an uncategorized item's summary
+/// still tells the owner it needs a category; a categorized one says "Edit".
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn uncategorized_summary_cue() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let list = ShoppingListRepo::create(&state.pool, user, "Viikko")
+        .await
+        .expect("list")
+        .id;
+    let milk = ShoppingListRepo::add_item(&state.pool, user, list, "Maito", None)
+        .await
+        .expect("item")
+        .id;
+    ShoppingListRepo::assign_category(&state.pool, user, list, milk, kylma)
+        .await
+        .expect("categorized item");
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let base = format!("/lists/{list}");
+
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{base}/items"))
+            .cookie(session.clone())
+            .insert_header(("HX-Request", "true"))
+            .set_form([("text", "Kynttilät")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let fragment = body_string(resp).await;
+    let resp = call_service(
+        &app,
+        TestRequest::get().uri(&base).cookie(session).to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let page = body_string(resp).await;
+
+    for (what, body) in [("fragment", &fragment), ("page", &page)] {
+        assert!(
+            body.contains(
+                r#"<summary>Choose category<span class="visually-hidden"> Kynttilät</span></summary>"#
+            ),
+            "{what}: uncategorized cue"
+        );
+        assert!(
+            body.contains(r#"<summary>Edit<span class="visually-hidden"> Maito</span></summary>"#),
+            "{what}: categorized summary"
+        );
+    }
 }

@@ -40,6 +40,9 @@
   {{#if has_categories}}
     <form class="add-product" method="post" action="/recipes/{{recipe_id}}/ingredients"
           hx-post="/recipes/{{recipe_id}}/ingredients" hx-target="#ingredients" hx-swap="outerHTML">
+      {{#if add.prompt}}
+        <p id="category-prompt" class="category-prompt" role="status">{{add.prompt.name}} is a new product — choose its category to add it.</p>
+      {{/if}}
       <label>Ingredient
         <input id="new-ingredient-name" name="name" type="text" required
                autocomplete="off" placeholder="e.g. Maito" value="{{add.name}}"
@@ -51,10 +54,16 @@
         <input name="quantity" type="text" autocomplete="off" placeholder="optional, e.g. 5 dl"
                value="{{add.quantity}}" />
       </label>
-      <label>Category <span class="muted">(for a new product)</span>
-        {{> products/_category_picker add.picker }}
-      </label>
-      <button type="submit" class="button primary">Add</button>
+      {{#if add.prompt}}
+        {{!-- MB-0039: asked only after the server found the name is new. --}}
+        <label>Category
+          {{> products/_category_picker add.prompt.picker }}
+        </label>
+        <button type="submit" class="button primary">Add</button>
+        <a href="/recipes/{{recipe_id}}">Cancel</a>
+      {{else}}
+        <button type="submit" class="button primary">Add</button>
+      {{/if}}
       {{> recipes/_match_hint add.hint }}
     </form>
   {{else}}

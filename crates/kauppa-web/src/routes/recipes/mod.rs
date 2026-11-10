@@ -9,11 +9,13 @@
 //!
 //! RR-0001: an ingredient's product must have a category. The column is
 //! nullable (deleting a category un-categorizes its products), so the rule
-//! lives in `ingredients::check_ingredient`. A new product takes the category chosen
-//! in the form; an existing one keeps its own.
+//! lives in `ingredients::check_ingredient`. An existing product keeps its
+//! own category. The add form asks for a name and a quantity only; a new
+//! product's name answers with a category prompt for that ingredient, and
+//! the prompt's choice creates the product (MB-0039, the owner's P2).
 //!
 //! MB-0013: the add form suggests the user's product names (a `<datalist>`)
-//! and hints, as the name is typed, which category it will get
+//! and hints, as the name is typed, what it will do
 //! (`GET /recipes/{id}/ingredients/match`). Both are display hints only;
 //! `check_ingredient` stays the one enforcement.
 //!
@@ -148,14 +150,24 @@ struct IngredientRow {
 struct AddIngredientView {
     name: String,
     quantity: String,
-    picker: Picker,
     hint: MatchHint,
+    /// Set once the server found the typed name is a new product (MB-0039).
+    prompt: Option<CategoryPrompt>,
+}
+
+/// "<name> is a new product — choose its category": a required picker in
+/// the add form, which keeps the typed name and quantity.
+#[derive(Debug, Serialize)]
+struct CategoryPrompt {
+    name: String,
+    picker: Picker,
 }
 
 /// What the typed ingredient name will do (`recipes/_match_hint`), mirroring
 /// `check_ingredient`: an existing product brings its own `category`, an
 /// existing product without one (`uncategorized`, its name) can't be added,
-/// and a `new_product` needs the picker. All empty for a blank name.
+/// and a `new_product` is asked for a category after adding. All empty for a
+/// blank name.
 #[derive(Debug, Default, Serialize)]
 struct MatchHint {
     category: Option<String>,
@@ -230,8 +242,8 @@ struct AddedView {
 }
 
 /// What a form shows after a rejected submission: the typed values, for
-/// correction. The ingredient form also keeps its category after a success,
-/// for quick entry of several products from one aisle.
+/// correction. The ingredient form also shows them with the category prompt
+/// (`ask_category`), shown only while the name is a new product.
 #[derive(Debug, Default)]
 enum Draft {
     #[default]
@@ -241,6 +253,7 @@ enum Draft {
         name: String,
         quantity: String,
         category_id: Option<Uuid>,
+        ask_category: bool,
     },
     /// The "Add to a list" form keeps its list after a success too.
     AddToList {
@@ -323,15 +336,24 @@ async fn show_view(
             saved,
         },
     };
-    let (name, quantity, category_id) = match &draft {
+    let (name, quantity, category_id, ask_category) = match &draft {
         Draft::Ingredient {
             name,
             quantity,
             category_id,
-        } => (name.clone(), quantity.clone(), *category_id),
-        _ => (String::new(), String::new(), None),
+            ask_category,
+        } => (name.clone(), quantity.clone(), *category_id, *ask_category),
+        _ => (String::new(), String::new(), None, false),
     };
-    let hint = match_hint(state, user, &name, &categories).await?;
+    let mut hint = match_hint(state, user, &name, &categories).await?;
+    // The prompt replaces the "new product" hint.
+    let prompt = (ask_category && hint.new_product).then(|| {
+        hint = MatchHint::default();
+        CategoryPrompt {
+            name: name.trim().to_owned(),
+            picker: Picker::new(&categories, category_id),
+        }
+    });
     let add_section = add_to_list_view(recipe.id, lists, draft, added, add_error);
 
     Ok(ShowView {
@@ -354,8 +376,8 @@ async fn show_view(
             add: AddIngredientView {
                 name,
                 quantity,
-                picker: Picker::new(&categories, category_id).optional(),
                 hint,
+                prompt,
             },
             error: ingredients_error,
         },
