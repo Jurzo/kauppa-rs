@@ -13,7 +13,7 @@ use crate::domain::{
     quantity,
 };
 use crate::error::CoreError;
-use crate::repo::ShoppingListRepo;
+use crate::repo::{ShoppingListRepo, name_key::name_key};
 
 use super::list_rows::{group_for_store, parse_access, row_to_item, row_to_list, row_to_share};
 use super::{
@@ -413,6 +413,43 @@ impl ShoppingListRepo for SqlitePool {
         if inserted.rows_affected() == 0 {
             return Err(CoreError::Invalid("unknown product".to_owned()));
         }
+        let item = fetch_item(&mut *tx, &grant, id).await?;
+        tx.commit().await?;
+        Ok(item)
+    }
+
+    async fn add_owner_favorite_by_name(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        text: &str,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        let text = clean_name("item", text)?;
+        let id = Uuid::new_v4();
+        // `edit` is enough (RR-0024): only the list owner's favorites are read.
+        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        touch_list(&mut tx, &grant).await?;
+        // The owner's (never the caller's) favorite with this `name_key`
+        // (unique per owner) gives product, name and category as `add_product`
+        // does; no match leaves `p` NULL: free text, as `add_item` adds it.
+        sqlx::query(
+            r"INSERT INTO list_items
+                  (id, list_id, product_id, text, category_id, quantity, position)
+              SELECT ?1, ?2, p.id, COALESCE(p.name, ?3), p.category_id, ?4,
+                     (SELECT COALESCE(MAX(position), -1) + 1
+                        FROM list_items WHERE list_id = ?2)
+                FROM (SELECT 1) LEFT JOIN products p
+                  ON p.owner_id = ?5 AND p.name_key = ?6 AND p.is_favorite = 1",
+        )
+        .bind(id.to_string())
+        .bind(grant.list_id())
+        .bind(text)
+        .bind(clean_quantity(quantity))
+        .bind(grant.owner_id())
+        .bind(name_key(text))
+        .execute(&mut *tx)
+        .await?;
         let item = fetch_item(&mut *tx, &grant, id).await?;
         tx.commit().await?;
         Ok(item)

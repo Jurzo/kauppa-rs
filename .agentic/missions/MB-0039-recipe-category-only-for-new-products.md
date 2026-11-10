@@ -10,9 +10,6 @@ non_goals:
   - "Changing `name_key` matching (RR-0003) or the suggestions (MB-0013)."
   - "JavaScript beyond htmx."
 acceptance:
-  - id: P1
-    property: "While the typed name matches an existing product, the add form's category picker is disabled or hidden (per the owner's choice); when the name is new it is enabled, and when blank it is in its initial state. Without htmx the form still works: the server ignores the picker for an existing product as today."
-    check: cargo test -p kauppa-web routes::recipes::tests::editor::picker_follows_match
   - id: P2
     property: "If the owner chooses the ask-after-submit flow instead: submitting a new product's name without a category answers with a category prompt for that ingredient (keeping name and quantity) rather than an error, and choosing a category there adds it; an existing product is added in one step."
     check: cargo test -p kauppa-web routes::recipes::tests::editor::new_product_asks_category
@@ -73,6 +70,13 @@ the server finds the name is new. P2 also works without htmx and on a
 slow phone where the hint arrives late. The owner chooses at acceptance;
 the unchosen property is dropped in a brief delta.
 
+Owner chose P2 on 2026-11-09 ("P2, ask after submit"; brief accepted the
+same day). P1 (picker follows typing) is dropped from the acceptance list;
+the remaining ids keep their numbers. P3: the existing-but-uncategorized
+case keeps today's behaviour (the error pointing to Favorites). The match
+hint stays as an informational hint, reworded so it no longer mentions a
+picker.
+
 ## Conceptual plan
 
 1. Owner picks P1, P2 or both; decide the uncategorized-product case.
@@ -84,3 +88,23 @@ the unchosen property is dropped in a brief delta.
   `HX-Request`.
 - Smoke: add an existing favorite and a new product on a phone-width
   browser.
+
+## Brief delta (2026-11-09)
+
+- P1 dropped: the owner chose P2 (see Context).
+- P4: existing tests changed, each because the add form no longer carries
+  a picker and a new name without a category is now a prompt (200), not
+  a 400:
+  - `routes::recipes::tests::editor::ingredient_requires_categorized_product`:
+    the two "new name, no / empty category → 400 choose a category" cases
+    are removed (now covered by `new_product_asks_category`); its htmx
+    rejection check uses a foreign category ("unknown category") instead.
+    The uncategorized and unknown-category rejections are unchanged.
+  - `routes::recipes::tests::suggestions::ingredient_match_hint`: the hint
+    wording ("Uses Kylmä, an existing product.", "New product — you'll
+    choose its category after adding."); the no-JavaScript ending checks a
+    rejected uncategorized name shows its hint (400) and a new name shows
+    the category prompt in place of the hint (200).
+- `Picker::optional` removed (its only user was the add form's picker);
+  `products/_category_picker` is now always `required`, as every other
+  caller already rendered it.

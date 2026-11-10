@@ -7,16 +7,22 @@
     <title>{{page_title}} — kauppa</title>
     <link rel="manifest" href="/assets/manifest.webmanifest" />
     <link rel="stylesheet" href="/assets/app.css" />
-    <script src="/assets/vendor/htmx-2.0.3.min.js" integrity="sha384-0895/pl2MU10Hqc6jd4RvrthNlDiE9U1tWmX7WRESftEDRosgxNsQG/Ze9YMRzHq" defer></script>
+    <script src="/assets/vendor/htmx-2.0.11.min.js" integrity="sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg" defer></script>
   </head>
   <body hx-boost="true">
     <header class="topbar">
       <a class="brand" href="/">kauppa</a>
-      <nav>
-        <a href="/lists">Lists</a>
-        <a href="/recipes">Recipes</a>
-        <a href="/favorites">Favorites</a>
-        <a href="/categories">Categories</a>
+      {{!-- MB-0040: on phones the nav is a native popover panel opened by
+      the menu button (no JavaScript); on wide screens app.css shows it
+      inline and hides both buttons. Boosted navigation swaps <body>, so
+      choosing an entry leaves the panel closed. --}}
+      <button type="button" class="nav-open" popovertarget="site-nav"><span class="nav-icon" aria-hidden="true">☰</span> Menu</button>
+      <nav id="site-nav" class="site-nav" popover aria-label="Main">
+        <button type="button" class="nav-close" popovertarget="site-nav" popovertargetaction="hide" aria-label="Close menu" autofocus>✕</button>
+        <a href="/lists"{{#if page_nav}}{{#if (eq page_nav "lists")}} aria-current="page"{{/if}}{{/if}}>Lists</a>
+        <a href="/recipes"{{#if page_nav}}{{#if (eq page_nav "recipes")}} aria-current="page"{{/if}}{{/if}}>Recipes</a>
+        <a href="/favorites"{{#if page_nav}}{{#if (eq page_nav "favorites")}} aria-current="page"{{/if}}{{/if}}>Favorites</a>
+        <a href="/categories"{{#if page_nav}}{{#if (eq page_nav "categories")}} aria-current="page"{{/if}}{{/if}}>Categories</a>
         {{#if page_signed_in}}
           <form method="post" action="/auth/logout" class="inline">
             <button type="submit" class="link">Sign out</button>

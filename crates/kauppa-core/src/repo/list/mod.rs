@@ -1,15 +1,17 @@
 //! MB-0007 acceptance tests for the shopping-list repository (P1, P2, P4) and
 //! MB-0004's for list items (P1–P4), MB-0005's for adding a recipe (P1–P4),
-//! MB-0006's store-view order (P2), and MB-0021's quantity edit (P1).
+//! MB-0006's store-view order (P2), MB-0021's quantity edit (P1), and
+//! MB-0036's name match at `edit` (RR-0024).
 //! Test-only module: `ShoppingListRepo` lives in `repo` and its SQLite impl in
 //! `repo::sqlite`; this module exists so the brief's
 //! `cargo test -p kauppa-core repo::list::<area>::<name>` checks select these tests.
 //!
 //! Split by area (RR-0009): `lifecycle` (MB-0007), `items` (MB-0004),
-//! `recipes` (MB-0005) and `store` (MB-0006). Fixtures shared by several
-//! areas live here.
+//! `recipes` (MB-0005), `store` (MB-0006) and `favorite_match` (MB-0036,
+//! RR-0024). Fixtures shared by several areas live here.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod favorite_match;
 mod items;
 mod lifecycle;
 mod recipes;

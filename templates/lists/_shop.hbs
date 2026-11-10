@@ -18,7 +18,7 @@
                       value="{{#if this.checked}}false{{else}}true{{/if}}" aria-pressed="{{this.checked}}"
                       aria-label="{{#if this.checked}}Mark {{this.text}} not found{{else}}Mark {{this.text}} found{{/if}}">
                 <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
-                <span class="product-name">{{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}</span>
+                <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               </button>
             </form>
             <form class="row-actions" method="post" action="/lists/{{../../id}}/shop/items/{{this.id}}/remove"
@@ -28,7 +28,7 @@
             {{else}}
             <span class="shop-toggle">
               <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
-              <span class="product-name">{{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}</span>
+              <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               {{#if this.checked}}<span class="visually-hidden">(found)</span>{{/if}}
             </span>
             {{/if}}
