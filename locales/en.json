@@ -1,0 +1,16 @@
+{
+  "format.date": "%-d.%-m.%Y",
+  "format.datetime": "%Y-%m-%d %H:%M UTC",
+  "language.en": "English",
+  "language.fi": "Suomi",
+  "language.label": "Language",
+  "nav.categories": "Categories",
+  "nav.close_menu": "Close menu",
+  "nav.favorites": "Favorites",
+  "nav.label": "Main",
+  "nav.lists": "Lists",
+  "nav.menu": "Menu",
+  "nav.recipes": "Recipes",
+  "nav.sign_in": "Sign in",
+  "nav.sign_out": "Sign out"
+}

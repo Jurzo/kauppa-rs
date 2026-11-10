@@ -19,16 +19,16 @@ acceptance:
     property: "The English and Finnish catalogs have exactly the same keys, every placeholder used in one is used in the other, and every key a template or handler uses exists."
     check: cargo test -p kauppa-web i18n::tests::catalogs_complete
   - id: P3
-    property: "The language is chosen as the RR decides (e.g. a saved user preference, then a cookie, then `Accept-Language`, then English); `<html lang>` matches it; a signed-out visitor can switch language on the login page, and a signed-in user's choice persists across sessions and devices if the RR stores it per user."
+    property: "The language is chosen as RR-0023 decides (the signed-in user's `users.language`, then the `kauppa_lang` cookie, then `Accept-Language`, then English); `<html lang>` matches it; a signed-out visitor can switch language on the login page, and a signed-in user's choice persists across sessions and devices if the RR stores it per user."
     check: cargo test -p kauppa-web i18n::tests::language_selection
   - id: P4
-    property: "Each page renders in Finnish without missing keys or English fallbacks, for full pages and htmx fragments alike (lists, store view, recipes, favorites, categories, auth, admin, error pages)."
+    property: "Each page renders in Finnish without missing keys or English fallbacks, for full pages and htmx fragments alike (lists, store view, recipes, favorites, categories, auth, admin, error pages; error pages as RR-0023 sub-answer 10 decides)."
     check: cargo test -p kauppa-web i18n::tests::every_page_renders_in_finnish
   - id: P5
     property: "Dates and times shown to the user (e.g. the list's \"Updated\" line) use the chosen language's format."
     check: cargo test -p kauppa-web i18n::tests::dates_localized
   - id: P6
-    property: "English output is unchanged for existing pages: the existing route tests pass without edits to their expected strings, or the RR lists every string that changes."
+    property: "English output is unchanged for existing pages: the existing route tests pass without edits to their expected strings (RR-0023 lists no English string change; the only response change is an added `Vary: Cookie, Accept-Language`)."
     check: cargo test --workspace --all-targets
 context:
   - templates/
@@ -61,7 +61,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0023]
 ---
 ```
 
@@ -88,7 +88,7 @@ languages.
 
 1. **Clarify (S1).** One CRP: mechanism and dependency (platform), where
    the preference lives (data-owner, security), core error mapping and
-   switcher placement (owner).
+   switcher placement (owner). Answered by RR-0023.
 2. Infrastructure: catalog loading, the helper, language resolution per
    request, `<html lang>`, tests P2 and P3.
 3. Convert templates area by area with P1's scan catching what's left;

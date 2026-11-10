@@ -11,6 +11,7 @@ use kauppa_core::domain::{ListShare, ShareRole};
 use kauppa_core::repo::ShoppingListRepo;
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::request::{current_user, is_hx, wants_fragment};
 use crate::state::AppState;
 
@@ -90,6 +91,7 @@ impl GranteesView {
 /// `shares` runs the access predicate (404 for strangers, 403 for grantees).
 async fn render_sharing(
     state: &AppState,
+    ui: &Ui,
     user: Uuid,
     list_id: Uuid,
     fragment: bool,
@@ -98,10 +100,11 @@ async fn render_sharing(
 ) -> WebResult<HttpResponse> {
     let shares = ShoppingListRepo::shares(&state.pool, user, list_id).await?;
     let body = if fragment {
-        state.templates.render("lists/_share_form", &form)?
+        ui.render(state, "lists/_share_form", &form)?
     } else {
         let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
-        state.templates.render(
+        ui.render(
+            state,
             "lists/sharing",
             &SharingView {
                 id: list.id,
@@ -113,6 +116,7 @@ async fn render_sharing(
     };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -121,6 +125,7 @@ async fn render_sharing(
 pub async fn sharing(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     query: web::Query<SharingQuery>,
@@ -136,6 +141,7 @@ pub async fn sharing(
     // form.
     render_sharing(
         &state,
+        &ui,
         user,
         list_id,
         wants_fragment(&req),
@@ -154,6 +160,7 @@ pub async fn sharing(
 pub async fn share(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<ShareForm>,
@@ -201,7 +208,7 @@ pub async fn share(
                 notice: true,
                 ..ShareFormView::default()
             };
-            render_sharing(&state, user, list_id, true, StatusCode::OK, form).await
+            render_sharing(&state, &ui, user, list_id, true, StatusCode::OK, form).await
         } else {
             Ok(HttpResponse::SeeOther()
                 .append_header((
@@ -225,7 +232,7 @@ pub async fn share(
     } else {
         (false, StatusCode::BAD_REQUEST)
     };
-    render_sharing(&state, user, list_id, fragment, status, view).await
+    render_sharing(&state, &ui, user, list_id, fragment, status, view).await
 }
 
 /// Revoke a grant (owner only). The grantee loses access on their next
@@ -235,6 +242,7 @@ pub async fn share(
 pub async fn revoke(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
 ) -> WebResult<HttpResponse> {
@@ -252,10 +260,15 @@ pub async fn revoke(
 
     if is_hx(&req) {
         let shares = ShoppingListRepo::shares(&state.pool, user, list_id).await?;
-        let body = state
-            .templates
-            .render("lists/_grantees", &GranteesView::new(list_id, shares))?;
-        Ok(HttpResponse::Ok().content_type("text/html").body(body))
+        let body = ui.render(
+            &state,
+            "lists/_grantees",
+            &GranteesView::new(list_id, shares),
+        )?;
+        Ok(HttpResponse::Ok()
+            .content_type("text/html")
+            .insert_header(VARY)
+            .body(body))
     } else {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, format!("/lists/{list_id}/sharing")))

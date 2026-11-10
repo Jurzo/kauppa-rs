@@ -54,6 +54,7 @@ use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo}
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::products::Picker;
 use crate::routes::request::{current_user, is_hx, wants_fragment};
 use crate::state::AppState;
@@ -94,16 +95,16 @@ struct SharedCard {
     updated: String,
 }
 
-impl From<SharedList> for SharedCard {
-    fn from(shared: SharedList) -> Self {
-        let card = ListCard::from(shared.list);
-        Self {
+impl SharedCard {
+    fn new(shared: SharedList, state: &AppState, ui: &Ui) -> WebResult<Self> {
+        let card = ListCard::new(shared.list, state, ui)?;
+        Ok(Self {
             id: card.id,
             name: card.name,
             owner_name: shared.owner_name,
             can_edit: shared.role == ShareRole::Edit,
             updated: card.updated,
-        }
+        })
     }
 }
 
@@ -193,7 +194,7 @@ fn favorite_names(groups: Vec<ProductGroup>) -> Vec<String> {
 /// Render an open list as the full page or, for htmx, its `#list-{id}`
 /// fragment.
 async fn render_list(
-    state: &AppState,
+    ui: &Ui,
     user: Uuid,
     list_id: Uuid,
     fragment: bool,
@@ -201,6 +202,7 @@ async fn render_list(
     draft: ItemDraft,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
+    let state = ui.state();
     let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let items = ShoppingListRepo::items(&state.pool, user, list_id, false).await?;
@@ -217,7 +219,7 @@ async fn render_list(
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
-    let card = ListCard::from(list);
+    let card = ListCard::new(list, state, ui)?;
     let removed_count = removed.len();
     let suggestions = favorite_names(favorites);
     let view = ListView {
@@ -248,9 +250,10 @@ async fn render_list(
         error,
     };
     let body = if fragment {
-        state.templates.render("lists/_list", &view)?
+        ui.render(state, "lists/_list", &view)?
     } else {
-        state.templates.render(
+        ui.render(
+            state,
             "lists/show",
             &ShowView {
                 list: view,
@@ -260,6 +263,7 @@ async fn render_list(
     };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -267,7 +271,7 @@ async fn render_list(
 /// index: the fragment for htmx (rejections included, with 200), else a 303
 /// back to the list, or the full page with 400 for rejected input.
 async fn respond_item<T>(
-    state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     list_id: Uuid,
@@ -284,14 +288,14 @@ async fn respond_item<T>(
     }
 
     if is_hx(req) {
-        render_list(state, user, list_id, true, StatusCode::OK, draft, error).await
+        render_list(ui, user, list_id, true, StatusCode::OK, draft, error).await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, format!("/lists/{list_id}")))
             .finish())
     } else {
         let status = StatusCode::BAD_REQUEST;
-        render_list(state, user, list_id, false, status, draft, error).await
+        render_list(ui, user, list_id, false, status, draft, error).await
     }
 }
 
@@ -308,19 +312,22 @@ pub fn parse_multiplier(raw: &str) -> CoreResult<f64> {
     })
 }
 
-impl From<ShoppingList> for ListCard {
-    fn from(list: ShoppingList) -> Self {
-        Self {
+impl ListCard {
+    /// The card for `list`, its update date in the request's language
+    /// (MB-0035 P5).
+    fn new(list: ShoppingList, state: &AppState, ui: &Ui) -> WebResult<Self> {
+        Ok(Self {
             id: list.id,
-            updated: list.updated_at.format("%-d.%-m.%Y").to_string(),
+            updated: ui.date(state, list.updated_at)?,
             name: list.name,
-        }
+        })
     }
 }
 
 /// Render the index as the full page or, for htmx, the `#lists` fragment.
 async fn render_index(
     state: &AppState,
+    ui: &Ui,
     user: Uuid,
     fragment: bool,
     status: StatusCode,
@@ -330,8 +337,14 @@ async fn render_index(
     let lists = ShoppingListRepo::list_for_owner(&state.pool, user).await?;
     let shared = ShoppingListRepo::shared_with(&state.pool, user).await?;
     let view = IndexView {
-        lists: lists.into_iter().map(ListCard::from).collect(),
-        shared: shared.into_iter().map(SharedCard::from).collect(),
+        lists: lists
+            .into_iter()
+            .map(|l| ListCard::new(l, state, ui))
+            .collect::<WebResult<_>>()?,
+        shared: shared
+            .into_iter()
+            .map(|s| SharedCard::new(s, state, ui))
+            .collect::<WebResult<_>>()?,
         draft_name,
         error,
     };
@@ -340,9 +353,10 @@ async fn render_index(
     } else {
         "lists/index"
     };
-    let body = state.templates.render(template, &view)?;
+    let body = ui.render(state, template, &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -352,6 +366,7 @@ async fn render_index(
 /// htmx, else a 303 to `location`. `NotFound` (another user's list) is a 404.
 async fn respond<T>(
     state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     outcome: CoreResult<T>,
@@ -370,22 +385,31 @@ async fn respond<T>(
     match outcome {
         _ if is_hx(req) => {
             let error = outcome.err();
-            render_index(state, user, true, StatusCode::OK, draft_name, error).await
+            render_index(state, ui, user, true, StatusCode::OK, draft_name, error).await
         }
         Ok(value) => Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, location(&value)))
             .finish()),
         Err(error) => {
             let status = StatusCode::BAD_REQUEST;
-            render_index(state, user, false, status, draft_name, Some(error)).await
+            render_index(state, ui, user, false, status, draft_name, Some(error)).await
         }
     }
 }
 
 #[get("")]
-pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpResponse> {
+pub async fn index(state: web::Data<AppState>, ui: Ui, id: Identity) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    render_index(&state, user, false, StatusCode::OK, String::new(), None).await
+    render_index(
+        &state,
+        &ui,
+        user,
+        false,
+        StatusCode::OK,
+        String::new(),
+        None,
+    )
+    .await
 }
 
 /// Create a list. Without htmx the user lands in the new list.
@@ -393,6 +417,7 @@ pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpRe
 pub async fn create(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
@@ -405,6 +430,7 @@ pub async fn create(
     };
     respond(
         &state,
+        &ui,
         &req,
         user,
         outcome,
@@ -418,7 +444,7 @@ pub async fn create(
 #[get("/{id}")]
 pub async fn show(
     req: HttpRequest,
-    state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
@@ -426,7 +452,7 @@ pub async fn show(
     let fragment = wants_fragment(&req);
     let draft = ItemDraft::default();
     render_list(
-        &state,
+        &ui,
         user,
         path.into_inner(),
         fragment,
@@ -441,6 +467,7 @@ pub async fn show(
 pub async fn rename(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<NameForm>,
@@ -449,6 +476,7 @@ pub async fn rename(
     let outcome = ShoppingListRepo::rename(&state.pool, user, path.into_inner(), &form.name).await;
     respond(
         &state,
+        &ui,
         &req,
         user,
         outcome,
@@ -462,6 +490,7 @@ pub async fn rename(
 pub async fn delete(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
@@ -469,6 +498,7 @@ pub async fn delete(
     let outcome = ShoppingListRepo::delete(&state.pool, user, path.into_inner()).await;
     respond(
         &state,
+        &ui,
         &req,
         user,
         outcome,

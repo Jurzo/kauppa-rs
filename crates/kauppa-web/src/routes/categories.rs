@@ -16,6 +16,7 @@ use kauppa_core::repo::CategoryRepo;
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::{Ui, VARY};
 use crate::routes::request::{current_user, is_hx};
 use crate::state::AppState;
 
@@ -40,6 +41,7 @@ struct CategoriesView {
 /// Render the page or, for htmx, the `#categories` fragment.
 async fn render(
     state: &AppState,
+    ui: &Ui,
     user: Uuid,
     fragment: bool,
     status: StatusCode,
@@ -57,9 +59,10 @@ async fn render(
     } else {
         "categories/index"
     };
-    let body = state.templates.render(template, &view)?;
+    let body = ui.render(state, template, &view)?;
     Ok(HttpResponse::build(status)
         .content_type("text/html")
+        .insert_header(VARY)
         .body(body))
 }
 
@@ -69,6 +72,7 @@ async fn render(
 /// the fragment for htmx, else a 303 back to the page.
 async fn respond<T>(
     state: &AppState,
+    ui: &Ui,
     req: &HttpRequest,
     user: Uuid,
     outcome: CoreResult<T>,
@@ -85,26 +89,36 @@ async fn respond<T>(
     }
 
     if is_hx(req) {
-        render(state, user, true, StatusCode::OK, draft_name, error).await
+        render(state, ui, user, true, StatusCode::OK, draft_name, error).await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, "/categories"))
             .finish())
     } else {
-        render(state, user, false, status, draft_name, error).await
+        render(state, ui, user, false, status, draft_name, error).await
     }
 }
 
 #[get("")]
-pub async fn index(state: web::Data<AppState>, id: Identity) -> WebResult<HttpResponse> {
+pub async fn index(state: web::Data<AppState>, ui: Ui, id: Identity) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    render(&state, user, false, StatusCode::OK, String::new(), None).await
+    render(
+        &state,
+        &ui,
+        user,
+        false,
+        StatusCode::OK,
+        String::new(),
+        None,
+    )
+    .await
 }
 
 #[post("")]
 pub async fn create(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
@@ -115,32 +129,34 @@ pub async fn create(
     } else {
         form.name.clone()
     };
-    respond(&state, &req, user, outcome, draft_name).await
+    respond(&state, &ui, &req, user, outcome, draft_name).await
 }
 
 #[post("/{id}/rename")]
 pub async fn rename(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = state.pool.rename(user, path.into_inner(), &form.name).await;
-    respond(&state, &req, user, outcome, String::new()).await
+    respond(&state, &ui, &req, user, outcome, String::new()).await
 }
 
 #[post("/{id}/delete")]
 pub async fn delete(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = state.pool.delete(user, path.into_inner()).await;
-    respond(&state, &req, user, outcome, String::new()).await
+    respond(&state, &ui, &req, user, outcome, String::new()).await
 }
 
 /// Move a category one step up or down, then persist the new ordering.
@@ -148,6 +164,7 @@ pub async fn delete(
 pub async fn move_category(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<MoveForm>,
@@ -170,7 +187,7 @@ pub async fn move_category(
         state.pool.reorder(user, &ids).await?;
     }
 
-    respond(&state, &req, user, Ok(()), String::new()).await
+    respond(&state, &ui, &req, user, Ok(()), String::new()).await
 }
 
 // MB-0001 acceptance test (P6). It sits at module level rather than in a

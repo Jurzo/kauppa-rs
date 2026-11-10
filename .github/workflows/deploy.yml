@@ -57,7 +57,7 @@ jobs:
           files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
           printf '%s\n' "$files"
           # The image's inputs (RR-0014 Q7), plus the scripts and workflow that test it.
-          if grep -qE '^(deploy/|crates/|templates/|assets/|migrations/|Cargo\.|\.dockerignore$|scripts/deploy/|\.github/workflows/deploy\.yml$)' <<<"$files"; then
+          if grep -qE '^(deploy/|crates/|templates/|locales/|assets/|migrations/|Cargo\.|\.dockerignore$|scripts/deploy/|\.github/workflows/deploy\.yml$)' <<<"$files"; then
             echo "image=true" >> "$GITHUB_OUTPUT"
           else
             echo "image=false" >> "$GITHUB_OUTPUT"

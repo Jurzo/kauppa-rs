@@ -117,7 +117,7 @@ contents_ok() {
         absent() { [ ! -e "$1" ] || { echo "    must not exist: $1" >&2; rc=1; }; }
         need /usr/local/bin/kauppa-web
         [ -x /usr/local/bin/kauppa-web ] || { echo "    binary not executable" >&2; rc=1; }
-        for p in /app/templates /app/assets /app/migrations \
+        for p in /app/templates /app/locales /app/assets /app/migrations \
                  /app/crates /app/Cargo.toml /app/Cargo.lock /app/target /build \
                  /usr/local/cargo /usr/local/rustup /root/.cargo /app/.git /app/.env; do
             absent "$p"
@@ -131,7 +131,7 @@ contents_ok() {
         exit $rc
     '
 }
-check P1 "image has the binary; no templates/, assets/, migrations/, source, toolchain or .env" -- contents_ok
+check P1 "image has the binary; no templates/, locales/, assets/, migrations/, source, toolchain or .env" -- contents_ok
 
 app_files_read_only() {
     docker run --rm --entrypoint /bin/bash "$IMAGE" -c \

@@ -10,6 +10,7 @@ use kauppa_core::repo::ShoppingListRepo;
 use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
+use crate::i18n::Ui;
 use crate::routes::lists::parse_multiplier;
 use crate::routes::request::{current_user, wants_fragment};
 use crate::state::AppState;
@@ -45,6 +46,7 @@ fn parse_list(raw: &str) -> CoreResult<Uuid> {
 pub async fn add_recipe_to_list(
     req: HttpRequest,
     state: web::Data<AppState>,
+    ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
     form: web::Form<AddToListForm>,
@@ -99,8 +101,17 @@ pub async fn add_recipe_to_list(
     };
     if fragment {
         let section = Some(Section::AddToList);
-        render_show(&state, user, recipe_id, section, StatusCode::OK, feedback).await
+        render_show(
+            &state,
+            &ui,
+            user,
+            recipe_id,
+            section,
+            StatusCode::OK,
+            feedback,
+        )
+        .await
     } else {
-        render_show(&state, user, recipe_id, None, status, feedback).await
+        render_show(&state, &ui, user, recipe_id, None, status, feedback).await
     }
 }

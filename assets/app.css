@@ -98,6 +98,15 @@ a:hover { text-decoration: underline; }
 
 main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 
+/* MB-0035: the language switcher, under every page. */
+.site-footer { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
+.lang-switch { display: flex; gap: 0.5rem; justify-content: center; margin: 0; }
+.lang-switch button {
+  background: none; border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--primary); cursor: pointer; font: inherit; min-height: 2.75rem; padding: 0.25rem 0.75rem;
+}
+.lang-switch button[aria-pressed="true"] { color: var(--fg); font-weight: 600; }
+
 .hero { padding: 2rem 0; text-align: center; }
 .hero h1 { font-size: 2.25rem; margin: 0 0 0.5rem; }
 

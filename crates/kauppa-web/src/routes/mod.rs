@@ -6,6 +6,7 @@ pub mod assets;
 pub mod auth;
 pub mod categories;
 pub mod health;
+pub mod language;
 pub mod lists;
 pub mod pages;
 pub mod products;
@@ -30,6 +31,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
 fn protected(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(pages::index)
+        .service(language::switch)
         .service(
             web::scope("/auth")
                 .service(auth::login_form)
