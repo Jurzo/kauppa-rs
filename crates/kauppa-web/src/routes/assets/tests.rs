@@ -19,6 +19,8 @@ const SERVED_AS: &[(&str, &str)] = &[
     // MB-0027 (RR-0015): mime_guess 2.0.5 maps `js` to `text/javascript`.
     // MB-0030 (RR-0017): htmx 2.0.11 replaces 2.0.3.
     ("vendor/htmx-2.0.11.min.js", "text/javascript"),
+    // MB-0029 (RR-0018): the response-targets extension.
+    ("vendor/response-targets-2.0.4.min.js", "text/javascript"),
 ];
 
 /// The workspace's `assets/` folder, for comparison only.

@@ -1,5 +1,6 @@
 //! MB-0024 P1/P2 (templates) and P4; MB-0016 P5; MB-0027 P1/P2 (vendored
-//! htmx); MB-0040 P1/P2 (navigation panel).
+//! htmx); MB-0040 P1/P2 (navigation panel); MB-0029 P1/P2/P5 (boosted
+//! form errors, secret pages).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -27,6 +28,27 @@ const HTMX_SHA256: &str = "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c134
 /// and `layout.hbs` carries it.
 const HTMX_SRI_SHA384: &str =
     "sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg";
+
+/// The vendored htmx response-targets extension (MB-0029, RR-0018): 2.0.4,
+/// 0BSD, byte-for-byte `package/dist/response-targets.min.js` from the npm
+/// registry tarball
+/// <https://registry.npmjs.org/htmx-ext-response-targets/-/htmx-ext-response-targets-2.0.4.tgz>,
+/// whose npm `dist.integrity` is
+/// `sha512-Q/yfH0N2A40j903mr6ldGV3qLWMQeufROylYIbYQLBGrCpmydflxXmQwDOEhEWdPnBTgiHofkAo0gQ3S1BmyxQ==`.
+/// [`RESPONSE_TARGETS_SRI_SHA384`] equals the SRI htmx's docs publish for
+/// it at `v2.0.11`. Never edit the file (RR-0018 constraint 2).
+const RESPONSE_TARGETS_PATH: &str = "/assets/vendor/response-targets-2.0.4.min.js";
+/// SHA-256 of the file at [`RESPONSE_TARGETS_PATH`] (1,692 bytes), hex.
+const RESPONSE_TARGETS_SHA256: &str =
+    "bde3061dd9b0c7a0b3c7bae63784312bbb7a3a798411b750fe1a5c07a286e63a";
+/// Its Subresource Integrity value, as `layout.hbs` carries it.
+const RESPONSE_TARGETS_SRI_SHA384: &str =
+    "sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg";
+/// The layout's scripts, in load order: `(src, integrity)`.
+const LAYOUT_SCRIPTS: [(&str, &str); 2] = [
+    (HTMX_PATH, HTMX_SRI_SHA384),
+    (RESPONSE_TARGETS_PATH, RESPONSE_TARGETS_SRI_SHA384),
+];
 
 /// The workspace's `templates/` folder, for comparison only.
 fn source_dir() -> &'static Path {
@@ -122,9 +144,10 @@ fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     Some(&tag[start..start + len])
 }
 
-/// MB-0027 P1, MB-0030 P2: every script a template loads comes from the app's own
-/// `/assets/`, none is inline, and the layout loads the vendored htmx with
-/// its SRI, as rendered pages show.
+/// MB-0027 P1, MB-0030 P2, MB-0029 P1: every script a template loads comes
+/// from the app's own `/assets/`, none is inline, and the layout loads the
+/// vendored htmx and then its response-targets extension, each with its
+/// SRI, as rendered pages show.
 #[test]
 fn no_external_scripts() {
     for (name, source) in TEMPLATES {
@@ -143,9 +166,11 @@ fn no_external_scripts() {
         .find(|(name, _)| *name == "layout")
         .expect("layout");
     let tags = script_tags(layout);
-    assert_eq!(tags.len(), 1, "{tags:?}");
-    assert_eq!(attr(tags[0], "src"), Some(HTMX_PATH));
-    assert_eq!(attr(tags[0], "integrity"), Some(HTMX_SRI_SHA384));
+    assert_eq!(tags.len(), LAYOUT_SCRIPTS.len(), "{tags:?}");
+    for (tag, (src, integrity)) in tags.iter().zip(LAYOUT_SCRIPTS) {
+        assert_eq!(attr(tag, "src"), Some(src));
+        assert_eq!(attr(tag, "integrity"), Some(integrity));
+    }
 
     let mut hb = build_registry().expect("registry");
     hb.register_template_string(
@@ -154,8 +179,14 @@ fn no_external_scripts() {
     )
     .expect("page template");
     let page = hb.render("page", &serde_json::json!({})).expect("render");
-    let tag = format!(r#"<script src="{HTMX_PATH}" integrity="{HTMX_SRI_SHA384}" defer>"#);
-    assert!(page.contains(&tag), "{page}");
+    let mut at = 0;
+    for (src, integrity) in LAYOUT_SCRIPTS {
+        let tag = format!(r#"<script src="{src}" integrity="{integrity}" defer>"#);
+        let found = page[at..]
+            .find(&tag)
+            .unwrap_or_else(|| panic!("{tag} (in order) in {page}"));
+        at += found + tag.len();
+    }
     assert!(!page.contains("unpkg"), "{page}");
 }
 
@@ -177,25 +208,31 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
-/// MB-0027 P2, MB-0030 P1: the vendored file is exactly the published htmx
-/// 2.0.11. Its SHA-256 and its SHA-384 SRI both match the pinned values, so
-/// a changed byte fails CI.
-#[test]
-fn vendored_htmx_checksum() {
-    let file = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."))
-        .join(HTMX_PATH.trim_start_matches('/'));
-    let bytes = std::fs::read(&file).expect("vendored htmx");
-    assert_eq!(bytes.len(), 52_182);
+/// Asserts the vendored file at `path` (a `/assets/…` URL path) has `len`
+/// bytes, SHA-256 `sha256` (hex) and SRI `sri`.
+fn assert_vendored(path: &str, len: usize, sha256: &str, sri: &str) {
+    let file =
+        Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")).join(path.trim_start_matches('/'));
+    let bytes = std::fs::read(&file).unwrap_or_else(|e| panic!("{path}: {e}"));
+    assert_eq!(bytes.len(), len, "{path}");
 
-    let sha256 = Sha256::digest(&bytes)
+    let hex = Sha256::digest(&bytes)
         .iter()
         .fold(String::new(), |mut hex, b| {
             write!(hex, "{b:02x}").expect("write to String");
             hex
         });
-    assert_eq!(sha256, HTMX_SHA256);
-    let sri = format!("sha384-{}", base64(&Sha384::digest(&bytes)));
-    assert_eq!(sri, HTMX_SRI_SHA384);
+    assert_eq!(hex, sha256, "{path}");
+    let actual = format!("sha384-{}", base64(&Sha384::digest(&bytes)));
+    assert_eq!(actual, sri, "{path}");
+}
+
+/// MB-0027 P2, MB-0030 P1: the vendored file is exactly the published htmx
+/// 2.0.11. Its SHA-256 and its SHA-384 SRI both match the pinned values, so
+/// a changed byte fails CI.
+#[test]
+fn vendored_htmx_checksum() {
+    assert_vendored(HTMX_PATH, 52_182, HTMX_SHA256, HTMX_SRI_SHA384);
 
     // The encoder itself, on RFC 4648's test vectors.
     for (input, expected) in [
@@ -422,8 +459,8 @@ fn navigation_panel() {
 
 /// MB-0040 P2 (and MB-0031's CSP): the panel is native HTML (`popover`
 /// opened by `popovertarget`), and no template has a script other than the
-/// layout's vendored htmx, an inline `<style>`, a `style=` or an event
-/// handler (`on…=`, `hx-on`, `javascript:`).
+/// layout's vendored htmx and its extension, an inline `<style>`, a
+/// `style=` or an event handler (`on…=`, `hx-on`, `javascript:`).
 #[test]
 fn navigation_needs_no_script() {
     let page = render_layout(r#"page_title="Page" page_signed_in=true page_nav="lists""#);
@@ -434,8 +471,9 @@ fn navigation_needs_no_script() {
         let lower = source.to_ascii_lowercase();
         let scripts = script_tags(source);
         if name == "layout" || name == "rendered layout" {
-            assert_eq!(scripts.len(), 1, "{name}: {scripts:?}");
-            assert_eq!(attr(scripts[0], "src"), Some(HTMX_PATH), "{name}");
+            let srcs: Vec<_> = scripts.iter().map(|tag| attr(tag, "src")).collect();
+            let expected: Vec<_> = LAYOUT_SCRIPTS.iter().map(|(src, _)| Some(*src)).collect();
+            assert_eq!(srcs, expected, "{name}");
         } else {
             assert!(scripts.is_empty(), "{name}: {scripts:?}");
         }
@@ -462,4 +500,112 @@ fn navigation_needs_no_script() {
             );
         }
     }
+}
+
+/// MB-0029 (RR-0018): the vendored response-targets extension is exactly the
+/// published 2.0.4.
+#[test]
+fn vendored_response_targets_checksum() {
+    assert_vendored(
+        RESPONSE_TARGETS_PATH,
+        1_692,
+        RESPONSE_TARGETS_SHA256,
+        RESPONSE_TARGETS_SRI_SHA384,
+    );
+}
+
+/// The boosted full-page forms whose handler answers a 4xx with a rendered
+/// page (MB-0029's inventory, RR-0018 sub-answer 3): `(template, action)`.
+const ERROR_PAGE_FORMS: [(&str, &str); 3] = [
+    ("auth/login", "/auth/login"),
+    ("auth/register", "/auth/register"),
+    ("admin/invitations", "/admin/invitations"),
+];
+
+/// The source of the template called `name`.
+fn template(name: &str) -> &'static str {
+    TEMPLATES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map_or_else(|| panic!("template {name}"), |(_, source)| *source)
+}
+
+/// Every opening tag in `source`, comments and closing tags excluded.
+fn opening_tags(source: &str) -> Vec<&str> {
+    source
+        .match_indices('<')
+        .filter(|(start, _)| source[start + 1..].starts_with(|c: char| c.is_ascii_alphabetic()))
+        .map(|(start, _)| {
+            let len = source[start..].find('>').expect("closed tag");
+            &source[start..=start + len]
+        })
+        .collect()
+}
+
+/// MB-0029 P1: the login, register and create-invitation forms swap their
+/// 4xx page into `<body>` through the response-targets extension (RR-0018),
+/// and the layout loads the extension after htmx (checked with its SRI by
+/// `no_external_scripts`).
+#[test]
+fn boosted_error_pages_swap() {
+    for (name, action) in ERROR_PAGE_FORMS {
+        let forms: Vec<_> = tags(template(name), "form")
+            .into_iter()
+            .filter(|tag| attr(tag, "action") == Some(action))
+            .collect();
+        assert_eq!(forms.len(), 1, "{name}: {forms:?}");
+        let form = forms[0];
+        assert_eq!(attr(form, "method"), Some("post"), "{name}");
+        assert_eq!(attr(form, "hx-ext"), Some("response-targets"), "{name}");
+        assert_eq!(attr(form, "hx-target-4xx"), Some("body"), "{name}");
+    }
+
+    let page = render_layout(r#"page_title="Page" page_signed_in=false"#);
+    let htmx = page.find(HTMX_PATH).expect("htmx loaded");
+    let ext = page.find(RESPONSE_TARGETS_PATH).expect("extension loaded");
+    assert!(htmx < ext, "the extension loads after htmx");
+    assert!(page.contains(r#"<body hx-boost="true">"#), "{page}");
+}
+
+/// MB-0029 P2 (RR-0018 constraint 5): only the three error-page forms carry
+/// `hx-ext` or an `hx-target-<code>`, so no `hx-post`/`hx-get` fragment
+/// request (on the element or inside it) gets a 4xx swapped into its
+/// target, and no `htmx-config` changes `responseHandling`.
+#[test]
+fn fragment_errors_not_swapped() {
+    let mut carriers = Vec::new();
+    for (name, source) in TEMPLATES {
+        assert!(!source.contains("responseHandling"), "{name}");
+        for tag in opening_tags(source) {
+            if tag.contains(" hx-ext=") || tag.contains(" hx-target-") {
+                assert!(tag.starts_with("<form "), "{name}: {tag}");
+                let inner = element(source, tag, "form");
+                assert!(
+                    !inner.contains("hx-post") && !inner.contains("hx-get"),
+                    "{name}: {inner}"
+                );
+                carriers.push((*name, attr(tag, "action").expect("form action")));
+            }
+        }
+    }
+    carriers.sort_unstable();
+    let mut expected = ERROR_PAGE_FORMS.to_vec();
+    expected.sort_unstable();
+    assert_eq!(carriers, expected);
+}
+
+/// MB-0029 P5 (RR-0018 sub-answer 6): the pages that render a secret (the
+/// register page's invitation token, the invitations page's one-time link)
+/// opt out of htmx's history cache on their outermost element; the layout
+/// doesn't, so other pages keep Back restore.
+#[test]
+fn secret_pages_skip_history() {
+    for name in ["auth/register", "admin/invitations"] {
+        let source = template(name);
+        let body = &source[source.find("}}").expect("layout opener") + 2..];
+        let first = opening_tags(body)[0];
+        assert!(first.starts_with("<section"), "{name}: {first}");
+        assert_eq!(attr(first, "hx-history"), Some("false"), "{name}: {first}");
+    }
+    assert!(!template("layout").contains("hx-history"));
 }
