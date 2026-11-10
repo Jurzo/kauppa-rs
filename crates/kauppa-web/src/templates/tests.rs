@@ -660,8 +660,11 @@ fn opening_tags(source: &str) -> Vec<&str> {
 }
 
 /// MB-0029 P1: the login, register and create-invitation forms swap their
-/// 4xx page into `<body>` through the response-targets extension (RR-0018),
-/// and the layout loads the extension after htmx (checked with its SRI by
+/// 4xx page into `<body>` through the response-targets extension. htmx runs
+/// an extension for `htmx:beforeSwap` only if it is declared on the swap
+/// target or above it, and a boosted form's target is `<body>`, so `<body>`
+/// declares it (RR-0025, amending RR-0018); each form names its 4xx target.
+/// The layout loads the extension after htmx (checked with its SRI by
 /// `no_external_scripts`).
 #[test]
 fn boosted_error_pages_swap() {
@@ -673,7 +676,6 @@ fn boosted_error_pages_swap() {
         assert_eq!(forms.len(), 1, "{name}: {forms:?}");
         let form = forms[0];
         assert_eq!(attr(form, "method"), Some("post"), "{name}");
-        assert_eq!(attr(form, "hx-ext"), Some("response-targets"), "{name}");
         assert_eq!(attr(form, "hx-target-4xx"), Some("body"), "{name}");
     }
 
@@ -681,21 +683,31 @@ fn boosted_error_pages_swap() {
     let htmx = page.find(HTMX_PATH).expect("htmx loaded");
     let ext = page.find(RESPONSE_TARGETS_PATH).expect("extension loaded");
     assert!(htmx < ext, "the extension loads after htmx");
-    assert!(page.contains(r#"<body hx-boost="true">"#), "{page}");
+    let body = tags(&page, "body");
+    assert_eq!(body.len(), 1, "{page}");
+    assert_eq!(attr(body[0], "hx-boost"), Some("true"));
+    assert_eq!(attr(body[0], "hx-ext"), Some("response-targets"));
 }
 
-/// MB-0029 P2 (RR-0018 constraint 5): only the three error-page forms carry
-/// `hx-ext` or an `hx-target-<code>`, so no `hx-post`/`hx-get` fragment
-/// request (on the element or inside it) gets a 4xx swapped into its
-/// target, and no `htmx-config` changes `responseHandling`.
+/// MB-0029 P2 (RR-0025 constraints 1 and 2): `hx-ext` appears only on the
+/// layout's `<body>`, and an `hx-target-<code>` only on the three
+/// error-page forms. The extension acts only where it finds one from the
+/// requesting element upward, so no `hx-post`/`hx-get` fragment request (on
+/// such a form or inside it) gets a 4xx swapped into its target, and no
+/// `htmx-config` changes `responseHandling`.
 #[test]
 fn fragment_errors_not_swapped() {
+    let mut declarations = Vec::new();
     let mut carriers = Vec::new();
     for (name, source) in TEMPLATES {
         assert!(!source.contains("responseHandling"), "{name}");
         for tag in opening_tags(source) {
-            if tag.contains(" hx-ext=") || tag.contains(" hx-target-") {
+            if tag.contains(" hx-ext=") {
+                declarations.push((*name, tag));
+            }
+            if tag.contains(" hx-target-") {
                 assert!(tag.starts_with("<form "), "{name}: {tag}");
+                assert!(!tag.contains(" hx-ext="), "{name}: {tag}");
                 let inner = element(source, tag, "form");
                 assert!(
                     !inner.contains("hx-post") && !inner.contains("hx-get"),
@@ -705,6 +717,12 @@ fn fragment_errors_not_swapped() {
             }
         }
     }
+    assert_eq!(declarations.len(), 1, "{declarations:?}");
+    let (name, tag) = declarations[0];
+    assert_eq!(name, "layout");
+    assert!(tag.starts_with("<body "), "{tag}");
+    assert_eq!(attr(tag, "hx-ext"), Some("response-targets"));
+
     carriers.sort_unstable();
     let mut expected = ERROR_PAGE_FORMS.to_vec();
     expected.sort_unstable();

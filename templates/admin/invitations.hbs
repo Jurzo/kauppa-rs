@@ -20,7 +20,7 @@ htmx never snapshots it into its history cache; Back refetches. --}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
   <form class="add-product" method="post" action="/admin/invitations"
-        hx-ext="response-targets" hx-target-4xx="body">
+        hx-target-4xx="body">
     <label>Note (optional)
       <input name="note" type="text" maxlength="200" autocomplete="off"
              placeholder="Who it's for" value="{{note}}" />
