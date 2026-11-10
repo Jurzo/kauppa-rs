@@ -34,11 +34,66 @@ a:hover { text-decoration: underline; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; background: var(--bg); z-index: 10;
+  position: sticky; top: 0; background: var(--bg); z-index: 10; gap: 1rem;
 }
 .brand { font-weight: 700; font-size: 1.1rem; color: var(--fg); }
-.topbar nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.25rem 1rem; align-items: center; }
-.topbar nav form.inline { display: inline; margin: 0; }
+
+/* Site navigation (MB-0040). The <nav> is a native `popover` opened by the
+   menu button; no JavaScript. Default (wide screens, and browsers without
+   popover support): links inline in the top bar, both buttons hidden. These
+   author rules override the UA's popover box (`[popover]` is fixed, centred,
+   bordered; `[popover]:not(:popover-open)` is display:none), since author
+   styles beat UA styles whatever their specificity. */
+.site-nav {
+  display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.25rem 1rem;
+  position: static; inset: auto; margin: 0; padding: 0; border: 0;
+  width: auto; height: auto; overflow: visible; background: none; color: inherit;
+}
+.site-nav form.inline { display: inline; margin: 0; }
+.site-nav a[aria-current="page"] { color: var(--fg); font-weight: 600; }
+.nav-open, .nav-close {
+  display: none; align-items: center; justify-content: center; gap: 0.4rem;
+  min-width: 2.75rem; min-height: 2.75rem; padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: none; color: var(--fg); font: inherit; cursor: pointer;
+}
+.nav-icon { font-size: 1.2rem; line-height: 1; }
+
+/* Phones (below 40rem = 640px), where popover is supported: the nav is a
+   full-height panel sliding in from the right over a dimmed backdrop. */
+@supports selector(:popover-open) {
+  @media (max-width: 39.9375rem) {
+    .nav-open { display: inline-flex; flex: none; }
+    .site-nav:not(:popover-open) { display: none; }
+    .site-nav {
+      position: fixed; inset: 0 0 0 auto; width: min(18rem, 85vw); height: auto; max-height: none;
+      flex-direction: column; flex-wrap: nowrap; align-items: stretch; justify-content: flex-start; gap: 0;
+      padding: max(0.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right))
+        max(1rem, env(safe-area-inset-bottom)) 1rem;
+      border-left: 1px solid var(--border); background: var(--bg); color: var(--fg);
+      overflow-y: auto; overscroll-behavior: contain;
+    }
+    .site-nav::backdrop { background: rgb(0 0 0 / 0.45); }
+    .nav-close { display: inline-flex; align-self: flex-end; border-color: transparent; font-size: 1.25rem; }
+    .site-nav a, .site-nav .link {
+      display: block; width: 100%; min-height: 2.75rem; padding: 0.625rem 0.75rem;
+      border-left: 3px solid transparent; text-align: left; font-size: 1.1rem;
+    }
+    .site-nav a[aria-current="page"] { border-left-color: var(--primary); }
+    .site-nav form.inline { display: block; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+  }
+  @media (max-width: 39.9375rem) and (prefers-reduced-motion: no-preference) {
+    .site-nav {
+      transform: translateX(100%);
+      transition: transform 0.2s ease-out, overlay 0.2s allow-discrete, display 0.2s allow-discrete;
+    }
+    .site-nav:popover-open { transform: none; }
+    @starting-style {
+      .site-nav:popover-open { transform: translateX(100%); }
+    }
+  }
+}
+
 .link { background: none; border: 0; color: var(--primary); cursor: pointer; padding: 0; font: inherit; }
 
 main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
@@ -122,7 +177,6 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 
 @media (max-width: 480px) {
   main { padding: 0.75rem; }
-  .topbar nav { gap: 0.5rem; }
 }
 
 /* Recipes (MB-0003) */
@@ -139,6 +193,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 /* MB-0013: what the typed ingredient name will do, on its own line. */
 .add-product .match-hint { flex-basis: 100%; margin: 0; color: var(--muted); }
 .add-product .match-hint:empty { display: none; }
+/* MB-0039: the category prompt for a new product, on its own line. */
+.add-product .category-prompt { flex-basis: 100%; margin: 0; font-weight: 600; }
 
 /* Shopping lists (MB-0004, MB-0007) */
 .add-product select { min-width: 10rem; }
@@ -151,6 +207,8 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; }
 .shop-toggle { display: flex; flex: 1 1 auto; gap: 0.75rem; align-items: center; min-height: 3rem;
   padding: 0.5rem 0.75rem; text-align: left; color: var(--fg); font-size: 1.05rem; }
 .shop-row.found .product-name { text-decoration: line-through; color: var(--muted); }
+/* MB-0038: quantity after the name, muted ("Maito (2 l)"); --muted keeps AA on --bg. */
+.shop-quantity { color: var(--muted); font-weight: normal; }
 .shop-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; }
 
 /* Admin portal (MB-0023) */

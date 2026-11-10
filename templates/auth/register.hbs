@@ -9,7 +9,7 @@
       <input type="hidden" name="invite" value="{{invite}}" />
       <label>Display name<input type="text" name="display_name" required value="{{display_name}}" /></label>
       <label>Email<input type="email" name="email" required autocomplete="email" value="{{email}}" /></label>
-      <label>Password<input type="password" name="password" required minlength="12" autocomplete="new-password" /></label>
+      <label>Password<input type="password" name="password" required minlength="{{password_min}}" autocomplete="new-password" /></label>
       <button type="submit" class="button primary">Create account</button>
     </form>
   {{else}}

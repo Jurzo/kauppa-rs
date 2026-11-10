@@ -1,4 +1,4 @@
-//! MB-0008 (P2–P4): what view and edit grantees can do, and owner-only administration.
+//! MB-0008 (P2–P4): what view and edit grantees can do, and owner-only administration; MB-0036 (P4): adding by role.
 
 use actix_web::http::{StatusCode, header};
 
@@ -628,4 +628,147 @@ async fn quantity_follows_roles() {
         "nothing changed"
     );
     assert_eq!(before.0.as_deref(), Some("5 kpl"));
+}
+
+/// MB-0036 P4 (amended by RR-0024): on a shared list, an `edit` grantee's
+/// typed name that matches one of the list owner's favorites by `name_key`
+/// adds the owner's product with the owner's category, which the editor then
+/// sees; their own favorite's name and the owner's non-favorite (recipe-made)
+/// product stay free-form, and a match answers like a non-match. Only the
+/// owner gets suggestions. A `view` grantee can't add (403, nothing changes).
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn add_follows_roles() {
+    use actix_web::test::{TestRequest, call_service};
+    use kauppa_core::repo::ProductRepo;
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let s = shared_list(&state).await;
+    let their_category = make_category(&state, s.editor, "Hevi").await;
+    ProductRepo::create(&state.pool, s.editor, "Omena", their_category)
+        .await
+        .expect("the editor's own favorite");
+    let login = |email: &'static str| {
+        let app = &app;
+        async move { session_cookie(&call_service(app, login_request(email).to_request()).await) }
+    };
+    let owner = login("owner@example.com").await;
+    let editor = login("editor@example.com").await;
+    let viewer = login("viewer@example.com").await;
+    let base = format!("/lists/{}", s.list);
+    let add_uri = format!("{base}/items");
+    let page = |session: &actix_web::cookie::Cookie<'static>, htmx: bool| {
+        let mut req = TestRequest::get().uri(&base).cookie(session.clone());
+        if htmx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        let app = &app;
+        async move { body_string(call_service(app, req.to_request()).await).await }
+    };
+    let items = || async {
+        ShoppingListRepo::items(&state.pool, s.owner, s.list, false)
+            .await
+            .expect("items")
+            .into_iter()
+            .map(|i| (i.text, i.category.map(|c| c.name), i.product_id))
+            .collect::<Vec<_>>()
+    };
+
+    // Suggestions: the owner gets their favorites; the editor and the viewer
+    // get none, and the viewer has no add form.
+    let body = page(&owner, false).await;
+    assert!(body.contains(r#"<datalist id="favorite-suggestions">"#));
+    assert!(body.contains(r#"<option value="Maito"></option>"#));
+    for (who, session, form) in [("editor", &editor, true), ("viewer", &viewer, false)] {
+        for htmx in [false, true] {
+            let body = page(session, htmx).await;
+            assert!(!body.contains("<datalist"), "{who} htmx={htmx}");
+            assert!(!body.contains("favorite-suggestions"), "{who} htmx={htmx}");
+            assert!(!body.contains("Omena"), "{who} htmx={htmx}");
+            assert_eq!(
+                body.contains(&format!(r#"action="{add_uri}""#)),
+                form,
+                "{who} htmx={htmx}"
+            );
+        }
+    }
+
+    // The editor's text: the owner's favorite's name matches (plain post);
+    // their own favorite's name and the owner's recipe-made "Kaura" don't
+    // (htmx). Both answer the same way as a match.
+    for (text, htmx) in [("maito", false), ("Omena", true), ("kaura", true)] {
+        let mut req = TestRequest::post()
+            .uri(&add_uri)
+            .cookie(editor.clone())
+            .set_form([("text", text)]);
+        if htmx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        let resp = call_service(&app, req.to_request()).await;
+        if htmx {
+            assert_eq!(resp.status(), StatusCode::OK, "{text}");
+            let body = body_string(resp).await;
+            assert!(
+                body.contains(&format!(r#"id="list-{}""#, s.list)) && !body.contains("<datalist")
+            );
+        } else {
+            assert_eq!(resp.status(), StatusCode::SEE_OTHER, "{text}");
+        }
+    }
+    let kylma = Some("Kylmä".to_owned());
+    assert_eq!(
+        items().await,
+        [
+            ("Leipä".to_owned(), None, None),
+            ("Maito".to_owned(), kylma.clone(), Some(s.product)),
+            ("Omena".to_owned(), None, None),
+            ("kaura".to_owned(), None, None),
+        ]
+    );
+
+    // The owner's text matches the owner's favorite too.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&add_uri)
+            .cookie(owner.clone())
+            .set_form([("text", "MAITO")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        items().await[4],
+        ("Maito".to_owned(), kylma, Some(s.product))
+    );
+
+    // The editor sees the owner's category on the item they added.
+    let body = page(&editor, true).await;
+    let rows = &body[body.find(r#"<ul class="product-list""#).expect("rows")..];
+    let row = &rows[rows.find("Maito").expect("row")..];
+    let category = row.find("· ").expect("category");
+    assert!(row[category..].starts_with("· Kylmä"), "the editor sees it");
+    assert!(!body.contains("<datalist"));
+
+    // A viewer can't add anything, over htmx or not.
+    let before = list_snapshot(&state, &s).await;
+    for htmx in [false, true] {
+        for text in ["Maito", "Munat"] {
+            let mut req = TestRequest::post()
+                .uri(&add_uri)
+                .cookie(viewer.clone())
+                .set_form([("text", text)]);
+            if htmx {
+                req = req.insert_header(("HX-Request", "true"));
+            }
+            let resp = call_service(&app, req.to_request()).await;
+            assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{text} htmx={htmx}");
+        }
+    }
+    assert_eq!(list_snapshot(&state, &s).await, before, "nothing changed");
 }

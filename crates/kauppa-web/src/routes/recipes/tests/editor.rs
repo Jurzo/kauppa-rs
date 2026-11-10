@@ -13,8 +13,9 @@ use super::ingredient_names;
 
 /// P2: the server refuses an ingredient whose product has no category — an
 /// existing product left uncategorized by a category deletion, or a new name
-/// without a chosen category — even when a client skips the form, and adds
-/// nothing. A categorized product is accepted.
+/// with a category that isn't the user's — even when a client skips the
+/// form, and adds nothing. A categorized product is accepted. (A new name
+/// without a category is asked for one since MB-0039.)
 #[actix_web::test]
 #[allow(clippy::expect_used)]
 async fn ingredient_requires_categorized_product() {
@@ -74,11 +75,8 @@ async fn ingredient_requires_categorized_product() {
             "has no category",
         ),
         (vec![field("name", "MEHU")], "has no category"),
-        (vec![field("name", "Kaura")], "choose a category"),
-        (
-            vec![field("name", "Kaura"), field("category_id", "")],
-            "choose a category",
-        ),
+        // (A new name without a category is asked for one, MB-0039 P2:
+        // `new_product_asks_category`.)
         (
             vec![field("name", "Kaura"), field("category_id", "not-a-uuid")],
             "unknown category",
@@ -117,16 +115,20 @@ async fn ingredient_requires_categorized_product() {
     // Over htmx the rejection is the fragment, keeping the typed values.
     let resp = call_service(
         &app,
-        submit(vec![field("name", "Kaura"), field("quantity", "1 dl")])
-            .insert_header(("HX-Request", "true"))
-            .to_request(),
+        submit(vec![
+            field("name", "Kaura"),
+            field("quantity", "1 dl"),
+            field("category_id", &theirs.to_string()),
+        ])
+        .insert_header(("HX-Request", "true"))
+        .to_request(),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
     assert!(!body.contains("<html"), "fragment only");
     assert!(body.contains(r#"id="ingredients""#));
-    assert!(body.contains("choose a category for the new product Kaura"));
+    assert!(body.contains("unknown category"));
     assert!(body.contains(r#"value="Kaura""#) && body.contains(r#"value="1 dl""#));
 
     // Control: a categorized product, existing or new, is accepted.
@@ -345,4 +347,278 @@ async fn owner_isolation() {
     // Signed out: no access at all.
     let resp = call_service(&app, TestRequest::get().uri(&base).to_request()).await;
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// MB-0039 P2 (the owner's choice, ask after submitting): the add form has
+/// no category picker. An existing product's name is added in one step; a new
+/// product's name answers with a category prompt for that ingredient (200,
+/// keeping the name and quantity, with a required picker), not an error, and
+/// nothing is created; choosing a category there creates the product and
+/// adds the ingredient. Without htmx the prompt is on the full page, with
+/// htmx in the `#ingredients` fragment.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn new_product_asks_category() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    const PICKER: &str = r#"<select name="category_id" required>"#;
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    ProductRepo::create(&state.pool, user, "Maito", kylma)
+        .await
+        .expect("create favorite");
+    let recipe = make_recipe(&state, user, "Puuro").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let submit = |form: &[(&str, &str)], hx: bool| {
+        let mut req = TestRequest::post()
+            .uri(&format!("/recipes/{recipe}/ingredients"))
+            .cookie(session.clone())
+            .set_form(form);
+        if hx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        req.to_request()
+    };
+
+    // The add form asks for a name and a quantity only.
+    let page = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&format!("/recipes/{recipe}"))
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(page.contains(r#"id="new-ingredient-name""#));
+    assert!(
+        !page.contains(r#"name="category_id""#),
+        "no picker up front"
+    );
+    assert!(!page.contains("for a new product"));
+
+    // An existing product: one step, with and without htmx.
+    let resp = call_service(
+        &app,
+        submit(&[("name", "maito"), ("quantity", "5 dl")], false),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let resp = call_service(&app, submit(&[("name", "MAITO")], true)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(!body.contains("<html") && body.contains(r#"id="ingredients""#));
+    assert!(!body.contains(r#"name="category_id""#), "no prompt");
+    assert!(!body.contains(r#"role="alert""#), "no error");
+    assert_eq!(
+        ingredient_names(&state, user, recipe).await,
+        ["Maito", "Maito"]
+    );
+
+    // A new product without htmx: the full page with the prompt, not an error.
+    let resp = call_service(
+        &app,
+        submit(&[("name", "Kaura"), ("quantity", "2 dl")], false),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(body.contains("Kaura is a new product — choose its category"));
+    assert!(body.contains(PICKER), "a required picker");
+    assert!(body.contains(r#"value="Kaura""#) && body.contains(r#"value="2 dl""#));
+    assert!(!body.contains(r#"role="alert""#), "a prompt, not an error");
+    assert!(
+        ProductRepo::find_by_name(&state.pool, user, "Kaura")
+            .await
+            .expect("lookup")
+            .is_none(),
+        "nothing created yet"
+    );
+
+    // The same over htmx: the fragment with the prompt.
+    let resp = call_service(
+        &app,
+        submit(&[("name", "Kaura"), ("quantity", "2 dl")], true),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(!body.contains("<html") && body.contains(r#"id="ingredients""#));
+    assert!(body.contains("Kaura is a new product — choose its category"));
+    assert!(body.contains(PICKER));
+    assert!(body.contains(r#"value="Kaura""#) && body.contains(r#"value="2 dl""#));
+
+    // Submitting the prompt without a choice asks again.
+    let resp = call_service(
+        &app,
+        submit(
+            &[("name", "Kaura"), ("quantity", "2 dl"), ("category_id", "")],
+            true,
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(body_string(resp).await.contains(PICKER));
+    assert!(
+        ProductRepo::find_by_name(&state.pool, user, "Kaura")
+            .await
+            .expect("lookup")
+            .is_none(),
+        "nothing created yet"
+    );
+
+    // Choosing a category creates the product and adds the ingredient.
+    let hevi_id = hevi.to_string();
+    let resp = call_service(
+        &app,
+        submit(
+            &[
+                ("name", "Kaura"),
+                ("quantity", "2 dl"),
+                ("category_id", &hevi_id),
+            ],
+            true,
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("Kaura") && body.contains("2 dl"));
+    assert!(
+        !body.contains(r#"name="category_id""#),
+        "back to the plain form"
+    );
+    assert!(!body.contains(r#"value="Kaura""#), "the form is cleared");
+    let kaura = ProductRepo::find_by_name(&state.pool, user, "Kaura")
+        .await
+        .expect("lookup")
+        .expect("created");
+    assert_eq!(kaura.category_id, Some(hevi));
+    let resp = call_service(
+        &app,
+        submit(&[("name", "Ruis"), ("category_id", &hevi_id)], false),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER, "and without htmx");
+    assert_eq!(
+        ingredient_names(&state, user, recipe).await,
+        ["Maito", "Maito", "Kaura", "Ruis"]
+    );
+    let detail = RecipeRepo::get(&state.pool, user, recipe)
+        .await
+        .expect("get recipe");
+    assert_eq!(detail.ingredients[2].quantity.as_deref(), Some("2 dl"));
+}
+
+/// MB-0039 P3: an existing product without a category keeps today's
+/// behaviour, an error pointing to Favorites (400 on the full page, 200 in
+/// the fragment) with no category prompt, even when a category is posted;
+/// it stays uncategorized. No product is created without a category: a
+/// prompt creates nothing, and an unknown category is refused.
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn uncategorized_product() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    let gone = make_category(&state, user, "Poistuva").await;
+    let theirs = make_category(&state, other, "Pakasteet").await;
+    ProductRepo::create(&state.pool, user, "Kahvi", gone)
+        .await
+        .expect("create favorite");
+    CategoryRepo::delete(&state.pool, user, gone)
+        .await
+        .expect("delete category");
+    let recipe = make_recipe(&state, user, "Aamiainen").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let submit = |form: &[(&str, &str)], hx: bool| {
+        let mut req = TestRequest::post()
+            .uri(&format!("/recipes/{recipe}/ingredients"))
+            .cookie(session.clone())
+            .set_form(form);
+        if hx {
+            req = req.insert_header(("HX-Request", "true"));
+        }
+        req.to_request()
+    };
+
+    let hevi_id = hevi.to_string();
+    for form in [
+        vec![("name", "kahvi")],
+        vec![("name", "KAHVI"), ("category_id", hevi_id.as_str())],
+    ] {
+        let resp = call_service(&app, submit(&form, false)).await;
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{form:?}");
+        let body = body_string(resp).await;
+        assert!(body.contains("<html"), "full page");
+        assert!(body.contains("Kahvi has no category — choose one for it on Favorites first"));
+        assert!(
+            !body.contains(r#"name="category_id""#),
+            "no prompt: {form:?}"
+        );
+
+        let resp = call_service(&app, submit(&form, true)).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{form:?}");
+        let body = body_string(resp).await;
+        assert!(!body.contains("<html") && body.contains(r#"role="alert""#));
+        assert!(body.contains("Kahvi has no category"));
+        assert!(
+            !body.contains(r#"name="category_id""#),
+            "no prompt: {form:?}"
+        );
+    }
+    let kahvi = ProductRepo::find_by_name(&state.pool, user, "Kahvi")
+        .await
+        .expect("lookup")
+        .expect("exists");
+    assert_eq!(kahvi.category_id, None, "not recategorized");
+
+    // A new name is never created without a category of the user's own.
+    let theirs_id = theirs.to_string();
+    for (form, status) in [
+        (vec![("name", "Tee")], StatusCode::OK),
+        (vec![("name", "Tee"), ("category_id", "")], StatusCode::OK),
+        (
+            vec![("name", "Tee"), ("category_id", "not-a-uuid")],
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            vec![("name", "Tee"), ("category_id", theirs_id.as_str())],
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let resp = call_service(&app, submit(&form, false)).await;
+        assert_eq!(resp.status(), status, "{form:?}");
+    }
+    assert!(
+        ProductRepo::find_by_name(&state.pool, user, "Tee")
+            .await
+            .expect("lookup")
+            .is_none()
+    );
+    assert_eq!(
+        ingredient_names(&state, user, recipe).await,
+        Vec::<String>::new()
+    );
 }
