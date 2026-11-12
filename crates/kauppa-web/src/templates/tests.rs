@@ -1,6 +1,7 @@
 //! MB-0024 P1/P2 (templates) and P4; MB-0016 P5; MB-0027 P1/P2 (vendored
 //! htmx); MB-0040 P1/P2 (navigation panel); MB-0029 P1/P2/P5 (boosted
-//! form errors, secret pages); MB-0031 P2 (CSP).
+//! form errors, secret pages); MB-0031 P2 (CSP); MB-0051 P1/P3/P4 (language
+//! selector, bodies in `tests/language.rs`).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -13,6 +14,8 @@ use kauppa_core::domain::Language;
 
 use super::{Registry, TEMPLATES};
 use crate::i18n::I18n;
+
+mod language;
 
 /// The English registry over the embedded catalogs.
 fn build_registry() -> anyhow::Result<Registry> {
@@ -437,10 +440,15 @@ struct Nav<'a> {
 }
 
 fn panel(page: &str) -> Nav<'_> {
+    // MB-0051: the language selector is a popover too, so only the
+    // openers that target a `<nav>` count.
+    let navs = tags(page, "nav");
     let openers: Vec<&str> = tags(page, "button")
         .into_iter()
         .filter(|tag| {
-            attr(tag, "popovertarget").is_some() && attr(tag, "popovertargetaction").is_none()
+            attr(tag, "popovertargetaction").is_none()
+                && attr(tag, "popovertarget")
+                    .is_some_and(|id| navs.iter().any(|nav| attr(nav, "id") == Some(id)))
         })
         .collect();
     assert_eq!(openers.len(), 1, "one menu button opens the panel: {page}");
@@ -522,7 +530,7 @@ fn navigation_panel() {
             assert_eq!(text(element(panel, link, "a")), label);
         }
         assert!(
-            !page.contains("aria-current"),
+            !page.contains(r#"aria-current="page""#),
             "no section is current: {page}"
         );
 
@@ -555,7 +563,7 @@ fn navigation_panel() {
             r#"page_title="Page" page_signed_in=true page_nav="{nav}""#
         ));
         let Nav { panel, .. } = panel(&page);
-        assert_eq!(page.matches("aria-current").count(), 1, "{page}");
+        assert_eq!(page.matches(r#"aria-current="page""#).count(), 1, "{page}");
         for (_, href, _) in SECTIONS {
             let link = tags(panel, "a")
                 .into_iter()
@@ -580,6 +588,24 @@ fn navigation_panel() {
         };
         assert_eq!(attr(call, "page_nav"), expected, "{name}: {call}");
     }
+}
+
+/// MB-0051 P1 (RR-0031): the language selector, in `tests/language.rs`.
+#[test]
+fn language_dropdown() {
+    language::dropdown();
+}
+
+/// MB-0051 P3: short and full language names.
+#[test]
+fn language_dropdown_names() {
+    language::names();
+}
+
+/// MB-0051 P4: the selector's accessibility.
+#[test]
+fn language_dropdown_accessible() {
+    language::accessible();
 }
 
 /// MB-0040 P2 (and MB-0031's CSP): the panel is native HTML (`popover`

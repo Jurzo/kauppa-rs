@@ -38,19 +38,47 @@
           <a href="/auth/login">{{t "nav.sign_in"}}</a>
         {{/if}}
       </nav>
+      {{!-- MB-0051 (RR-0031, amending RR-0023 sub-answer 7): the language
+      selector, on every page. The button opens a native popover (no
+      JavaScript; Escape or a click outside closes it) holding the one POST
+      form: a plain POST (no boost), so the answer is a full page load and
+      <html lang> updates. Each option is named in its own language; flags
+      are decoration. app.css shows the short name on phones and the full
+      name on wide screens, places the selector between the brand and the
+      menu button on phones (`order`; here it follows the navigation, as
+      wide screens show it), and shows the options inline where popover
+      isn't supported. --}}
+      <div class="lang">
+        <button type="button" class="lang-open" popovertarget="lang-menu" aria-label="{{#if (eq (html_lang) "fi")}}{{t "language.current" name=(t "language.fi")}}{{else}}{{t "language.current" name=(t "language.en")}}{{/if}}">
+          <img class="flag" src="/assets/flags/{{html_lang}}.svg" alt="" width="20" height="15" />
+          {{#if (eq (html_lang) "fi")}}
+            <span class="lang-short" aria-hidden="true">{{t "language.short.fi"}}</span>
+            <span class="lang-full">{{t "language.fi"}}</span>
+          {{else}}
+            <span class="lang-short" aria-hidden="true">{{t "language.short.en"}}</span>
+            <span class="lang-full">{{t "language.en"}}</span>
+          {{/if}}
+          <span class="lang-chevron" aria-hidden="true">▾</span>
+        </button>
+        <form id="lang-menu" class="lang-menu" popover method="post" action="/language" hx-boost="false" aria-label="{{t "language.label"}}">
+          <input type="hidden" name="return" value="{{#if @root.request_path}}{{@root.request_path}}{{else}}/{{/if}}" />
+          <button type="submit" name="lang" value="en" lang="en"{{#if (eq (html_lang) "en")}} aria-current="true"{{/if}}>
+            <img class="flag" src="/assets/flags/en.svg" alt="" width="20" height="15" />
+            <span class="lang-short" aria-hidden="true">{{t "language.short.en"}}</span>
+            <span class="lang-full">{{t "language.en"}}</span>
+            {{#if (eq (html_lang) "en")}}<span class="lang-check" aria-hidden="true">✓</span>{{/if}}
+          </button>
+          <button type="submit" name="lang" value="fi" lang="fi"{{#if (eq (html_lang) "fi")}} aria-current="true"{{/if}}>
+            <img class="flag" src="/assets/flags/fi.svg" alt="" width="20" height="15" />
+            <span class="lang-short" aria-hidden="true">{{t "language.short.fi"}}</span>
+            <span class="lang-full">{{t "language.fi"}}</span>
+            {{#if (eq (html_lang) "fi")}}<span class="lang-check" aria-hidden="true">✓</span>{{/if}}
+          </button>
+        </form>
+      </div>
     </header>
     <main>
       {{> @partial-block}}
     </main>
-    {{!-- MB-0035 (RR-0023 sub-answer 7): the language switcher, on every
-    page. A plain POST (no boost) so the answer is a full page load and
-    <html lang> updates; each button is named in its own language. --}}
-    <footer class="site-footer">
-      <form class="lang-switch" method="post" action="/language" hx-boost="false" aria-label="{{t "language.label"}}">
-        <input type="hidden" name="return" value="{{#if @root.request_path}}{{@root.request_path}}{{else}}/{{/if}}" />
-        <button type="submit" name="lang" value="en" lang="en" aria-pressed="{{#if (eq (html_lang) "en")}}true{{else}}false{{/if}}">{{t "language.en"}}</button>
-        <button type="submit" name="lang" value="fi" lang="fi" aria-pressed="{{#if (eq (html_lang) "fi")}}true{{else}}false{{/if}}">{{t "language.fi"}}</button>
-      </form>
-    </footer>
   </body>
 </html>

@@ -24,7 +24,7 @@ acceptance:
     property: "The selector is accessible: the control has an accessible name that says it chooses the language, it and the options are reachable and operable by keyboard, flags are decorative (the name is the text), each option carries its own `lang`, and the list closes on Escape or after a choice."
     check: cargo test -p kauppa-web templates::tests::language_dropdown_accessible
   - id: P5
-    property: "Flags are same-origin SVG files under `assets/` (the owner's choice, 2026-11-11), served as `image/svg+xml` and covered by the embedded-asset test; the Content-Security-Policy is unchanged (no `data:` images, no inline style or script), and no template gains literal text."
+    property: "Flags are same-origin SVG files under `assets/flags/`, from flag-icons 7.6.0 (the owner's choice, 2026-11-11; RR-0031), served as `image/svg+xml` and covered by the embedded-asset test; the Content-Security-Policy is unchanged (no `data:` images, no inline style or script), and no template gains literal text."
     check: cargo test -p kauppa-web routes::assets::tests::serves_every_asset
   - id: P6
     property: "In a browser at 320 px and on a desktop width, the selector fits the top bar beside the brand and the menu, opens and closes, doesn't overlap or get trapped by the navigation panel, and switching language works on a signed-out and a signed-in page."
@@ -65,7 +65,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0031]
 ---
 ```
 
@@ -113,7 +113,7 @@ Constraints that shape the design:
 1. **Clarify (S1).** One CRP to the owner (placement, mechanism, flags;
    amending RR-0023 sub-answer 7), with the asset question to
    platform-owner and a note to security that the endpoint, cookie and CSP
-   don't change.
+   don't change. Answered by RR-0031.
 2. Tests first: the layout's selector markup (P1, P3, P4), the asset
    (P5); adjust the markup expectations in `language_selection` (P2).
 3. Flag assets and the content type; the layout and `app.css`; catalog keys

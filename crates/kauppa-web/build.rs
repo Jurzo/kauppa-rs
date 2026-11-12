@@ -11,10 +11,12 @@ use std::path::{Path, PathBuf};
 /// `actix-files` 0.7 served before MB-0024 (`mime_guess`, plus
 /// `; charset=utf-8` on `text/css`, `text/plain` and `text/html`). The build
 /// fails on a file whose
-/// extension isn't here.
+/// extension isn't here. `svg` is MB-0051's (RR-0031 sub-answer 6): the
+/// flag images under `assets/flags/`.
 const CONTENT_TYPES: &[(&str, &str)] = &[
     ("css", "text/css; charset=utf-8"),
     ("js", "text/javascript"),
+    ("svg", "image/svg+xml"),
     ("webmanifest", "application/manifest+json"),
 ];
 
