@@ -268,11 +268,11 @@ async fn language_selection() {
     // Nothing chosen: English.
     let body = page(login_page()).await;
     assert_eq!(html_lang(&body), "en");
-    // The switcher: a plain POST form returning here, one button per
-    // language named in its own language, the current one pressed.
+    // The switcher (MB-0051, RR-0031): a plain POST form returning here,
+    // one button per language with its own `lang`, the current one marked.
     assert!(
         body.contains(
-            r#"<form class="lang-switch" method="post" action="/language" hx-boost="false""#
+            r#"<form id="lang-menu" class="lang-menu" popover method="post" action="/language" hx-boost="false""#
         ),
         "{body}"
     );
@@ -280,8 +280,16 @@ async fn language_selection() {
         body.contains(r#"<input type="hidden" name="return" value="/auth/login?next&#x3D;1" />"#),
         "{body}"
     );
-    assert!(body.contains(r#"<button type="submit" name="lang" value="en" lang="en" aria-pressed="true">English</button>"#), "{body}");
-    assert!(body.contains(r#"<button type="submit" name="lang" value="fi" lang="fi" aria-pressed="false">Suomi</button>"#), "{body}");
+    assert!(
+        body.contains(
+            r#"<button type="submit" name="lang" value="en" lang="en" aria-current="true">"#
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains(r#"<button type="submit" name="lang" value="fi" lang="fi">"#),
+        "{body}"
+    );
 
     // Accept-Language, then the cookie over it; an unknown cookie value is
     // ignored.
@@ -290,7 +298,7 @@ async fn language_selection() {
             .await;
     assert_eq!(html_lang(&body), "fi");
     assert!(
-        body.contains(r#"value="fi" lang="fi" aria-pressed="true""#),
+        body.contains(r#"value="fi" lang="fi" aria-current="true""#),
         "{body}"
     );
     let body = page(

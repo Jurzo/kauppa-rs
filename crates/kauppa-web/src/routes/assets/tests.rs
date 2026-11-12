@@ -1,11 +1,14 @@
-//! MB-0024 P1–P3: the embedded `/assets/` service.
+//! MB-0024 P1–P3: the embedded `/assets/` service. MB-0051 P5 (RR-0031):
+//! the flag images.
 #![allow(clippy::expect_used, clippy::panic)]
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use actix_web::App;
 use actix_web::http::{Method, StatusCode, header};
 use actix_web::test::{self, TestRequest, call_service, read_body};
+use sha2::{Digest, Sha256};
 
 use super::{ASSETS, Assets};
 use crate::routes::test_support::{TEST_ORIGIN, test_state};
@@ -22,6 +25,32 @@ const SERVED_AS: &[(&str, &str)] = &[
     ("vendor/htmx-2.0.11.min.js", "text/javascript"),
     // MB-0029 (RR-0018): the response-targets extension.
     ("vendor/response-targets-2.0.4.min.js", "text/javascript"),
+    // MB-0051 (RR-0031 sub-answer 6): the language selector's flags. No
+    // charset: `actix-files` 0.7.4 added one only to text types.
+    ("flags/en.svg", "image/svg+xml"),
+    ("flags/fi.svg", "image/svg+xml"),
+];
+
+/// The flag images (MB-0051, RR-0031 sub-answer 5): flag-icons 7.6.0, MIT
+/// (see `THIRD_PARTY_NOTICES.md`), byte for byte from the npm registry
+/// tarball <https://registry.npmjs.org/flag-icons/-/flag-icons-7.6.0.tgz>,
+/// whose npm `dist.integrity` is
+/// `sha512-hir/PsXwr0EESyizKrXJzmkzpLIMf+1vlNKLqAfvdh+bsU94a7LYWTiubkHKqptGoCPzOUGcm6c4PfC9/BaGSQ==`:
+/// `package/flags/4x3/gb.svg` as `en.svg` and `package/flags/4x3/fi.svg`.
+/// `(path under /assets/, bytes, SHA-256 hex)`. Never edit a file: file,
+/// hash and source version change together, under an RR (RR-0031
+/// constraint 2).
+const FLAGS: &[(&str, usize, &str)] = &[
+    (
+        "flags/en.svg",
+        504,
+        "c8be1e7208798a4ae692ee1e937065d498bb29e741943f6172b29118b8ed8066",
+    ),
+    (
+        "flags/fi.svg",
+        234,
+        "012edd984cf1879463c2855b7df02dea2f7de7f7a66b244fb1e22b4227f7aa65",
+    ),
 ];
 
 /// The workspace's `assets/` folder, for comparison only.
@@ -68,6 +97,10 @@ async fn serves_every_asset() {
     let embedded: Vec<_> = ASSETS.iter().map(|(n, ..)| (*n).to_owned()).collect();
     assert_eq!(embedded, on_disk);
     assert!(on_disk.contains(&"app.css".to_owned()));
+    // No row without its file (MB-0051 P5: the flags are there).
+    for (name, _) in SERVED_AS {
+        assert!(on_disk.iter().any(|n| n == name), "{name}: not in assets/");
+    }
 
     let app = test::init_service(App::new().service(Assets)).await;
     for name in &on_disk {
@@ -266,4 +299,117 @@ async fn cache_headers() {
     tags.sort();
     tags.dedup();
     assert_eq!(tags.len(), count, "ETags collide: {tags:?}");
+}
+
+/// Whether the asset `name` is an SVG file, by its extension.
+fn is_svg(name: &str) -> bool {
+    Path::new(name)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+}
+
+/// MB-0051 P5 (RR-0031 sub-answer 7, constraint 2): the flags are exactly
+/// the pinned flag-icons 7.6.0 files, and they are the only SVG images.
+#[test]
+fn flag_checksums() {
+    let svgs: Vec<&str> = ASSETS
+        .iter()
+        .map(|(name, ..)| *name)
+        .filter(|name| is_svg(name) || name.starts_with("flags/"))
+        .collect();
+    let pinned: Vec<&str> = FLAGS.iter().map(|(name, ..)| *name).collect();
+    assert_eq!(svgs, pinned, "every SVG and every flag is pinned in FLAGS");
+
+    for (name, len, sha256) in FLAGS {
+        let (.., bytes) = ASSETS
+            .iter()
+            .find(|(n, ..)| n == name)
+            .unwrap_or_else(|| panic!("{name}: not embedded"));
+        assert_eq!(bytes.len(), *len, "{name}");
+        let hex = Sha256::digest(bytes)
+            .iter()
+            .fold(String::new(), |mut hex, b| {
+                write!(hex, "{b:02x}").expect("write to String");
+                hex
+            });
+        assert_eq!(hex, *sha256, "{name}");
+    }
+}
+
+/// What makes `svg` (lowercased) more than an inert image: script, an
+/// event handler, a link or outside reference, embedded content or styles
+/// (RR-0031 sub-answer 7).
+fn active_content(svg: &str) -> Vec<String> {
+    let mut found: Vec<String> = [
+        "<script",
+        "href",
+        "xlink:href",
+        "url(",
+        "<use",
+        "<image",
+        "<foreignobject",
+        "<style",
+        "style=",
+    ]
+    .into_iter()
+    .filter(|word| svg.contains(word))
+    .map(str::to_owned)
+    .collect();
+    // An `on…=` attribute: whitespace, `on`, letters, `=`.
+    for (at, _) in svg.match_indices("on") {
+        let rest = &svg[at + 2..];
+        let letters = rest
+            .find(|c: char| !c.is_ascii_lowercase())
+            .unwrap_or(rest.len());
+        let after_space = svg[..at].ends_with(|c: char| c.is_ascii_whitespace());
+        if after_space && letters > 0 && rest[letters..].trim_start().starts_with('=') {
+            found.push(format!("on{}=", &rest[..letters]));
+        }
+    }
+    found
+}
+
+/// MB-0051 P5 (RR-0031 sub-answer 7, constraint 1): every SVG under
+/// `assets/` is an inert image, with no `<script>`, `on…` attribute,
+/// `href`, `xlink:href`, `url(`, `<use>`, `<image>`, `<foreignObject>`,
+/// `<style>` or `style=`. The scan finds each of them when planted.
+#[test]
+fn flags_are_inert_images() {
+    let mut checked = 0;
+    for (name, _, _, bytes) in ASSETS {
+        if !is_svg(name) {
+            continue;
+        }
+        let svg = std::str::from_utf8(bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert!(svg.trim_start().starts_with("<svg "), "{name}: not an SVG");
+        let found = active_content(&svg.to_ascii_lowercase());
+        assert!(found.is_empty(), "{name}: {found:?}");
+        checked += 1;
+    }
+    assert_eq!(checked, FLAGS.len(), "every flag was scanned");
+
+    // The scan itself.
+    for (planted, expected) in [
+        ("<svg><script>alert(1)</script></svg>", "<script"),
+        (r#"<svg onload="alert(1)"></svg>"#, "onload="),
+        ("<svg\nonclick = 'x'></svg>", "onclick="),
+        (r##"<svg><a href="#x"/></svg>"##, "href"),
+        (r##"<svg><use xlink:href="#x"/></svg>"##, "xlink:href"),
+        (r#"<svg><path fill="url(#g)"/></svg>"#, "url("),
+        ("<svg><use/></svg>", "<use"),
+        ("<svg><image/></svg>", "<image"),
+        ("<svg><foreignObject/></svg>", "<foreignobject"),
+        ("<svg><style>a{}</style></svg>", "<style"),
+        (r#"<svg><path style="fill:red"/></svg>"#, "style="),
+    ] {
+        let found = active_content(&planted.to_ascii_lowercase());
+        assert!(
+            found.iter().any(|f| f == expected),
+            "{planted}: {found:?} lacks {expected}"
+        );
+    }
+    assert_eq!(
+        active_content(r#"<svg id="icon" viewbox="0 0 4 3"><path d="m0 0"/></svg>"#),
+        Vec::<String>::new()
+    );
 }
