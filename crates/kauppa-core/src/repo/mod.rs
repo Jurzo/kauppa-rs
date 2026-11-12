@@ -229,9 +229,10 @@ pub trait ProductRepo: Send + Sync {
 /// Required access per method: reads (`get`, `access`, `items`,
 /// `store_view`) need any grant (`view`); item writes (`add_item`,
 /// `add_owner_favorite_by_name`, `set_item_quantity`, `set_checked`,
-/// `remove_item`, `restore_item`) need `edit`; the methods that take an id
-/// from the owner's catalog (`add_product`, `add_recipe`,
-/// `assign_category`) and administration (`rename`, `delete`, `shares`,
+/// `remove_item`, `restore_item`, and `update_item` without a category) need
+/// `edit`; the methods that take an id from the owner's catalog
+/// (`add_product`, `add_recipe`, `assign_category`, and `update_item` with a
+/// category, RR-0033) and administration (`rename`, `delete`, `shares`,
 /// `share`, `revoke`) are the owner's alone. The one read of the owner's
 /// catalog at `edit` is `add_owner_favorite_by_name`'s match of typed text
 /// against the owner's favorites (RR-0024).
@@ -341,6 +342,23 @@ pub trait ShoppingListRepo: Send + Sync {
         user_id: Uuid,
         list_id: Uuid,
         item_id: Uuid,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem>;
+
+    /// Save an active item's quantity and, when `category_id` is `Some`, its
+    /// category, in one transaction (MB-0052, RR-0033). The quantity is set
+    /// or cleared (`None` or blank) as `set_item_quantity` does. `edit`
+    /// without a category; owner only with one, so a grantee who sends a
+    /// category is `Forbidden` before it is looked up. The category must be
+    /// the list owner's (`Invalid` otherwise). A removed item, or one of
+    /// another list, is `NotFound`. Any error changes nothing: both fields
+    /// are saved or neither.
+    async fn update_item(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        category_id: Option<Uuid>,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem>;
 

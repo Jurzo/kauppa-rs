@@ -204,6 +204,27 @@ async fn every_method(
                 .map(drop),
         ),
         (
+            // The quantity alone: an item write (MB-0052, RR-0033).
+            "update_item(quantity)",
+            ShoppingListRepo::update_item(pool, user, list, f.active, None, Some("2"))
+                .await
+                .map(drop),
+        ),
+        (
+            // With a category: owner only, whoever's category it is.
+            "update_item(category)",
+            ShoppingListRepo::update_item(
+                pool,
+                user,
+                list,
+                f.active,
+                Some(own.category),
+                Some("3"),
+            )
+            .await
+            .map(drop),
+        ),
+        (
             "set_checked",
             ShoppingListRepo::set_checked(pool, user, list, f.active, true)
                 .await
@@ -249,9 +270,10 @@ async fn every_method(
 /// The methods `every_method` calls that only read.
 const READS: [&str; 5] = ["get", "access", "items", "items(removed)", "store_view"];
 /// The item writes an `edit` grantee may make.
-const ITEM_WRITES: [&str; 5] = [
+const ITEM_WRITES: [&str; 6] = [
     "add_item",
     "add_owner_favorite_by_name",
+    "update_item(quantity)",
     "set_checked",
     "remove_item",
     "restore_item",
@@ -293,7 +315,7 @@ async fn central_predicate_denies_non_grantee() {
     let outcomes = every_method(&pool, stranger, &f, &own, share.id).await;
     assert_eq!(
         outcomes.len(),
-        READS.len() + 13,
+        READS.len() + 15,
         "every method is exercised"
     );
     for (method, outcome) in outcomes {
@@ -436,6 +458,8 @@ async fn role_matrix() {
         // NotFound; every other call must succeed.
         if [
             "assign_category",
+            "update_item(quantity)",
+            "update_item(category)",
             "set_checked",
             "remove_item",
             "restore_item",

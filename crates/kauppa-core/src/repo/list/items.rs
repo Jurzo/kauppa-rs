@@ -1,9 +1,10 @@
-//! MB-0004 (P1–P4): list items — favorites and free text, soft delete, snapshots — plus owner scoping; MB-0021 (P1): editing an item's quantity.
+//! MB-0004 (P1–P4): list items — favorites and free text, soft delete, snapshots — plus owner scoping; MB-0021 (P1): editing an item's quantity;
+//! MB-0052 (RR-0033): saving an item's category and quantity in one call.
 
 use uuid::Uuid;
 
 use crate::CoreError;
-use crate::domain::ListItem;
+use crate::domain::{ListItem, ShareRole};
 use crate::repo::{CategoryRepo, ProductRepo, ShoppingListRepo, SqlitePool};
 
 use super::{item, make_category, make_list, make_user, test_db};
@@ -397,4 +398,192 @@ async fn set_item_quantity() {
     assert_eq!(fields(&snapshot(&pool, u, list).await), fields(&expected));
     let theirs_now = snapshot(&pool, other, theirs).await;
     assert_eq!(theirs_now[0].quantity.as_deref(), Some("3"));
+}
+
+/// Everything a call could change on `list`: its items (active then removed)
+/// and its `updated_at`, read as the owner.
+async fn list_and_items(pool: &SqlitePool, owner: Uuid, list: Uuid) -> (String, Vec<String>) {
+    let updated = ShoppingListRepo::get(pool, owner, list)
+        .await
+        .unwrap()
+        .updated_at
+        .to_rfc3339();
+    (updated, fields(&snapshot(pool, owner, list).await))
+}
+
+/// MB-0052 (RR-0033 sub-answer 2): `update_item` saves an active item's
+/// category and quantity in one call. Without a category it saves the
+/// quantity only and keeps the category; blank or `None` clears the
+/// quantity. The category must be the list owner's: another user's or an
+/// unknown one is `Invalid`, and neither field (nor the list's `updated_at`)
+/// changes. With a category it is the owner's alone: an `edit` grantee is
+/// `Forbidden` whoever's category it is, a `view` grantee always. A removed
+/// item, one of another list, an unknown one, or another user's list is
+/// `NotFound`, and nothing changes.
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn update_item() {
+    let (pool, _raw) = test_db().await;
+    let u = make_user(&pool, "u@example.com").await;
+    let editor = make_user(&pool, "editor@example.com").await;
+    let viewer = make_user(&pool, "viewer@example.com").await;
+    let other = make_user(&pool, "other@example.com").await;
+    let kylma = make_category(&pool, u, "Kylmä").await;
+    let koti = make_category(&pool, u, "Koti").await;
+    let editors = make_category(&pool, editor, "Editorin").await;
+    let theirs_cat = make_category(&pool, other, "Muiden").await;
+    let list = make_list(&pool, u).await;
+    let also_mine = make_list(&pool, u).await;
+    let theirs = make_list(&pool, other).await;
+    for (email, role) in [
+        ("editor@example.com", ShareRole::Edit),
+        ("viewer@example.com", ShareRole::View),
+    ] {
+        ShoppingListRepo::share(&pool, u, list, email, role)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    let maito = ProductRepo::create(&pool, u, "Maito", kylma).await.unwrap();
+    let milk = ShoppingListRepo::add_product(&pool, u, list, maito.id, Some("2 dl"))
+        .await
+        .unwrap();
+    ShoppingListRepo::set_checked(&pool, u, list, milk.id, true)
+        .await
+        .unwrap();
+    let bread = ShoppingListRepo::add_item(&pool, u, list, "Leipä", Some("1"))
+        .await
+        .unwrap();
+    let sugar = ShoppingListRepo::add_item(&pool, u, list, "Sokeri", Some("1 kg"))
+        .await
+        .unwrap();
+    ShoppingListRepo::remove_item(&pool, u, list, sugar.id)
+        .await
+        .unwrap();
+    let their_item = ShoppingListRepo::add_item(&pool, other, theirs, "Omena", Some("3"))
+        .await
+        .unwrap();
+    let category_of = |i: &ListItem| i.category.as_ref().map(|c| c.id);
+
+    // Both fields in one call, the quantity trimmed; nothing else changes.
+    let before = snapshot(&pool, u, list).await;
+    let saved =
+        ShoppingListRepo::update_item(&pool, u, list, bread.id, Some(koti), Some(" 3 kpl "))
+            .await
+            .unwrap();
+    assert_eq!(category_of(&saved), Some(koti));
+    assert_eq!(saved.quantity.as_deref(), Some("3 kpl"));
+    assert_eq!((saved.text.as_str(), saved.checked), ("Leipä", false));
+    let after = snapshot(&pool, u, list).await;
+    assert_eq!(fields(&after[..1]), fields(&before[..1]), "milk unchanged");
+    assert_eq!(fields(&after[2..]), fields(&before[2..]), "sugar unchanged");
+    assert_eq!(fields(&after[1..2]), fields(std::slice::from_ref(&saved)));
+
+    // Without a category: the quantity only, the category kept; `None` and
+    // blank clear it.
+    let saved = ShoppingListRepo::update_item(&pool, u, list, milk.id, None, Some("1 l"))
+        .await
+        .unwrap();
+    assert_eq!(category_of(&saved), Some(kylma));
+    assert_eq!(saved.quantity.as_deref(), Some("1 l"));
+    assert!(saved.checked);
+    for clear in [None, Some(""), Some("   ")] {
+        ShoppingListRepo::update_item(&pool, u, list, milk.id, None, Some("5"))
+            .await
+            .unwrap();
+        let cleared = ShoppingListRepo::update_item(&pool, u, list, milk.id, None, clear)
+            .await
+            .unwrap();
+        assert_eq!(cleared.quantity, None, "{clear:?}");
+        assert_eq!(category_of(&cleared), Some(kylma), "{clear:?}");
+    }
+    // An uncategorized item stays uncategorized.
+    let candles = ShoppingListRepo::add_item(&pool, u, also_mine, "Kynttilät", None)
+        .await
+        .unwrap();
+    let saved = ShoppingListRepo::update_item(&pool, u, also_mine, candles.id, None, Some("2"))
+        .await
+        .unwrap();
+    assert_eq!(
+        (category_of(&saved), saved.quantity.as_deref()),
+        (None, Some("2"))
+    );
+
+    // All or nothing: a category that isn't the list owner's (another
+    // user's, the editor's, or unknown) is rejected, and the quantity sent
+    // with it is not saved.
+    let state = list_and_items(&pool, u, list).await;
+    for category in [theirs_cat, editors, Uuid::new_v4()] {
+        let outcome =
+            ShoppingListRepo::update_item(&pool, u, list, bread.id, Some(category), Some("9"))
+                .await;
+        assert!(
+            matches!(
+                outcome,
+                Err(CoreError::Invalid(crate::Invalid::Unknown(
+                    crate::Entity::Category
+                )))
+            ),
+            "{category}: {outcome:?}"
+        );
+        assert_eq!(list_and_items(&pool, u, list).await, state, "{category}");
+    }
+
+    // Grantees: an editor saves the quantity only; with any category, the
+    // owner's included, they are refused before it is looked up. A viewer
+    // is refused either way. Nothing changes on a refusal.
+    let saved = ShoppingListRepo::update_item(&pool, editor, list, bread.id, None, Some("4"))
+        .await
+        .unwrap();
+    assert_eq!(saved.quantity.as_deref(), Some("4"));
+    assert_eq!(category_of(&saved), Some(koti));
+    let state = list_and_items(&pool, u, list).await;
+    for (who, user, category) in [
+        ("editor", editor, Some(kylma)),
+        ("editor", editor, Some(editors)),
+        ("editor", editor, Some(Uuid::new_v4())),
+        ("viewer", viewer, None),
+        ("viewer", viewer, Some(kylma)),
+    ] {
+        let outcome =
+            ShoppingListRepo::update_item(&pool, user, list, bread.id, category, Some("9")).await;
+        assert!(
+            matches!(outcome, Err(CoreError::Forbidden)),
+            "{who} {category:?}: {outcome:?}"
+        );
+    }
+    assert_eq!(list_and_items(&pool, u, list).await, state, "refusals");
+
+    // A removed item (even with a valid category), an item of another list,
+    // an unknown item, or another user's list: NotFound, nothing changes.
+    for (list_id, item_id, category) in [
+        (list, sugar.id, None),
+        (list, sugar.id, Some(kylma)),
+        (also_mine, milk.id, Some(kylma)),
+        (list, their_item.id, None),
+        (list, Uuid::new_v4(), Some(kylma)),
+        (theirs, their_item.id, None),
+        (theirs, their_item.id, Some(theirs_cat)),
+    ] {
+        let outcome =
+            ShoppingListRepo::update_item(&pool, u, list_id, item_id, category, Some("9")).await;
+        assert!(
+            matches!(outcome, Err(CoreError::NotFound)),
+            "{list_id} {item_id} {category:?}: {outcome:?}"
+        );
+    }
+    assert_eq!(list_and_items(&pool, u, list).await, state, "not found");
+    let removed = ShoppingListRepo::items(&pool, u, list, true).await.unwrap();
+    assert_eq!(
+        (category_of(&removed[0]), removed[0].quantity.as_deref()),
+        (None, Some("1 kg"))
+    );
+    let theirs_now = snapshot(&pool, other, theirs).await;
+    assert_eq!(
+        (
+            category_of(&theirs_now[0]),
+            theirs_now[0].quantity.as_deref()
+        ),
+        (None, Some("3"))
+    );
 }

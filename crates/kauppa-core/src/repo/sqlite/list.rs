@@ -618,6 +618,18 @@ impl ShoppingListRepo for SqlitePool {
         Ok(item)
     }
 
+    async fn update_item(
+        &self,
+        _user_id: Uuid,
+        _list_id: Uuid,
+        _item_id: Uuid,
+        _category_id: Option<Uuid>,
+        _quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        // MB-0052 red-commit stub: replaced by the implementation.
+        Err(CoreError::NotFound)
+    }
+
     async fn store_view(&self, user_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>> {
         // An unknown or foreign list is NotFound, not an empty view.
         let (mut tx, grant) = self.begin_read(user_id, list_id, ListAccess::View).await?;

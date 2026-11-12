@@ -2,6 +2,7 @@
 
 mod add_field;
 mod editor_match;
+mod item_edit;
 mod items;
 mod lifecycle;
 mod recipes;
