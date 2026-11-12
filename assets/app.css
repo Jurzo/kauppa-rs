@@ -215,10 +215,33 @@ main { max-width: var(--maxw); margin: 0 auto; padding: 1rem; flex-grow: 1; }
 }
 .add-category label, .add-product label, .product-edit label { display: flex; flex-direction: column; flex: 1 1 10rem; }
 .add-category input, .category-rename input,
-.add-product input, .add-product select, .product-edit input, .product-edit select {
+.add-product input, .product-edit input {
   margin-top: 0.25rem; padding: 0.5rem; min-width: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--bg); color: var(--fg); font: inherit;
+}
+/* Selects (MB-0053): the box of the inputs above, with the browser's arrow
+   hidden and the app's chevron in its place, so it sits the same distance
+   from the edge in every browser. The chevron is two gradient squares, each
+   a 2px diagonal stroke, side by side: "\" and "/" make a "v". Gradients
+   because the Content-Security-Policy (RR-0019) allows no inline image
+   URLs, and because they can take the theme's colour, light and dark. From
+   the right edge: 0.875rem of space, the chevron (2 x 0.375rem), then
+   0.625rem before the text, which the right padding (2.25rem) keeps clear.
+   This is the only rule that may set a select's appearance, background,
+   padding or outline (`templates::tests::select_chevron`). */
+select {
+  margin-top: 0.25rem; padding: 0.5rem 2.25rem 0.5rem 0.5rem; min-width: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--fg); font: inherit;
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(45deg, transparent calc(50% - 1px), var(--muted) calc(50% - 1px), var(--muted) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(135deg, transparent calc(50% - 1px), var(--muted) calc(50% - 1px), var(--muted) calc(50% + 1px), transparent calc(50% + 1px));
+  background-position: right 1.25rem center, right 0.875rem center;
+  background-size: 0.375rem 0.375rem;
+  background-repeat: no-repeat;
 }
 .product-group h2 { margin: 1.5rem 0 0.5rem; font-size: 1rem; color: var(--muted); }
 .category-list, .product-list {
