@@ -8,7 +8,8 @@ use actix_web::test::{TestRequest, call_service};
 
 use super::{World, world, write_routes};
 use crate::routes::test_support::{
-    TEST_HOST, TEST_ORIGIN, bare_test_app, body_string, login_request, session_cookie, test_state,
+    TEST_HOST, TEST_ORIGIN, bare_test_app, body_string, login_request, session_cookie,
+    session_kept, test_state,
 };
 
 /// Header sets a forged request might carry (besides `Host`).
@@ -56,8 +57,8 @@ const MISSING: &[Proof] = &[
 ];
 
 /// Sends every write route each proof in `proofs`, signed in, as a plain
-/// post and over htmx; each must get the plain 403, set no cookie and change
-/// nothing. Returns how many requests were sent.
+/// post and over htmx; each must get the plain 403, keep the session (only
+/// the visit-time renewal RR-0026 adds) and change nothing. Returns how many requests were sent.
 async fn assert_all_rejected(proofs: &[Proof]) -> usize {
     let state = test_state().await;
     let app = bare_test_app!(state);
@@ -87,10 +88,9 @@ async fn assert_all_rejected(proofs: &[Proof]) -> usize {
                 let resp = call_service(&app, req.to_request()).await;
                 let what = format!("{} {} ({label}, htmx={htmx})", route.method, route.path);
                 assert_eq!(resp.status(), StatusCode::FORBIDDEN, "{what}");
-                assert_eq!(
-                    resp.response().cookies().count(),
-                    0,
-                    "{what}: no session issued, renewed or purged"
+                assert!(
+                    session_kept(&resp),
+                    "{what}: no session issued or purged (RR-0026 renews its visit time)"
                 );
                 assert_eq!(body_string(resp).await, "forbidden", "{what}: plain 403");
                 sent += 1;

@@ -21,6 +21,11 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
 - **Session store.** `actix-session` with `CookieSessionStore`, keyed by a
   >=64-byte secret from `KAUPPA_SESSION_SECRET`. Cookies: `HttpOnly`,
   `SameSite=Lax`, `Secure` behind TLS (`KAUPPA_COOKIE_SECURE=true`).
+  A sign-in ends 30 days after the last visit and 90 days after it was
+  made, enforced by the identity middleware's deadlines in `main.rs`
+  (MB-0042, RR-0026); there is no server-side revocation. The app refuses
+  to start with the development session secret unless it binds to a
+  loopback address with `KAUPPA_COOKIE_SECURE=false`.
   The one other cookie is `kauppa_lang` (MB-0035, RR-0023): unsigned, its
   value only `en` or `fi` (anything else ignored, never echoed), `Path=/`,
   `SameSite=Lax`, `HttpOnly`, `Secure` with `KAUPPA_COOKIE_SECURE=true`, one
