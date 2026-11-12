@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: data-owner
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "migration.md: a new file under `migrations/`; feature.md security trigger: `routes/auth/`; MB-0044 autonomy.escalate (schema, collisions → data-owner; auth path → security)"
 ---
 ```

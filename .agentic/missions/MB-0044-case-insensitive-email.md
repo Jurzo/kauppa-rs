@@ -48,7 +48,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/persistence.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0028]
 ---
 ```
 
@@ -66,7 +66,7 @@ treats them as one person where sign-in doesn't.
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to data-owner (schema, collisions) and security
-   (auth path, limiter key).
+   (auth path, limiter key). Answered by RR-0028.
 2. Migration and repo changes with tests first; then the handler paths.
 3. Check the droplet's data for collisions before deploying.
 
