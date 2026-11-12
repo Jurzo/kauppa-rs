@@ -91,6 +91,18 @@ impl SqlitePool {
             .map_err(|e| CoreError::Storage(format!("migration failed: {e}")))?;
         Ok(())
     }
+
+    /// One trivial query: whether the database answers (MB-0046, RR-0029).
+    pub async fn ping(&self) -> CoreResult<()> {
+        sqlx::query("SELECT 1").execute(&self.inner).await?;
+        Ok(())
+    }
+
+    /// Close every connection; later queries fail. For shutdown, and for
+    /// tests of what the app does without its database.
+    pub async fn close(&self) {
+        self.inner.close().await;
+    }
 }
 
 /// `t` without its fraction of a second. Timestamps that SQL compares as

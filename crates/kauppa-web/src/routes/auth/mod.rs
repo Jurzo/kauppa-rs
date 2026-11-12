@@ -19,7 +19,6 @@
 //! rule, after the token shape and before the hash; login never applies it.
 
 use std::fmt;
-use std::sync::OnceLock;
 
 use actix_identity::Identity;
 use actix_web::http::StatusCode;
@@ -31,7 +30,7 @@ use serde_json::json;
 
 use kauppa_core::domain::{Language, PASSWORD_MIN_CHARS, check_new_password_length};
 use kauppa_core::repo::{InvitationRepo, UserRepo};
-use kauppa_core::{CoreError, CoreResult, password, token};
+use kauppa_core::{CoreError, token};
 
 use crate::error::{WebError, WebResult};
 use crate::i18n::messages::Message;
@@ -40,7 +39,10 @@ use crate::state::AppState;
 
 use self::limiter::Throttled;
 
+pub mod hashing;
 pub mod limiter;
+
+pub use self::hashing::dummy_hash;
 
 #[cfg(test)]
 pub mod tests;
@@ -95,23 +97,6 @@ struct RegisterView<'a> {
     password_min: usize,
 }
 
-/// The password the dummy hash is made from. Its value doesn't matter: a
-/// match changes nothing, since an unknown email always gets the 401.
-const DUMMY_PASSWORD: &str = "kauppa-rs dummy password for unknown emails";
-
-static DUMMY_HASH: OnceLock<String> = OnceLock::new();
-
-/// A fixed PHC string, made once per process with `password::hash`, that
-/// login verifies against for an unknown email, so every login attempt
-/// costs one Argon2 verify (RR-0013 sub-answer 7). `main.rs` makes it at
-/// startup.
-pub fn dummy_hash() -> CoreResult<&'static str> {
-    if let Some(hash) = DUMMY_HASH.get() {
-        return Ok(hash);
-    }
-    let hash = password::hash(DUMMY_PASSWORD)?;
-    Ok(DUMMY_HASH.get_or_init(|| hash))
-}
 
 #[get("/login")]
 pub async fn login_form(state: web::Data<AppState>, ui: Ui) -> WebResult<HttpResponse> {
@@ -138,11 +123,14 @@ pub async fn login_submit(
     }
 
     let found = state.pool.find_by_email(&form.email).await?;
+    // On the blocking pool, never on this worker (RR-0029).
     let user = if let Some((user, stored_hash)) = found {
-        password::verify(&form.password, &stored_hash)?.then_some(user)
+        hashing::verify(form.password.clone(), stored_hash)
+            .await?
+            .then_some(user)
     } else {
         // The same Argon2 cost as a wrong password, and the same answer.
-        password::verify(&form.password, dummy_hash()?)?;
+        hashing::verify_dummy(form.password.clone()).await?;
         None
     };
     let Some(user) = user else {
@@ -300,7 +288,7 @@ async fn register(
     }
     // A well-formed token always pays one hash before the transaction, so
     // valid and invalid ones take the same time (RR-0012 sub-answer 7).
-    let password_hash = password::hash(&form.password)?;
+    let password_hash = hashing::hash(form.password.clone()).await?;
     let outcome = InvitationRepo::register(
         &state.pool,
         &token::hash(&form.invite),

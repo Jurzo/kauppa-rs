@@ -4,3 +4,6 @@ use actix_web::{HttpResponse, get};
 pub async fn health() -> HttpResponse {
     HttpResponse::Ok().content_type("text/plain").body("ok")
 }
+
+#[cfg(test)]
+mod tests;
