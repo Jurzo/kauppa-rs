@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "feature.md security trigger: `routes/auth/`; RR-0019 constraint 1 (headers come from one place); MB-0046 autonomy.escalate"
 ---
 ```

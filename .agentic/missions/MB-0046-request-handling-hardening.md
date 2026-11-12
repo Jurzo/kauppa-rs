@@ -49,7 +49,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions: [RR-0029]
 ---
 ```
 
@@ -71,7 +71,7 @@ Found in the audit of 2026-11-10 (findings 7 and 20).
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to security (auth path, cache policy placement)
-   with the platform and owner questions.
+   with the platform and owner questions. Answered by RR-0029.
 2. Tests first for each property; small changes in four modules.
 3. Roll-back into `security.md` if the RR adds a cache rule.
 
