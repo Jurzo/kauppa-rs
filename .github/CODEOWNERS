@@ -1,28 +1,50 @@
 # CODEOWNERS enforces human approval on the governance surface and on
-# escalation-trigger paths. Keep in sync with .agentic/runbooks/feature.md.
+# escalation-trigger paths. It owns every trigger path in
+# scripts/agentic/check_triggers.py and .agentic/runbooks/feature.md, and
+# names only the accounts in check_triggers.py's OWNERS:
+# scripts/agentic/test_check_triggers.sh checks both (RR-0027).
 
 # Governance artifacts: humans only.
-/AGENTS.md                     @juuso-kalliomaki
-/.agentic/mentorship/          @juuso-kalliomaki
-/.agentic/runbooks/            @juuso-kalliomaki
-/.agentic/resolutions/         @juuso-kalliomaki
-/.agentic/schemas/             @juuso-kalliomaki
+/AGENTS.md                     @Jurzo
+/.agentic/mentorship/          @Jurzo
+/.agentic/runbooks/            @Jurzo
+/.agentic/resolutions/         @Jurzo
+/.agentic/schemas/             @Jurzo
 
 # Data: schema is append-only, every change via the migration runbook.
-/migrations/                   @juuso-kalliomaki
+/migrations/                   @Jurzo
 
 # Security: auth, sessions, password hashing.
-/crates/kauppa-core/src/password.rs           @juuso-kalliomaki
-/crates/kauppa-web/src/routes/auth/          @juuso-kalliomaki
-/crates/kauppa-web/src/routes/admin/         @juuso-kalliomaki
-/crates/kauppa-web/src/admin/                @juuso-kalliomaki
-/crates/kauppa-web/src/main.rs                @juuso-kalliomaki
+/crates/kauppa-core/src/password.rs           @Jurzo
+/crates/kauppa-web/src/routes/auth/          @Jurzo
+/crates/kauppa-web/src/routes/admin/         @Jurzo
+/crates/kauppa-web/src/admin/                @Jurzo
+/crates/kauppa-web/src/main.rs                @Jurzo
+
+# Security: shared-list authorization (RR-0002).
+/crates/kauppa-web/src/routes/lists/          @Jurzo
+/crates/kauppa-core/src/repo/sqlite/list.rs   @Jurzo
+
+# Security: cross-site check, headers, settings, language cookie (RR-0027).
+/crates/kauppa-web/src/csrf/                  @Jurzo
+/crates/kauppa-web/src/csp.rs                 @Jurzo
+/crates/kauppa-web/src/config.rs              @Jurzo
+/crates/kauppa-web/src/i18n/request.rs        @Jurzo
+/crates/kauppa-web/src/routes/language.rs     @Jurzo
 
 # Platform: build, deps, lint config, CI, scripts.
-/Cargo.toml                    @juuso-kalliomaki
-/crates/*/Cargo.toml           @juuso-kalliomaki
-/rust-toolchain.toml           @juuso-kalliomaki
-/rustfmt.toml                  @juuso-kalliomaki
-/deny.toml                     @juuso-kalliomaki
-/.github/                      @juuso-kalliomaki
-/scripts/agentic/              @juuso-kalliomaki
+/Cargo.toml                    @Jurzo
+/crates/*/Cargo.toml           @Jurzo
+/rust-toolchain.toml           @Jurzo
+/rustfmt.toml                  @Jurzo
+/deny.toml                     @Jurzo
+/.github/                      @Jurzo
+/scripts/agentic/              @Jurzo
+
+# Platform: deployment (RR-0014, RR-0027). Not deploy/README.md.
+/deploy/Dockerfile             @Jurzo
+/deploy/compose.yaml           @Jurzo
+/deploy/Caddyfile              @Jurzo
+/deploy/docker-entrypoint.sh   @Jurzo
+/deploy/terraform/             @Jurzo
+/deploy/backup/                @Jurzo
