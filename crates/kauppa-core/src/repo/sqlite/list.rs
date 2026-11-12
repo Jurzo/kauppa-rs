@@ -733,11 +733,11 @@ impl ShoppingListRepo for SqlitePool {
             .begin_write(user_id, list_id, ListAccess::Owner)
             .await?;
 
-        // Emails are matched ignoring ASCII case (the owner's 2026-10-29
-        // decision to treat emails case-insensitively), and only a single,
-        // unambiguous account other than the owner gets the grant.
+        // Emails are matched ignoring ASCII case (RR-0028; the owner's
+        // 2026-10-29 decision), and only a single, unambiguous account other
+        // than the owner gets the grant.
         let matches = sqlx::query(
-            r"SELECT id FROM users WHERE lower(email) = lower(?1) AND id <> ?2 LIMIT 2",
+            r"SELECT id FROM users WHERE email = ?1 COLLATE NOCASE AND id <> ?2 LIMIT 2",
         )
         .bind(email)
         .bind(grant.owner_id())
