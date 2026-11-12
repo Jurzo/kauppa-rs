@@ -146,12 +146,14 @@ struct HiddenProductView {
 
 /// A category `<select>` (`products/_category_picker`); `has_selection` is
 /// false when the placeholder ("Choose a category") should be selected
-/// instead. Always required. Also used by the recipe editor's category
-/// prompt (MB-0039).
+/// instead. Required, except in a list item's edit section, where no
+/// choice leaves the category as it is (MB-0052, RR-0033). Also used by the
+/// recipe editor's category prompt (MB-0039).
 #[derive(Debug, Serialize)]
 pub struct Picker {
     options: Vec<PickerOption>,
     has_selection: bool,
+    required: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -176,6 +178,16 @@ impl Picker {
         Self {
             options,
             has_selection,
+            required: true,
+        }
+    }
+
+    /// The same picker, not required: submitting it with the placeholder
+    /// sends no `category_id` (MB-0052).
+    pub fn optional(categories: &[Category], selected: Option<Uuid>) -> Self {
+        Self {
+            required: false,
+            ..Self::new(categories, selected)
         }
     }
 }

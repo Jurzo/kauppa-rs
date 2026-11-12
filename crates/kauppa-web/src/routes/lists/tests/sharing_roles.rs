@@ -149,7 +149,7 @@ async fn edit_role_cannot_administer() {
         for control in [
             format!(r#"action="{base}/favorites""#),
             format!(r#"action="{base}/recipes""#),
-            r#"/category""#.to_owned(),
+            r#"name="category_id""#.to_owned(),
             format!("{base}/sharing"),
             format!("{base}/rename"),
         ] {
@@ -539,7 +539,7 @@ async fn quantity_follows_roles() {
     let viewer = login("viewer@example.com").await;
     let stranger = login("stranger@example.com").await;
     let base = format!("/lists/{}", s.list);
-    let uri = format!("{base}/items/{}/quantity", s.bread);
+    let uri = format!("{base}/items/{}", s.bread);
     let quantity = || async {
         ShoppingListRepo::items(&state.pool, s.owner, s.list, false)
             .await

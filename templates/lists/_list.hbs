@@ -56,21 +56,16 @@
         {{#if ../can_edit}}
         <details class="product-edit">
           <summary>{{#if ../is_owner}}{{#if this.category}}{{t "common.edit"}}{{else}}{{t "lists.choose_category"}}{{/if}}{{else}}{{t "common.edit"}}{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
-          {{#if ../is_owner}}
-          {{#if ../has_categories}}
-            <form method="post" action="/lists/{{../id}}/items/{{this.id}}/category"
-                  hx-post="/lists/{{../id}}/items/{{this.id}}/category" hx-target="#list-{{../id}}" hx-swap="outerHTML">
-              <label>{{t "common.category"}}
-                {{> products/_category_picker this.picker }}
-              </label>
-              <button type="submit" class="button">{{t "common.set"}}</button>
-            </form>
-          {{else}}
+          {{#if ../is_owner}}{{#unless ../has_categories}}
             <p class="muted"><a href="/categories">{{t "lists.create_category_link"}}</a>{{t "lists.create_category_after"}}</p>
-          {{/if}}
-          {{/if}}
-          <form method="post" action="/lists/{{../id}}/items/{{this.id}}/quantity"
-                hx-post="/lists/{{../id}}/items/{{this.id}}/quantity" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+          {{/unless}}{{/if}}
+          <form method="post" action="/lists/{{../id}}/items/{{this.id}}"
+                hx-post="/lists/{{../id}}/items/{{this.id}}" hx-target="#list-{{../id}}" hx-swap="outerHTML">
+            {{#if ../is_owner}}{{#if ../has_categories}}
+            <label>{{t "common.category"}}
+              {{> products/_category_picker this.picker }}
+            </label>
+            {{/if}}{{/if}}
             <label>{{t "common.quantity"}}
               <input name="quantity" type="text" autocomplete="off" placeholder="{{t "common.quantity_placeholder"}}"
                      value="{{this.quantity}}" />

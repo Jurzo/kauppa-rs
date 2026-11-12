@@ -66,10 +66,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub use items::{
-    add_favorite, add_item, add_recipe, assign_category, remove_item, restore_item,
-    set_item_quantity,
-};
+pub use items::{add_favorite, add_item, add_recipe, remove_item, restore_item, update_item};
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};
 
@@ -179,7 +176,7 @@ fn item_row(item: ListItem, categories: &[Category]) -> ItemRow {
         text: item.text,
         quantity: item.quantity.unwrap_or_default(),
         category: item.category.map(|c| c.name),
-        picker: Picker::new(categories, category_id),
+        picker: Picker::optional(categories, category_id),
     }
 }
 
