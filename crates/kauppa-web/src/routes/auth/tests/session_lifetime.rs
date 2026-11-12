@@ -31,12 +31,14 @@ async fn pause(secs: f64) {
 /// deadline though in use, is answered as signed out (`/lists` → 401).
 #[actix_web::test]
 async fn expired_session_is_signed_out() {
-    // Idle deadline: 1 s, no visit for 2.2 s.
+    // Idle deadline: 3 s, no visit for 4.5 s. actix-identity stores whole
+    // seconds and reads the wall clock, which can jump (WSL2 was seen gaining
+    // ~1.1 s in 2.8 s), so every check keeps a margin of a second or more.
     let state = test_state().await;
     make_user(&state, EMAIL).await;
     let app = test_app!(
         state,
-        identity_middleware(Duration::from_secs(1), Duration::from_secs(3600))
+        identity_middleware(Duration::from_secs(3), Duration::from_secs(3600))
     );
     let session = session_cookie(&call_service(&app, login_request(EMAIL).to_request()).await);
     let resp = call_service(
@@ -49,7 +51,7 @@ async fn expired_session_is_signed_out() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK, "signed in at first");
     let session = renewed(&resp).unwrap_or(session);
-    pause(2.2).await;
+    pause(4.5).await;
     let resp = call_service(
         &app,
         TestRequest::get()
@@ -89,19 +91,20 @@ async fn expired_session_is_signed_out() {
 }
 
 /// P2: a session inside both deadlines keeps working, and each visit moves
-/// the idle deadline: two visits 2.5 s apart under a 4 s idle deadline keep
-/// it signed in 5 s after sign-in.
+/// the idle deadline: four visits 2 s apart under a 6 s idle deadline keep
+/// it signed in 8 s after sign-in. Each check has about 3 s of margin for
+/// whole-second timestamps and wall-clock jumps.
 #[actix_web::test]
 async fn active_session_stays_signed_in() {
     let state = test_state().await;
     make_user(&state, EMAIL).await;
     let app = test_app!(
         state,
-        identity_middleware(Duration::from_secs(4), Duration::from_secs(3600))
+        identity_middleware(Duration::from_secs(6), Duration::from_secs(3600))
     );
     let mut session = session_cookie(&call_service(&app, login_request(EMAIL).to_request()).await);
-    for visit in 0..2 {
-        pause(2.5).await;
+    for visit in 0..4 {
+        pause(2.0).await;
         let resp = call_service(
             &app,
             TestRequest::get()
