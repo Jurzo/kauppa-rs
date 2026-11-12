@@ -2,7 +2,9 @@
 """Fail CI if a PR touches an escalation-trigger path without a linked, approved RR.
 
 Trigger paths and their routing are defined in `.agentic/runbooks/feature.md`.
-Keep this script in sync when you add or remove paths there.
+This list, that table and `.github/CODEOWNERS` hold the same paths, and
+CODEOWNERS names only accounts in OWNERS: `test_check_triggers.sh` checks
+both (RR-0027).
 
 The workflow provides PR_BASE (base ref) and PR_BODY (full PR description).
 """
@@ -37,7 +39,32 @@ TRIGGERS = [
     (".agentic/mentorship/", "governance"),
     (".agentic/runbooks/", "governance"),
     (".agentic/resolutions/", "governance"),
+    # Shared-list authorization (RR-0002), in the runbook's table since
+    # MB-0008; enforced here since MB-0043 (RR-0027 constraint 1).
+    ("crates/kauppa-web/src/routes/lists/", "security:shared-lists"),
+    ("crates/kauppa-core/src/repo/sqlite/list.rs", "security:shared-lists"),
+    # Cross-site check, security headers, settings, the language cookie
+    # (RR-0010, RR-0019, RR-0023; RR-0027 sub-answer 2).
+    ("crates/kauppa-web/src/csrf/", "security:csrf"),
+    ("crates/kauppa-web/src/csp.rs", "security:headers"),
+    ("crates/kauppa-web/src/config.rs", "security:config"),
+    ("crates/kauppa-web/src/i18n/request.rs", "security:language-cookie"),
+    ("crates/kauppa-web/src/routes/language.rs", "security:language-cookie"),
+    # Deployment (RR-0014; RR-0027 sub-answer 2). Not deploy/README.md.
+    ("deploy/Dockerfile", "platform:deploy"),
+    ("deploy/compose.yaml", "platform:deploy"),
+    ("deploy/Caddyfile", "platform:deploy"),
+    ("deploy/docker-entrypoint.sh", "platform:deploy"),
+    ("deploy/terraform/", "platform:deploy"),
+    ("deploy/backup/", "platform:deploy"),
 ]
+
+# Every crate's manifest is a trigger too (`crate_cargo_touched`); this is
+# its entry in the runbook table and CODEOWNERS.
+CRATE_MANIFESTS = "crates/*/Cargo.toml"
+
+# The accounts CODEOWNERS may name (RR-0027 sub-answer 1).
+OWNERS = ("@Jurzo",)
 
 RR_RE = re.compile(r"\bRR-(\d{4,})\b")
 
@@ -116,6 +143,18 @@ def approved_rrs() -> set[str]:
     return found
 
 
+def tripped_labels(files: list[str]) -> list[str]:
+    """The trigger labels `files` fire, in TRIGGERS order, without repeats."""
+    tripped: list[str] = []
+    for prefix, label in TRIGGERS:
+        hit = any(f == prefix or f.startswith(prefix) for f in files)
+        if hit and label not in tripped:
+            tripped.append(label)
+    if crate_cargo_touched(files):
+        tripped.append("platform:deps(workspace)")
+    return tripped
+
+
 def main() -> int:
     base = os.environ.get("PR_BASE") or "main"
     body = os.environ.get("PR_BODY") or ""
@@ -125,12 +164,7 @@ def main() -> int:
         print("check_triggers: no changed files detected; skipping.")
         return 0
 
-    tripped: list[str] = []
-    for prefix, label in TRIGGERS:
-        if any(f == prefix or f.startswith(prefix) for f in files):
-            tripped.append(label)
-    if crate_cargo_touched(files):
-        tripped.append("platform:deps(workspace)")
+    tripped = tripped_labels(files)
 
     if not tripped:
         print("check_triggers: no escalation paths touched; OK.")
