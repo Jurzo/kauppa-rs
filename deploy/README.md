@@ -494,7 +494,18 @@ docker compose up -d --force-recreate kauppa
 ```
 
 The container refuses to start with the `.env.example` dev secret or anything
-under 64 bytes (RR-0014 constraint 2).
+under 64 bytes (RR-0014 constraint 2). The app itself also refuses the dev
+secret unless it binds to a loopback address with
+`KAUPPA_COOKIE_SECURE=false` (RR-0026).
+
+### 10.1a Sign-in lifetime
+
+A sign-in ends 30 days after the user's last visit and 90 days after they
+signed in, whichever comes first (MB-0042, RR-0026). The limits are
+constants in the app, not settings. There is no server-side "sign out
+everywhere": rotating the session secret (10.1) is the way to end every
+session at once. The first deploy of an image with these limits signs every
+user out once, because older sessions carry no sign-in time.
 
 ### 10.2 Other credentials
 

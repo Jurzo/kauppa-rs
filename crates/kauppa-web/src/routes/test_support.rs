@@ -160,6 +160,19 @@ pub fn session_cookie<B>(resp: &ServiceResponse<B>) -> Cookie<'static> {
         .into_owned()
 }
 
+/// Whether `resp` leaves the session as it was: it sets no cookie other than
+/// `kauppa_sid`, and doesn't remove that one. Since MB-0042 (RR-0026) the
+/// identity middleware renews the session cookie's last-visit time on every
+/// signed-in request, before any guard or handler runs, so a renewed
+/// `kauppa_sid` is expected; a new identity or a purge is not.
+pub fn session_kept<B>(resp: &ServiceResponse<B>) -> bool {
+    resp.response().cookies().all(|c| {
+        c.name() == "kauppa_sid"
+            && !c.value().is_empty()
+            && c.max_age() != Some(actix_web::cookie::time::Duration::ZERO)
+    })
+}
+
 pub async fn body_string<B: MessageBody>(resp: ServiceResponse<B>) -> String {
     String::from_utf8(test::read_body(resp).await.to_vec()).expect("utf-8 body")
 }
@@ -231,9 +244,17 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
 /// [`bare_test_app!`].
 macro_rules! wired_app {
     ($state:expr) => {
+        crate::routes::test_support::wired_app!(
+            $state,
+            crate::identity_middleware(crate::SESSION_IDLE, crate::SESSION_MAX)
+        )
+    };
+    // The identity middleware with other deadlines: only the durations may
+    // differ from `main.rs`, and only in tests (RR-0026 constraint 2).
+    ($state:expr, $identity:expr) => {
         actix_web::App::new()
             .app_data($state.clone())
-            .wrap(actix_identity::IdentityMiddleware::default())
+            .wrap($identity)
             .wrap(
                 actix_session::SessionMiddleware::builder(
                     actix_session::storage::CookieSessionStore::default(),
@@ -255,12 +276,18 @@ pub(crate) use wired_app;
 /// `init_service` returns an unnameable `impl Service`.
 macro_rules! test_app {
     ($state:expr) => {
-        actix_web::test::init_service(crate::routes::test_support::wired_app!($state).wrap_fn(
-            |mut req, srv| {
+        crate::routes::test_support::test_app!(
+            $state,
+            crate::identity_middleware(crate::SESSION_IDLE, crate::SESSION_MAX)
+        )
+    };
+    ($state:expr, $identity:expr) => {
+        actix_web::test::init_service(
+            crate::routes::test_support::wired_app!($state, $identity).wrap_fn(|mut req, srv| {
                 crate::routes::test_support::add_default_proof(&mut req);
                 actix_web::dev::Service::call(srv, req)
-            },
-        ))
+            }),
+        )
         .await
     };
 }

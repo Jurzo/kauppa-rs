@@ -6,6 +6,7 @@ mod password_length;
 mod rate_limit;
 mod register_requires_invite;
 mod request_log;
+mod session_lifetime;
 
 use actix_web::test::TestRequest;
 use chrono::{DateTime, Utc};

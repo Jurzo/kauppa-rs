@@ -14,7 +14,7 @@ use kauppa_core::repo::{AdminRepo, InvitationRepo};
 
 use super::{ADMIN, MEMBER, admin_requests, make_admin};
 use crate::routes::test_support::{
-    body_string, login_request, make_user, session_cookie, test_app, test_state,
+    body_string, login_request, make_user, session_cookie, session_kept, test_app, test_state,
     test_state_with_url,
 };
 
@@ -119,7 +119,10 @@ async fn admin_only_checked_on_every_request() {
     );
     let resp = call_service(&app, page()).await;
     assert_eq!(resp.status(), StatusCode::OK, "granted: at once");
-    assert_eq!(resp.response().cookies().count(), 0, "session unchanged");
+    // Admin status isn't put in the session: the cookie is kept (only the
+    // visit-time renewal RR-0026 adds), and the next steps reuse the
+    // original cookie.
+    assert!(session_kept(&resp), "session unchanged");
 
     // Taking it away (no repo method does; a later brief) also takes effect
     // at once, with the same cookie.
