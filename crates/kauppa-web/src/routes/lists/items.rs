@@ -1,4 +1,4 @@
-//! Item handlers on the list page (MB-0004, MB-0005, MB-0021, MB-0036): add free text or a favorite from one field, or a recipe; assign a category; edit a quantity; remove and restore.
+//! Item handlers on the list page (MB-0004, MB-0005, MB-0021, MB-0036, MB-0052): add free text or a favorite from one field, or a recipe; save an item's category and quantity with one Save; remove and restore.
 
 use actix_identity::Identity;
 use actix_web::{HttpRequest, HttpResponse, post, web};
@@ -43,17 +43,15 @@ struct RecipeForm {
     multiplier: String,
 }
 
+/// An item's edit section (MB-0052): one form, one Save.
 #[derive(Debug, Deserialize)]
-struct QuantityForm {
+struct ItemEditForm {
+    // Missing and empty both leave the category as it is (RR-0033).
+    #[serde(default)]
+    category_id: Option<String>,
     // Missing and empty both clear the quantity.
     #[serde(default)]
     quantity: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CategoryForm {
-    #[serde(default)]
-    category_id: String,
 }
 
 fn parse_recipe(raw: &str) -> CoreResult<Uuid> {
@@ -189,47 +187,41 @@ pub async fn add_recipe(
     respond_item(&ui, &req, user, list_id, outcome, draft).await
 }
 
-#[post("/{id}/items/{item}/category")]
-pub async fn assign_category(
+/// Save an item's edit section (MB-0052, RR-0033): its quantity (set, or
+/// cleared when blank, MB-0021) and, when one is chosen, its category, in
+/// one transaction. No or a blank `category_id` leaves the category as it
+/// is; a malformed one is the "unknown category" rejection. The repo
+/// decides access: `edit` for the quantity alone, the owner's with a
+/// category (a grantee who sends one gets 403, and nothing changes).
+#[post("/{id}/items/{item}")]
+pub async fn update_item(
     req: HttpRequest,
     state: web::Data<AppState>,
     ui: Ui,
     id: Identity,
     path: web::Path<(Uuid, Uuid)>,
-    form: web::Form<CategoryForm>,
+    form: web::Form<ItemEditForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
-    let outcome = match parse_category(&form.category_id) {
+    let category = match form.category_id.as_deref().map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(raw) => parse_category(raw).map(Some),
+    };
+    let outcome = match category {
         Ok(category) => {
-            ShoppingListRepo::assign_category(&state.pool, user, list_id, item_id, category).await
+            ShoppingListRepo::update_item(
+                &state.pool,
+                user,
+                list_id,
+                item_id,
+                category,
+                Some(&form.quantity),
+            )
+            .await
         }
         Err(e) => Err(e),
     };
-    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
-}
-
-/// Set or clear (blank) an item's quantity (MB-0021). The owner and `edit`
-/// grantees may; the repo's access predicate decides.
-#[post("/{id}/items/{item}/quantity")]
-pub async fn set_item_quantity(
-    req: HttpRequest,
-    state: web::Data<AppState>,
-    ui: Ui,
-    id: Identity,
-    path: web::Path<(Uuid, Uuid)>,
-    form: web::Form<QuantityForm>,
-) -> WebResult<HttpResponse> {
-    let user = current_user(&id)?;
-    let (list_id, item_id) = path.into_inner();
-    let outcome = ShoppingListRepo::set_item_quantity(
-        &state.pool,
-        user,
-        list_id,
-        item_id,
-        Some(&form.quantity),
-    )
-    .await;
     respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 

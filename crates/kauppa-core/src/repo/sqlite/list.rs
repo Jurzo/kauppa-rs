@@ -618,6 +618,60 @@ impl ShoppingListRepo for SqlitePool {
         Ok(item)
     }
 
+    async fn update_item(
+        &self,
+        user_id: Uuid,
+        list_id: Uuid,
+        item_id: Uuid,
+        category_id: Option<Uuid>,
+        quantity: Option<&str>,
+    ) -> CoreResult<ListItem> {
+        // A category comes from the owner's catalog, so sending one needs
+        // the owner, checked before it is looked up (RR-0033).
+        let required = if category_id.is_some() {
+            ListAccess::Owner
+        } else {
+            ListAccess::Edit
+        };
+        let (mut tx, grant) = self.begin_write(user_id, list_id, required).await?;
+        let list = grant.list_id();
+        touch_list(&mut tx, &grant).await?;
+
+        let result = sqlx::query(
+            r"UPDATE list_items SET quantity = ?1
+                WHERE id = ?2 AND list_id = ?3 AND removed_at IS NULL",
+        )
+        .bind(clean_quantity(quantity))
+        .bind(item_id.to_string())
+        .bind(&list)
+        .execute(&mut *tx)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(CoreError::NotFound);
+        }
+        if let Some(category_id) = category_id {
+            // The list owner's category only (RR-0001 constraint 9). An
+            // error drops `tx`, which rolls the quantity back too.
+            let updated = sqlx::query(
+                r"UPDATE list_items SET category_id = ?1
+                    WHERE id = ?3 AND list_id = ?4 AND removed_at IS NULL
+                      AND EXISTS (SELECT 1 FROM categories WHERE id = ?1 AND owner_id = ?2)",
+            )
+            .bind(category_id.to_string())
+            .bind(grant.owner_id())
+            .bind(item_id.to_string())
+            .bind(&list)
+            .execute(&mut *tx)
+            .await?;
+            if updated.rows_affected() == 0 {
+                return Err(unknown_category());
+            }
+        }
+        let item = fetch_item(&mut *tx, &grant, item_id).await?;
+        tx.commit().await?;
+        Ok(item)
+    }
+
     async fn store_view(&self, user_id: Uuid, list_id: Uuid) -> CoreResult<Vec<ListGroup>> {
         // An unknown or foreign list is NotFound, not an empty view.
         let (mut tx, grant) = self.begin_read(user_id, list_id, ListAccess::View).await?;

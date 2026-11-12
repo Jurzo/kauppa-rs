@@ -64,8 +64,11 @@ async fn owner_isolation() {
             vec![("product_id", their_milk.id.to_string())],
         ),
         (
-            format!("{base}/items/{bread}/category"),
-            vec![("category_id", kylma.to_string())],
+            format!("{base}/items/{bread}"),
+            vec![
+                ("category_id", kylma.to_string()),
+                ("quantity", "2".to_owned()),
+            ],
         ),
         (format!("{base}/items/{bread}/remove"), vec![]),
         (format!("{base}/items/{gone}/restore"), vec![]),
@@ -177,8 +180,11 @@ async fn htmx_fragments() {
     assert!(body.contains(&fragment_id) && body.contains("Maito"));
 
     let body = hx_call(post(
-        format!("{base}/items/{candles}/category"),
-        vec![("category_id", koti.to_string())],
+        format!("{base}/items/{candles}"),
+        vec![
+            ("category_id", koti.to_string()),
+            ("quantity", "6".to_owned()),
+        ],
     ))
     .await;
     assert!(body.contains(&fragment_id) && body.contains("· Koti"));
@@ -215,7 +221,7 @@ async fn htmx_fragments() {
             ],
         ),
         (
-            format!("{base}/items/{candles}/category"),
+            format!("{base}/items/{candles}"),
             vec![("category_id", kylma.to_string())],
         ),
         (format!("{base}/items/{candles}/remove"), vec![]),
@@ -251,9 +257,11 @@ async fn htmx_fragments() {
             "unknown product",
         ),
         (
-            format!("{base}/items/{candles}/category"),
-            vec![("category_id", String::new())],
-            "choose a category",
+            // A blank category saves the quantity only (MB-0052,
+            // `item_edit`); a malformed one is rejected.
+            format!("{base}/items/{candles}"),
+            vec![("category_id", "nope".to_owned())],
+            "unknown category",
         ),
     ] {
         let resp = call_service(&app, post(uri.clone(), form).to_request()).await;
@@ -320,7 +328,7 @@ async fn edit_quantity() {
     let shown = |q: &str| format!(r#"<span class="ingredient-quantity">{q}</span>"#);
     let post = |item: uuid::Uuid, form: Vec<(&'static str, String)>| {
         TestRequest::post()
-            .uri(&format!("{base}/items/{item}/quantity"))
+            .uri(&format!("{base}/items/{item}"))
             .cookie(session.clone())
             .set_form(form)
     };
@@ -348,9 +356,9 @@ async fn edit_quantity() {
 
     // Each active item offers the form, prefilled; the removed one doesn't.
     let page = get(base.clone(), false).await;
-    assert!(page.contains(&format!(r#"action="{base}/items/{oats}/quantity""#)));
-    assert!(page.contains(&format!(r#"action="{base}/items/{candles}/quantity""#)));
-    assert!(!page.contains(&format!("{base}/items/{sugar}/quantity")));
+    assert!(page.contains(&format!(r#"action="{base}/items/{oats}""#)));
+    assert!(page.contains(&format!(r#"action="{base}/items/{candles}""#)));
+    assert!(!page.contains(&format!(r#"action="{base}/items/{sugar}""#)));
     assert!(page.contains(r#"value="2 dl""#));
 
     // htmx: the fragment, with the new (trimmed) quantity.

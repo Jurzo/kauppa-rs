@@ -2,6 +2,7 @@
 
 mod add_field;
 mod editor_match;
+mod item_edit;
 mod items;
 mod lifecycle;
 mod recipes;
@@ -148,9 +149,13 @@ fn list_posts(s: &Shared) -> Vec<ListPost> {
             vec![],
         ),
         (
+            // Saving an item with a category is the owner's (RR-0033).
             "category",
-            format!("{base}/items/{bread}/category"),
-            vec![("category_id", s.category.to_string())],
+            format!("{base}/items/{bread}"),
+            vec![
+                ("category_id", s.category.to_string()),
+                ("quantity", "2".to_owned()),
+            ],
         ),
         ("remove", format!("{base}/items/{bread}/remove"), vec![]),
         ("restore", format!("{base}/items/{sugar}/restore"), vec![]),
