@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # test_check_triggers: check_triggers.py keeps a clone's history and reports
-# the same changed files and trigger categories (MB-0033 P1, P2).
+# the same changed files and trigger categories (MB-0033 P1, P2); the trigger
+# paths are the same in check_triggers.py, the feature runbook's table and
+# CODEOWNERS, CODEOWNERS names only allowed owners, and each trigger path
+# trips (MB-0043 P1, P2; RR-0027).
 #
 # Everything runs in throwaway repositories under a temporary directory: a
 # base repo (the clones' `origin`) with `main` and a `feature` branch, a full
@@ -120,6 +123,159 @@ else
     fail "P1 shallow clone: merge base not found"
 fi
 check_files "$SHALLOW" "shallow clone"
+
+# --- MB-0043: one list of trigger paths, real owners (RR-0027) --------------
+# The rule: the set of trigger paths in check_triggers.py (TRIGGERS, plus
+# CRATE_MANIFESTS for crates/*/Cargo.toml) EQUALS the paths in the feature
+# runbook's "Escalation triggers" table, and is a SUBSET of the CODEOWNERS
+# paths: CODEOWNERS may also own non-trigger paths (AGENTS.md, .github/,
+# scripts/agentic/, .agentic/schemas/). Paths compare without a leading "/"
+# and without a trailing "/" or "/**"; `{a,b}` expands. In a table cell, a
+# token that doesn't start with a top-level directory (crates/, deploy/,
+# migrations/, .agentic/, scripts/, .github/) is relative to the cell's
+# first token's `crates/<crate>/src/` directory, if it has one (so
+# `csp.rs` beside `crates/kauppa-web/src/csrf/` is
+# crates/kauppa-web/src/csp.rs). Every CODEOWNERS owner is in OWNERS.
+REPO=$(cd "$SCRIPT_DIR/../.." && pwd)
+
+compare_lists() { # runbook codeowners: prints any drift, exit 1 on drift
+    "$PYTHON" - "$SCRIPT_DIR" "$1" "$2" <<'PY'
+import re
+import sys
+
+sys.path.insert(0, sys.argv[1])
+import check_triggers as ct
+
+ROOTS = ("crates/", "deploy/", "migrations/", ".agentic/", "scripts/", ".github/")
+
+
+def norm(path):
+    path = path.strip().lstrip("/")
+    for suffix in ("/**", "/"):
+        if path.endswith(suffix):
+            path = path[: -len(suffix)]
+    return path
+
+
+def expand(token):
+    m = re.search(r"\{([^}]*)\}", token)
+    if not m:
+        return [token]
+    return [token[: m.start()] + alt + token[m.end():] for alt in m.group(1).split(",")]
+
+
+def table_paths(text):
+    section = text.split("## Escalation triggers", 1)[1].split("\n## ", 1)[0]
+    found = set()
+    for line in section.splitlines():
+        if not line.startswith("| ") or line.startswith(("| Path", "| ---")):
+            continue
+        tokens = re.findall(r"`([^`]+)`", line.split("|")[1])
+        m = re.match(r"crates/[^/]+/src/", tokens[0]) if tokens else None
+        base = m.group(0) if m else ""
+        for token in tokens:
+            for path in expand(token):
+                if base and not path.startswith(ROOTS):
+                    path = base + path
+                found.add(norm(path))
+    return found
+
+
+def codeowners(text):
+    paths, owners = set(), set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        path, *who = line.split()
+        paths.add(norm(path))
+        owners.update(who)
+    return paths, owners
+
+
+triggers = {norm(prefix) for prefix, _ in ct.TRIGGERS} | {ct.CRATE_MANIFESTS}
+table = table_paths(open(sys.argv[2], encoding="utf-8").read())
+owned, owners = codeowners(open(sys.argv[3], encoding="utf-8").read())
+drift = []
+for path in sorted(triggers - table):
+    drift.append(f"in check_triggers.py, not in the runbook table: {path}")
+for path in sorted(table - triggers):
+    drift.append(f"in the runbook table, not in check_triggers.py: {path}")
+for path in sorted(triggers - owned):
+    drift.append(f"a trigger path CODEOWNERS doesn't own: {path}")
+for owner in sorted(owners - set(ct.OWNERS)):
+    drift.append(f"a CODEOWNERS owner not in OWNERS {list(ct.OWNERS)}: {owner}")
+print("\n".join(drift) if drift else f"{len(triggers)} trigger paths agree")
+sys.exit(1 if drift else 0)
+PY
+}
+
+expect_lists() { # want(pass|fail) label runbook codeowners [text the output must name]
+    local out rc=0
+    out=$(compare_lists "$3" "$4" 2>&1) || rc=$?
+    printf '%s\n' "$out" | sed 's/^/    /'
+    if [[ $1 == pass && $rc -eq 0 ]] ||
+        [[ $1 == fail && $rc -eq 1 && ( -z "${5:-}" || "$out" == *"$5"* ) ]]; then
+        pass "MB-0043 $2"
+    else
+        fail "MB-0043 $2 (exit $rc)"
+    fi
+}
+
+RUNBOOK="$REPO/.agentic/runbooks/feature.md"
+OWNERS_FILE="$REPO/.github/CODEOWNERS"
+expect_lists pass "P2 the three lists agree, CODEOWNERS names allowed owners (P1)" \
+    "$RUNBOOK" "$OWNERS_FILE"
+
+# Drift is caught: a table row dropped, a trigger CODEOWNERS no longer owns,
+# an owner that isn't allowed.
+grep -v '^| Deployment:' "$RUNBOOK" >"$TMP/feature.md"
+expect_lists fail "P2 drift: a runbook row removed" "$TMP/feature.md" "$OWNERS_FILE" \
+    "not in the runbook table: deploy/Dockerfile"
+grep -v '^/crates/kauppa-web/src/csp.rs' "$OWNERS_FILE" >"$TMP/CODEOWNERS.nocsp"
+expect_lists fail "P2 drift: CODEOWNERS misses a trigger" "$RUNBOOK" "$TMP/CODEOWNERS.nocsp" \
+    "doesn't own: crates/kauppa-web/src/csp.rs"
+sed 's/@Jurzo/@juuso-kalliomaki/' "$OWNERS_FILE" >"$TMP/CODEOWNERS.wrong"
+expect_lists fail "P1 an owner outside OWNERS" "$RUNBOOK" "$TMP/CODEOWNERS.wrong" \
+    "not in OWNERS"
+
+# Each trigger path trips, and a non-trigger file beside them doesn't.
+labels() { # files... -> the labels check_triggers.py would fire
+    "$PYTHON" -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import check_triggers
+print(" ".join(check_triggers.tripped_labels(sys.argv[2:])))
+' "$SCRIPT_DIR" "$@"
+}
+expect_labels() { # file expected-labels
+    local got
+    got=$(labels "$1")
+    if [[ "$got" == "$2" ]]; then
+        pass "MB-0043 P2 $1 -> ${2:-no trigger}"
+    else
+        fail "MB-0043 P2 $1: expected '${2:-}', got '$got'"
+    fi
+}
+expect_labels crates/kauppa-web/src/csp.rs security:headers
+expect_labels crates/kauppa-web/src/csrf/mod.rs security:csrf
+expect_labels crates/kauppa-web/src/csrf/tests/coverage.rs security:csrf
+expect_labels crates/kauppa-web/src/config.rs security:config
+expect_labels crates/kauppa-web/src/i18n/request.rs security:language-cookie
+expect_labels crates/kauppa-web/src/routes/language.rs security:language-cookie
+expect_labels crates/kauppa-web/src/routes/lists/items.rs security:shared-lists
+expect_labels crates/kauppa-core/src/repo/sqlite/list.rs security:shared-lists
+expect_labels deploy/Dockerfile platform:deploy
+expect_labels deploy/compose.yaml platform:deploy
+expect_labels deploy/Caddyfile platform:deploy
+expect_labels deploy/docker-entrypoint.sh platform:deploy
+expect_labels deploy/terraform/main.tf platform:deploy
+expect_labels deploy/backup/kauppa-backup platform:deploy
+expect_labels crates/kauppa-web/Cargo.toml "platform:deps(workspace)"
+expect_labels deploy/README.md ""
+expect_labels crates/kauppa-web/src/i18n.rs ""
+expect_labels crates/kauppa-core/src/repo/sqlite/list_rows.rs ""
+expect_labels crates/kauppa-web/src/routes/recipes/mod.rs ""
 
 if [[ $failures -gt 0 ]]; then
     echo "test_check_triggers: $failures failure(s)"

@@ -13,6 +13,9 @@ per the [baseline](../../Agentic%20SE%20Implementation%20Baseline.md).
 | `resolutions/` | Resolution Records (`RR-<id>-<slug>.md`). | Human (risk-tier dependent) |
 | `schemas/` | JSON Schemas validated by the `agentic-gate` CI job. | Human |
 
+The owner label `@juuso-kalliomaki` in these artifacts is the GitHub account
+`Jurzo` (RR-0027).
+
 ### Rules
 
 1. **Never edit a Mentorship Pack, Runbook, or Resolution Record without
