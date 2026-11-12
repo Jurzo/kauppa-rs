@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "feature.md security trigger: session middleware configuration in `main.rs`; MB-0042 autonomy.escalate (lifetimes, dev-secret rule → security)"
 ---
 ```
