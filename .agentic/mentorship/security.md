@@ -104,7 +104,10 @@ Any change to:
 - `crates/kauppa-web/src/routes/admin/` and `crates/kauppa-web/src/admin/`
   (admin portal and host bootstrap, RR-0012)
 - Session middleware configuration in `main.rs`
-- Cookie flags in `config.rs`
+- `crates/kauppa-web/src/config.rs`
+- `crates/kauppa-web/src/csrf/`, `csp.rs`, `i18n/request.rs` and
+  `routes/language.rs` (cross-site check, security headers, the language
+  cookie; RR-0027)
 
 requires a Consultation Request Pack (`CRP-*`) and an approved Resolution
 Record (`RR-*`) before merge.
