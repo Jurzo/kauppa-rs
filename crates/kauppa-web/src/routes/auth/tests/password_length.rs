@@ -257,7 +257,8 @@ async fn too_long_rejected() {
     };
     let shape = at("token::is_well_formed(");
     let length = at("check_new_password_length(");
-    let hash = at("password::hash(");
+    // Through the blocking-pool helper since MB-0046 (RR-0029).
+    let hash = at("hashing::hash(");
     let tx = at("InvitationRepo::register(");
     assert!(shape < length, "length after the token shape");
     assert!(length < hash, "length before the hash");

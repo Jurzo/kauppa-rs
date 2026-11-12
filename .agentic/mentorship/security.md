@@ -16,7 +16,8 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
 
 - **Password hashing.** `kauppa_core::password::{hash, verify}` only. Never
   call Argon2 directly from a handler. Changing the algorithm or parameters is
-  a Resolution-Record-required change.
+  a Resolution-Record-required change. Handlers call it through the
+  `routes/auth` helper that runs it on the blocking pool (RR-0029).
 - **Session store.** `actix-session` with `CookieSessionStore`, keyed by a
   >=64-byte secret from `KAUPPA_SESSION_SECRET`. Cookies: `HttpOnly`,
   `SameSite=Lax`, `Secure` behind TLS (`KAUPPA_COOKIE_SECURE=true`).
@@ -72,7 +73,8 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors
   'none'`, plus `X-Content-Type-Options: nosniff`, `Referrer-Policy:
   same-origin`, and HSTS (`max-age=31536000`) when
-  `KAUPPA_COOKIE_SECURE=true`. All of them come from one `csp::headers`
+  `KAUPPA_COOKIE_SECURE=true`. Responses also carry `Cache-Control:
+  no-store` unless they set their own; only `/assets` does (RR-0029). All of them come from one `csp::headers`
   middleware, wrapped outermost in `main.rs` and mirrored in the test app.
   A handler may tighten a header but never weaken it. Templates have no
   inline script, style or event handler, and htmx runs with `allowEval`,

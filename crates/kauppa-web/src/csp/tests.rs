@@ -257,3 +257,96 @@ fn headers_wrap_outermost() {
         }
     }
 }
+
+/// MB-0046 P2 (RR-0029 sub-answer 2, constraint 3): every response that
+/// doesn't set its own `Cache-Control` gets `no-store`, signed in or out;
+/// the register page keeps its own; `/assets` sets its own. In the source,
+/// only `csp.rs` and `routes/assets.rs` name a cache policy other than
+/// `no-store`.
+#[actix_web::test]
+async fn signed_in_pages_are_not_cached() {
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "cache@example.com").await;
+    let list = make_list(&state, user, "Kauppa").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("cache@example.com").to_request()).await);
+
+    let cache = |res: &ServiceResponse<_>| header_value(res, &header::CACHE_CONTROL);
+    for uri in [
+        "/lists".to_owned(),
+        format!("/lists/{list}"),
+        "/recipes".to_owned(),
+        "/favorites".to_owned(),
+        "/categories".to_owned(),
+        "/".to_owned(),
+    ] {
+        let res = call_service(
+            &app,
+            TestRequest::get()
+                .uri(&uri)
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK, "{uri}");
+        assert_eq!(cache(&res).as_deref(), Some("no-store"), "{uri}");
+    }
+    // A fragment, a signed-out page and a 404 too.
+    let res = call_service(
+        &app,
+        TestRequest::post()
+            .uri("/lists")
+            .cookie(session.clone())
+            .insert_header(("HX-Request", "true"))
+            .set_form([("name", "Juhlat")])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(cache(&res).as_deref(), Some("no-store"), "fragment");
+    for uri in ["/auth/login", "/auth/register", "/nope"] {
+        let res = call_service(&app, TestRequest::get().uri(uri).to_request()).await;
+        assert_eq!(cache(&res).as_deref(), Some("no-store"), "{uri}");
+    }
+    // `/assets`, behind the same headers as in `main.rs`, keeps its own
+    // policy (`DefaultHeaders` doesn't replace it); its 404 gets `no-store`.
+    let assets = init_service(App::new().wrap(headers(false)).service(Assets)).await;
+    let res = call_service(
+        &assets,
+        TestRequest::get().uri("/assets/app.css").to_request(),
+    )
+    .await;
+    assert_eq!(cache(&res).as_deref(), Some("no-cache"), "/assets/app.css");
+    let res = call_service(
+        &assets,
+        TestRequest::get()
+            .uri("/assets/vendor/htmx-2.0.11.min.js")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(
+        cache(&res).as_deref(),
+        Some("public, max-age=31536000, immutable"),
+        "vendored htmx"
+    );
+    let res = call_service(
+        &assets,
+        TestRequest::get().uri("/assets/nope.css").to_request(),
+    )
+    .await;
+    assert_eq!(cache(&res).as_deref(), Some("no-store"), "/assets 404");
+
+    for (file, text) in crate::routes::test_support::source_files() {
+        if file == "csp.rs" || file.starts_with("csp/") || file == "routes/assets.rs" {
+            continue;
+        }
+        for line in code(&text) {
+            if line.contains("CACHE_CONTROL") || line.contains("Cache-Control") {
+                assert!(
+                    line.contains("no-store") || !line.contains('"'),
+                    "{file}: `{line}` sets a cache policy other than no-store"
+                );
+            }
+        }
+    }
+}

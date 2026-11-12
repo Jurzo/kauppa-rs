@@ -48,4 +48,6 @@ Version: v1 · Scope: `crates/kauppa-web/src/routes/**` and middleware.
 
 - `.unwrap()` or `.expect(...)` on a request-path value → raise a consult.
 - `web::block(...)` wrapping async code — don't; call the async API directly.
+  CPU-bound sync work (password hashing) does go through `web::block`
+  (RR-0029).
 - `sqlx::query(...)` inside a handler — route it through a repo trait.

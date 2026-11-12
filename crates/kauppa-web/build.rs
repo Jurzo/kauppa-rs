@@ -69,8 +69,8 @@ fn main() -> io::Result<()> {
     let assets = root.join("assets");
     println!("cargo::rerun-if-changed={}", assets.display());
     let mut code =
-        String::from("/// `(path under /assets/, content type, bytes)` for every asset.\n");
-    code.push_str("const ASSETS: &[(&str, &str, &[u8])] = &[\n");
+        String::from("/// `(path under /assets/, content type, ETag, bytes)` for every asset.\n");
+    code.push_str("const ASSETS: &[(&str, &str, &str, &[u8])] = &[\n");
     for (name, path) in files(&assets)? {
         // Hidden files are never served (as before MB-0024).
         if name.split('/').any(|seg| seg.starts_with('.')) {
@@ -82,14 +82,27 @@ fn main() -> io::Result<()> {
                 "assets/{name}: no content type for `.{ext}`; add it to build.rs's CONTENT_TYPES"
             )));
         };
+        let etag = etag(&std::fs::read(&path)?);
         let _ = writeln!(
             code,
-            "    ({name:?}, {content_type:?}, include_bytes!({:?})),",
+            "    ({name:?}, {content_type:?}, {etag:?}, include_bytes!({:?})),",
             path_str(&path)?
         );
     }
     code.push_str("];\n");
     std::fs::write(out.join("assets.rs"), code)
+}
+
+/// A strong `ETag` for `bytes` (MB-0046, RR-0029): a quoted 64-bit FNV-1a
+/// hash, stable across builds and toolchains. It only has to change when
+/// the bytes do; it isn't a security check.
+fn etag(bytes: &[u8]) -> String {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let hash = bytes
+        .iter()
+        .fold(OFFSET, |h, b| (h ^ u64::from(*b)).wrapping_mul(PRIME));
+    format!("\"{hash:016x}-{}\"", bytes.len())
 }
 
 fn env(key: &str) -> io::Result<String> {

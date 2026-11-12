@@ -184,3 +184,86 @@ async fn no_traversal() {
     let res = call_service(&app, get("/healthz").to_request()).await;
     assert_eq!(res.status(), StatusCode::OK);
 }
+
+/// MB-0046 P3 (RR-0029 sub-answer 3): files under `vendor/` (versioned
+/// names) are cacheable for a year and immutable; every other file is
+/// revalidated (`no-cache`) against its `ETag`, which answers 304 when it
+/// matches, so a deploy's CSS reaches browsers on the next load.
+#[actix_web::test]
+async fn cache_headers() {
+    let app = test::init_service(App::new().service(Assets)).await;
+    let value = |res: &actix_web::dev::ServiceResponse, name: &header::HeaderName| {
+        res.headers()
+            .get(name)
+            .map(|v| v.to_str().expect("ascii").to_owned())
+    };
+    for (name, ..) in ASSETS {
+        let uri = format!("/assets/{name}");
+        let res = call_service(&app, get(&uri).to_request()).await;
+        assert_eq!(res.status(), StatusCode::OK, "{uri}");
+        let etag = value(&res, &header::ETAG).unwrap_or_else(|| panic!("{uri}: no ETag"));
+        assert!(
+            etag.len() > 2 && etag.starts_with('"') && etag.ends_with('"'),
+            "{uri}: {etag}"
+        );
+        let expected = if name.starts_with("vendor/") {
+            "public, max-age=31536000, immutable"
+        } else {
+            "no-cache"
+        };
+        assert_eq!(
+            value(&res, &header::CACHE_CONTROL).as_deref(),
+            Some(expected),
+            "{uri}"
+        );
+
+        // A matching validator, alone, in a list, or `*`: 304, no body,
+        // the same validator and cache policy (GET and HEAD alike).
+        for (method, given) in [
+            (Method::GET, etag.clone()),
+            (Method::GET, format!("\"other\", {etag}")),
+            (Method::GET, "*".to_owned()),
+            (Method::HEAD, etag.clone()),
+        ] {
+            let res = call_service(
+                &app,
+                get(&uri)
+                    .method(method.clone())
+                    .insert_header((header::IF_NONE_MATCH, given.as_str()))
+                    .to_request(),
+            )
+            .await;
+            assert_eq!(
+                res.status(),
+                StatusCode::NOT_MODIFIED,
+                "{method} {uri} {given}"
+            );
+            assert_eq!(value(&res, &header::ETAG).as_deref(), Some(etag.as_str()));
+            assert_eq!(
+                value(&res, &header::CACHE_CONTROL).as_deref(),
+                Some(expected)
+            );
+            assert!(read_body(res).await.is_empty(), "{uri}: 304 has a body");
+        }
+        // A stale validator gets the file.
+        let res = call_service(
+            &app,
+            get(&uri)
+                .insert_header((header::IF_NONE_MATCH, "\"stale\""))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::OK, "{uri}: stale validator");
+    }
+
+    // Each file's validator differs from the others' (they differ in bytes).
+    let mut tags: Vec<_> = Vec::new();
+    for (name, ..) in ASSETS {
+        let res = call_service(&app, get(&format!("/assets/{name}")).to_request()).await;
+        tags.push(value(&res, &header::ETAG).expect("etag"));
+    }
+    let count = tags.len();
+    tags.sort();
+    tags.dedup();
+    assert_eq!(tags.len(), count, "ETags collide: {tags:?}");
+}

@@ -3,6 +3,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
 
 mod email_case;
+mod hashing;
 mod password_length;
 mod rate_limit;
 mod register_requires_invite;

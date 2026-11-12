@@ -260,3 +260,6 @@ Status: active once approved. Supersedes nothing. It fills the gap RR-0015
 RR-0015 constraint 5's CSP follow-up. RR-0010 and RR-0011's wiring (the
 `/assets` service first, then the one catch-all scope) is unchanged. The
 new `.wrap` adds no `.service` or `.configure` line.
+
+Amended by RR-0029: `csp::headers` also sets `Cache-Control: no-store` by
+default (constraint 1).
