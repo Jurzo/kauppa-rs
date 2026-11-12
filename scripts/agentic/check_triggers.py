@@ -105,6 +105,13 @@ def changed_files(base: str) -> list[str]:
             merge_base = _merge_base(base)
             if merge_base or fetch.returncode != 0 or not _is_shallow():
                 break
+        # Some git versions (2.56 on GitHub's runners) end the rounds still
+        # shallow with no merge base. Fetch the rest of the history once:
+        # unshallowing a shallow clone is safe (MB-0033 forbids only the
+        # reverse).
+        if merge_base is None and _is_shallow():
+            fetch = _git("fetch", "--no-tags", "--unshallow", "origin", refspec)
+            merge_base = _merge_base(base)
     else:
         fetch = _git("fetch", "--no-tags", "origin", refspec)
         merge_base = _merge_base(base)
