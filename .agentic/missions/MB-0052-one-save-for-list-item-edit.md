@@ -18,7 +18,7 @@ acceptance:
     property: "One Save by the owner stores both fields in one request. A rejected field (an unknown or foreign category, for example) changes neither field, and the list shows the error as rejections do today."
     check: cargo test -p kauppa-web routes::lists::tests::item_edit::saves_category_and_quantity_together
   - id: P3
-    property: "An `edit` grantee's Save changes only the quantity. A category field sent by a grantee never changes the item's category; the RR decides whether it is refused or ignored. A `view` grantee is refused as today."
+    property: "An `edit` grantee's Save changes only the quantity. A category field sent by a grantee never changes the item's category; it is refused with 403 and nothing changes (RR-0033). A `view` grantee is refused as today."
     check: cargo test -p kauppa-web routes::lists::tests::item_edit::grantee_saves_quantity_only
   - id: P4
     property: "Works without htmx (303 back to the list, or the full page with the error) and with htmx (the list fragment swaps), like today's item forms; the cross-site check covers the new or changed route; existing tests change only where they posted to a route this mission changes."
@@ -57,7 +57,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0033]
 ---
 ```
 
@@ -89,7 +89,7 @@ paths since RR-0027, so the change needs an RR.
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to security (route, atomicity, grantee requests)
-   with the owner question on untouched fields.
+   with the owner question on untouched fields. Answered by RR-0033.
 2. Tests first (P1–P3), then the repo method if the RR wants one
    transaction, the route, and the template.
 3. Remove or keep the old routes as the RR decides; update the tests that

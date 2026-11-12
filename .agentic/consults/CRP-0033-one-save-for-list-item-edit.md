@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "feature.md security trigger: shared-list authorization in `crates/kauppa-web/src/routes/lists/` and `crates/kauppa-core/src/repo/sqlite/list.rs` (RR-0002, RR-0027); MB-0052 autonomy.escalate (route, atomicity, grantee category → security; untouched fields → owner)"
 ---
 ```

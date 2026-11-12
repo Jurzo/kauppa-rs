@@ -69,6 +69,9 @@ These carry over from CRP-0002 regardless of wording and bind MB-0008:
    Amended by RR-0024: `edit`'s add also matches typed text against the list
    owner's favorites by `name_key`, silently. Adding by product id and every
    other read of the owner's catalog stay owner-only.
+   Saving a list item (`update_item`, MB-0052, RR-0033) is `edit` for the
+   quantity and owner-only when a category is sent; a grantee's request with
+   a category is refused.
 3. **Enumeration-safe invites.** Sharing to an unknown email returns the same
    generic result as success — never reveal whether an account exists.
 4. **Revocation is immediate.** Deleting a share row removes access on the next
@@ -92,3 +95,4 @@ These carry over from CRP-0002 regardless of wording and bind MB-0008:
 
 Status: active. Superseded by: none.
 Amended by RR-0024 (scope and constraint 2); not superseded.
+Amended by RR-0033 (2026-11-12): constraint 2 names `update_item`.
