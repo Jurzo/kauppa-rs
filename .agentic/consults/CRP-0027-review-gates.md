@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "`.agentic/README.md` rule 1 and CODEOWNERS: edits to Runbooks, Mentorship Packs, `.github/` and `scripts/agentic/`; MB-0043 autonomy.escalate (account, trigger paths, approval rule → owner, security)"
 ---
 ```

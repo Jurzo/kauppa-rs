@@ -47,7 +47,7 @@ runbook: .agentic/runbooks/feature.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0027]
 ---
 ```
 
@@ -74,7 +74,7 @@ Found in the audit of 2026-11-10 (findings 1, 4 and part of 6).
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to the owner (account, approval rule, protection)
-   and security (trigger paths).
+   and security (trigger paths). Answered by RR-0027.
 2. Extend `test_check_triggers.sh` with the list comparison; update the
    lists under the RR.
 3. The owner applies the GitHub settings; record them in the pack.

@@ -94,6 +94,12 @@ first.
 | `Cargo.toml`, `crates/*/Cargo.toml` dependency changes | @juuso-kalliomaki (platform) |
 | `rust-toolchain.toml`, `rustfmt.toml`, `deny.toml` | @juuso-kalliomaki (platform) |
 | `.agentic/{mentorship,runbooks,resolutions}/**` | @juuso-kalliomaki |
+| Cross-site check, security headers, settings and the language cookie in `crates/kauppa-web/src/csrf/`, `csp.rs`, `config.rs`, `i18n/request.rs`, `routes/language.rs` | @juuso-kalliomaki (security) |
+| Deployment: `deploy/Dockerfile`, `deploy/compose.yaml`, `deploy/Caddyfile`, `deploy/docker-entrypoint.sh`, `deploy/terraform/**`, `deploy/backup/**` | @juuso-kalliomaki (platform) |
+
+Merges: the owner approves each merge, in chat or in GitHub. The agent may
+then merge with the owner's account, never past a failing or missing
+required check (RR-0027).
 
 ## Required outputs
 
