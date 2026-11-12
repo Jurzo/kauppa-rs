@@ -5,6 +5,8 @@
 //! select these tests.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+mod email_case;
+
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 

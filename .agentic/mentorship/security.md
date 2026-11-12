@@ -47,6 +47,9 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   invitation in the same transaction (`InvitationRepo::register`; MB-0023,
   RR-0012). Handlers never call `UserRepo::create`. Invitation tokens are 256
   bits from `OsRng`, stored only as hex SHA-256, and never logged.
+- **Email addresses.** Sign-in, registration, sharing and the rate limiter
+  treat addresses that differ only by ASCII case as one, and trim
+  surrounding whitespace (MB-0044, RR-0028).
 - **Password length.** New passwords are 15 to 128 Unicode scalar
   values, counted on the string exactly as submitted (no
   normalization, no trimming), checked on the server by the
