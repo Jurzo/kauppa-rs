@@ -8,8 +8,8 @@
 #       outside ALLOWED_WRITES below (adding an entry needs an RR; RR-0032
 #       constraint 1).
 #   P2  rust-toolchain.toml's channel is one exact version (N.N.N), it equals
-#       the version of the Rust image in deploy/Dockerfile, and no workflow
-#       names another toolchain.
+#       the version of the Rust image in deploy/Dockerfile (its `FROM
+#       rust:<version>…` line), and no workflow names another toolchain.
 #
 # The script works offline: it can't prove that a SHA is the version its
 # comment claims. Dependabot keeps the two in step and a reviewer sees both
@@ -78,10 +78,11 @@ else:
             f'channel "{channel}" is not an exact version (N.N.N)',
         )
 
-# The Rust image: a literal `FROM rust:<version>…` line, or the default of
-# an `ARG RUST_IMAGE=` (the form before RR-0032 sub-answer 3's move).
+# The Rust image: a literal `FROM rust:<version>…` line. An image held in an
+# `ARG` default doesn't count: Dependabot reads only FROM lines (RR-0032
+# sub-answer 3).
 RUST_IMAGE = re.compile(
-    r"^\s*(?:FROM\s+(?:--platform=\S+\s+)?|ARG\s+RUST_IMAGE=)"
+    r"^\s*FROM\s+(?:--platform=\S+\s+)?"
     r"(?:docker\.io/)?(?:library/)?rust:(?P<tag>[\w.-]+)",
     re.IGNORECASE,
 )
@@ -407,15 +408,14 @@ bad "P2 a workflow names another toolchain (RUSTUP_TOOLCHAIN)" \
     "names the toolchain \`beta\`" \
     's|^permissions:$|env:\n  RUSTUP_TOOLCHAIN: beta\npermissions:|' $CI
 
-# The `ARG RUST_IMAGE=` form is read too, and the file's own version may be
-# named in a workflow.
-good_tree "$TMP/arg"
-cat >"$TMP/arg/deploy/Dockerfile" <<'EOF'
-ARG RUST_IMAGE=rust:1.99.1-slim-trixie
-FROM ${RUST_IMAGE} AS builder
-EOF
-sed -i 's|rustup toolchain install$|rustup toolchain install 1.99.1|' "$TMP/arg/$CI"
-expect pass "P2 \`ARG RUST_IMAGE=\` is read; naming the pinned version is allowed" "$TMP/arg"
+bad "P2 the Rust image is held in an ARG, where the update bot can't read it" \
+    "no Rust image found" \
+    's|^FROM rust:\(.*\) AS builder$|ARG RUST_IMAGE=rust:\1\nFROM ${RUST_IMAGE} AS builder|' deploy/Dockerfile
+
+# A workflow may name the file's own version.
+good_tree "$TMP/same"
+sed -i 's|rustup toolchain install$|rustup toolchain install 1.99.1|' "$TMP/same/$CI"
+expect pass "P2 naming the pinned version is allowed" "$TMP/same"
 
 # --- This repository ---------------------------------------------------------
 echo "--- $REPO"
