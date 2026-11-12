@@ -231,9 +231,17 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
 /// [`bare_test_app!`].
 macro_rules! wired_app {
     ($state:expr) => {
+        crate::routes::test_support::wired_app!(
+            $state,
+            crate::identity_middleware(crate::SESSION_IDLE, crate::SESSION_MAX)
+        )
+    };
+    // The identity middleware with other deadlines: only the durations may
+    // differ from `main.rs`, and only in tests (RR-0026 constraint 2).
+    ($state:expr, $identity:expr) => {
         actix_web::App::new()
             .app_data($state.clone())
-            .wrap(actix_identity::IdentityMiddleware::default())
+            .wrap($identity)
             .wrap(
                 actix_session::SessionMiddleware::builder(
                     actix_session::storage::CookieSessionStore::default(),
@@ -255,12 +263,18 @@ pub(crate) use wired_app;
 /// `init_service` returns an unnameable `impl Service`.
 macro_rules! test_app {
     ($state:expr) => {
-        actix_web::test::init_service(crate::routes::test_support::wired_app!($state).wrap_fn(
-            |mut req, srv| {
+        crate::routes::test_support::test_app!(
+            $state,
+            crate::identity_middleware(crate::SESSION_IDLE, crate::SESSION_MAX)
+        )
+    };
+    ($state:expr, $identity:expr) => {
+        actix_web::test::init_service(
+            crate::routes::test_support::wired_app!($state, $identity).wrap_fn(|mut req, srv| {
                 crate::routes::test_support::add_default_proof(&mut req);
                 actix_web::dev::Service::call(srv, req)
-            },
-        ))
+            }),
+        )
         .await
     };
 }

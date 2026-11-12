@@ -7,6 +7,7 @@
 #![allow(clippy::future_not_send)]
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_identity::IdentityMiddleware;
 use actix_session::SessionMiddleware;
@@ -30,6 +31,22 @@ mod templates;
 
 use crate::routes::auth::limiter::{AuthLimiter, SystemClock};
 use crate::state::AppState;
+
+/// A sign-in ends this long after the last visit (MB-0042, RR-0026).
+pub const SESSION_IDLE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// A sign-in ends this long after it was made, however active (RR-0026).
+pub const SESSION_MAX: Duration = Duration::from_secs(90 * 24 * 60 * 60);
+
+/// The identity middleware, with the sign-in deadlines `idle` (since the
+/// last visit) and `max` (since sign-in). `main` passes [`SESSION_IDLE`]
+/// and [`SESSION_MAX`]; the test app passes the same, or shorter durations
+/// in tests only (RR-0026 constraint 2).
+pub fn identity_middleware(idle: Duration, max: Duration) -> IdentityMiddleware {
+    // RED: deadlines not wired yet.
+    let _ = (idle, max);
+    IdentityMiddleware::default()
+}
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
