@@ -6,13 +6,14 @@
 #   docker buildx build --platform linux/amd64 -f deploy/Dockerfile ...   # for the droplet
 #
 # The build context is filtered by the root .dockerignore (an allowlist).
-# Base images are pinned by tag and digest; bump them together.
-
-ARG RUST_IMAGE=rust:1.99.1-slim-trixie@sha256:f6c4a35d21dbb3c89d7a8d056c193e94fc09037f2b58dd858b09c39a47dd02d7
-ARG RUNTIME_IMAGE=debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+# Base images are pinned by tag and digest; bump them together. They are
+# written out in the FROM lines, not in ARG defaults: Dependabot reads only
+# FROM lines (RR-0032 sub-answer 3). The Rust image's version equals
+# rust-toolchain.toml's channel, and the two change in one PR
+# (scripts/agentic/check_workflows.sh; RR-0032 constraint 2).
 
 # --- builder: release build of the kauppa-web binary -----------------------
-FROM ${RUST_IMAGE} AS builder
+FROM rust:1.99.1-slim-trixie@sha256:f6c4a35d21dbb3c89d7a8d056c193e94fc09037f2b58dd858b09c39a47dd02d7 AS builder
 
 WORKDIR /build
 
@@ -35,7 +36,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     && install -D -m 0755 target/release/kauppa-web /out/kauppa-web
 
 # --- runtime: the binary only, as a non-root user ---------------------------
-FROM ${RUNTIME_IMAGE}
+FROM debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
 
 # The container user. The droplet's cloud-init creates the data directory
 # with this uid (deploy/terraform/cloud-init.yaml.tftpl); keep them equal.

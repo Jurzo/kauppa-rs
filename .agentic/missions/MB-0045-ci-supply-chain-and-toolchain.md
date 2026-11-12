@@ -53,7 +53,7 @@ autonomy:
 runbook: .agentic/runbooks/dependency-bump.md@v1
 mentorship:
   - AGENTS.md@v1
-resolutions: []
+resolutions: [RR-0032]
 ---
 ```
 
@@ -81,6 +81,7 @@ Found in the audit of 2026-11-10 (findings 6, 9, 12 and 14).
 
 1. **Clarify (S1).** CRP to platform-owner: toolchain pin, update bot and
    its route through the gates, required-check changes (with MB-0043).
+   Answered by RR-0032.
 2. The check script and workflow edits; the toolchain pin; the bot's
    configuration; the `deny.toml` prune.
 3. Watch the first bot PRs and adjust grouping.

@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,14 +22,23 @@ jobs:
     name: fmt / clippy / test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
-      - name: Install stable toolchain (from rust-toolchain.toml)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # The runner's own rustup reads rust-toolchain.toml: the version and
+      # the components (rustfmt, clippy) are named there and nowhere else
+      # (RR-0032 sub-answer 2). The last lines fail the step if the active
+      # compiler isn't the file's version.
+      - name: Install the toolchain from rust-toolchain.toml
+        run: |
+          rustup --version
+          rustup toolchain install --no-self-update
+          rustup show active-toolchain
+          want=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+          rustc --version | grep -F "rustc $want "
+          cargo fmt --version
+          cargo clippy --version
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
 
       - name: cargo fmt
         run: cargo fmt --all -- --check
@@ -41,11 +53,17 @@ jobs:
       - name: cargo test -p kauppa-core
         run: cargo test -p kauppa-core --all-targets
 
+      # Last: it lists the tests the steps above have just built. Every
+      # `cargo test` check in a Mission Brief must select a test (MB-0019 P4;
+      # RR-0027 sub-answer 3, RR-0032 sub-answer 4).
+      - name: check_brief_tests.sh
+        run: scripts/agentic/check_brief_tests.sh
+
   deny:
     name: cargo deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25  # v2.1.1
         with:
           command: check

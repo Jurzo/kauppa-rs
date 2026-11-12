@@ -1,0 +1,95 @@
+# Dependabot version updates (MB-0045 P3; RR-0032 sub-answer 3).
+#
+# RR-0032 approves four classes of routine update in advance, under its
+# conditions (every required check green, the diff holds only the pins, the
+# owner approves each merge, no auto-merge):
+#   1. lockfile-only cargo updates           -> `cargo` below
+#   2. action SHA updates                    -> `github-actions`
+#   3. image digests and same-line tags      -> `docker`, `docker-compose`
+#   4. rust-toolchain.toml + the Rust image  -> `rust-toolchain` (and the
+#      `rust` image in `docker`); scripts/agentic/check_workflows.sh fails
+#      until one PR holds both.
+# PRs of classes 3 and 4 touch trigger paths: add the line
+# "Standing approval: RR-0032, class N" to the PR body by hand. Anything else
+# (a Cargo.toml change, a new Debian release, a new Alpine minor, Caddy 3)
+# follows .agentic/runbooks/dependency-bump.md.
+#
+# Volume: one grouped PR per entry and `open-pull-requests-limit: 1` on each
+# of the five entries, so at most five open bot PRs. Releases must be 7 days
+# old (`cooldown`); security updates are not held back by it.
+
+version: 2
+
+updates:
+  # Class 1. `lockfile-only`: Cargo.lock inside the ranges Cargo.toml already
+  # allows; never a Cargo.toml change.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    versioning-strategy: lockfile-only
+    open-pull-requests-limit: 1
+    labels: [dependencies]
+    cooldown:
+      default-days: 7
+    groups:
+      cargo:
+        patterns: ["*"]
+
+  # Class 2. Updates the SHA and the `# vX.Y.Z` comment on the same line.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 1
+    labels: [dependencies]
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Class 3 (and the image half of class 4): the FROM lines of
+  # deploy/Dockerfile (Rust, Debian) and deploy/backup/Dockerfile (Alpine).
+  - package-ecosystem: docker
+    directories:
+      - /deploy
+      - /deploy/backup
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    labels: [dependencies]
+    cooldown:
+      default-days: 7
+    groups:
+      images:
+        patterns: ["*"]
+
+  # Class 3: the Caddy image in deploy/compose.yaml. `kauppa-backup:local` is
+  # built on the host, not pulled.
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    labels: [dependencies]
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: kauppa-backup
+    groups:
+      compose-images:
+        patterns: ["*"]
+
+  # Class 4: the channel in rust-toolchain.toml.
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 1
+    labels: [dependencies]
+    cooldown:
+      default-days: 7
