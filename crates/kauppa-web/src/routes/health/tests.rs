@@ -15,7 +15,9 @@ async fn reports_database_state() {
     let res = call_service(&app, TestRequest::get().uri("/healthz").to_request()).await;
     assert_eq!(res.status(), StatusCode::OK);
     assert_eq!(
-        res.headers().get(header::CONTENT_TYPE).map(|v| v.as_bytes()),
+        res.headers()
+            .get(header::CONTENT_TYPE)
+            .map(actix_web::http::header::HeaderValue::as_bytes),
         Some(&b"text/plain"[..])
     );
     assert_eq!(read_body(res).await.as_ref(), b"ok");
@@ -25,7 +27,9 @@ async fn reports_database_state() {
     let res = call_service(&app, TestRequest::get().uri("/healthz").to_request()).await;
     assert_eq!(res.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(
-        res.headers().get(header::CONTENT_TYPE).map(|v| v.as_bytes()),
+        res.headers()
+            .get(header::CONTENT_TYPE)
+            .map(actix_web::http::header::HeaderValue::as_bytes),
         Some(&b"text/plain"[..])
     );
     assert_eq!(read_body(res).await.as_ref(), b"unavailable");

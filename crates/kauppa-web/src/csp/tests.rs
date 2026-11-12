@@ -269,7 +269,8 @@ async fn signed_in_pages_are_not_cached() {
     let app = test_app!(state);
     let user = make_user(&state, "cache@example.com").await;
     let list = make_list(&state, user, "Kauppa").await;
-    let session = session_cookie(&call_service(&app, login_request("cache@example.com").to_request()).await);
+    let session =
+        session_cookie(&call_service(&app, login_request("cache@example.com").to_request()).await);
 
     let cache = |res: &ServiceResponse<_>| header_value(res, &header::CACHE_CONTROL);
     for uri in [
@@ -280,7 +281,14 @@ async fn signed_in_pages_are_not_cached() {
         "/categories".to_owned(),
         "/".to_owned(),
     ] {
-        let res = call_service(&app, TestRequest::get().uri(&uri).cookie(session.clone()).to_request()).await;
+        let res = call_service(
+            &app,
+            TestRequest::get()
+                .uri(&uri)
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await;
         assert_eq!(res.status(), StatusCode::OK, "{uri}");
         assert_eq!(cache(&res).as_deref(), Some("no-store"), "{uri}");
     }
@@ -300,9 +308,33 @@ async fn signed_in_pages_are_not_cached() {
         let res = call_service(&app, TestRequest::get().uri(uri).to_request()).await;
         assert_eq!(cache(&res).as_deref(), Some("no-store"), "{uri}");
     }
-    // `/assets` answers with its own policy.
-    let res = call_service(&app, TestRequest::get().uri("/assets/app.css").to_request()).await;
+    // `/assets`, behind the same headers as in `main.rs`, keeps its own
+    // policy (`DefaultHeaders` doesn't replace it); its 404 gets `no-store`.
+    let assets = init_service(App::new().wrap(headers(false)).service(Assets)).await;
+    let res = call_service(
+        &assets,
+        TestRequest::get().uri("/assets/app.css").to_request(),
+    )
+    .await;
     assert_eq!(cache(&res).as_deref(), Some("no-cache"), "/assets/app.css");
+    let res = call_service(
+        &assets,
+        TestRequest::get()
+            .uri("/assets/vendor/htmx-2.0.11.min.js")
+            .to_request(),
+    )
+    .await;
+    assert_eq!(
+        cache(&res).as_deref(),
+        Some("public, max-age=31536000, immutable"),
+        "vendored htmx"
+    );
+    let res = call_service(
+        &assets,
+        TestRequest::get().uri("/assets/nope.css").to_request(),
+    )
+    .await;
+    assert_eq!(cache(&res).as_deref(), Some("no-store"), "/assets 404");
 
     for (file, text) in crate::routes::test_support::source_files() {
         if file == "csp.rs" || file.starts_with("csp/") || file == "routes/assets.rs" {

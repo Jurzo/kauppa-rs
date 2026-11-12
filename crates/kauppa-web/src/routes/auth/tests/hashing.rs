@@ -46,7 +46,9 @@ async fn runs_off_the_async_workers() {
     let ok = call_service(&app, login_request("hash@example.com").to_request()).await;
     assert_eq!(ok.status(), StatusCode::SEE_OTHER);
     assert_eq!(
-        ok.headers().get(header::LOCATION).map(|v| v.as_bytes()),
+        ok.headers()
+            .get(header::LOCATION)
+            .map(actix_web::http::header::HeaderValue::as_bytes),
         Some(&b"/lists"[..])
     );
     for (email, password) in [

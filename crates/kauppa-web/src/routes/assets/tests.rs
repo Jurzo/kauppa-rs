@@ -211,7 +211,11 @@ async fn cache_headers() {
         } else {
             "no-cache"
         };
-        assert_eq!(value(&res, &header::CACHE_CONTROL).as_deref(), Some(expected), "{uri}");
+        assert_eq!(
+            value(&res, &header::CACHE_CONTROL).as_deref(),
+            Some(expected),
+            "{uri}"
+        );
 
         // A matching validator, alone, in a list, or `*`: 304, no body,
         // the same validator and cache policy (GET and HEAD alike).
@@ -229,9 +233,16 @@ async fn cache_headers() {
                     .to_request(),
             )
             .await;
-            assert_eq!(res.status(), StatusCode::NOT_MODIFIED, "{method} {uri} {given}");
+            assert_eq!(
+                res.status(),
+                StatusCode::NOT_MODIFIED,
+                "{method} {uri} {given}"
+            );
             assert_eq!(value(&res, &header::ETAG).as_deref(), Some(etag.as_str()));
-            assert_eq!(value(&res, &header::CACHE_CONTROL).as_deref(), Some(expected));
+            assert_eq!(
+                value(&res, &header::CACHE_CONTROL).as_deref(),
+                Some(expected)
+            );
             assert!(read_body(res).await.is_empty(), "{uri}: 304 has a body");
         }
         // A stale validator gets the file.

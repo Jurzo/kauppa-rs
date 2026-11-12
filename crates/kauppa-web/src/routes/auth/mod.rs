@@ -97,7 +97,6 @@ struct RegisterView<'a> {
     password_min: usize,
 }
 
-
 #[get("/login")]
 pub async fn login_form(state: web::Data<AppState>, ui: Ui) -> WebResult<HttpResponse> {
     let body = ui.render(&state, "auth/login", &json!({ "error": null }))?;
