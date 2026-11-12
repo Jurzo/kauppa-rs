@@ -160,6 +160,19 @@ pub fn session_cookie<B>(resp: &ServiceResponse<B>) -> Cookie<'static> {
         .into_owned()
 }
 
+/// Whether `resp` leaves the session as it was: it sets no cookie other than
+/// `kauppa_sid`, and doesn't remove that one. Since MB-0042 (RR-0026) the
+/// identity middleware renews the session cookie's last-visit time on every
+/// signed-in request, before any guard or handler runs, so a renewed
+/// `kauppa_sid` is expected; a new identity or a purge is not.
+pub fn session_kept<B>(resp: &ServiceResponse<B>) -> bool {
+    resp.response().cookies().all(|c| {
+        c.name() == "kauppa_sid"
+            && !c.value().is_empty()
+            && c.max_age() != Some(actix_web::cookie::time::Duration::ZERO)
+    })
+}
+
 pub async fn body_string<B: MessageBody>(resp: ServiceResponse<B>) -> String {
     String::from_utf8(test::read_body(resp).await.to_vec()).expect("utf-8 body")
 }

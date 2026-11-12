@@ -114,3 +114,38 @@ async fn active_session_stays_signed_in() {
         session = renewed(&resp).expect("the visit renews the session cookie");
     }
 }
+
+/// RR-0026 constraint 2: `main.rs` and the test app build the identity
+/// middleware through `identity_middleware`, `main.rs` with the deadline
+/// constants, and nothing builds it another way.
+#[test]
+fn identity_wiring_shared() {
+    let main = include_str!("../../../main.rs");
+    let support = include_str!("../../test_support.rs");
+    assert!(
+        main.contains(".wrap(identity_middleware(SESSION_IDLE, SESSION_MAX))"),
+        "main.rs wraps the identity middleware with the deadlines"
+    );
+    assert!(
+        support.contains("crate::identity_middleware(crate::SESSION_IDLE, crate::SESSION_MAX)"),
+        "the test app defaults to the same deadlines"
+    );
+    for (file, text) in crate::routes::test_support::source_files()
+        .into_iter()
+        .chain([("routes/test_support.rs".to_owned(), support.to_owned())])
+    {
+        for (i, line) in text.lines().enumerate() {
+            let code = line.trim_start();
+            if code.starts_with("//") {
+                continue;
+            }
+            let other_build = code.contains("IdentityMiddleware::default()")
+                || (file != "main.rs" && code.contains("IdentityMiddleware::builder()"));
+            assert!(
+                !other_build,
+                "{file}:{}: build the identity middleware with identity_middleware",
+                i + 1
+            );
+        }
+    }
+}

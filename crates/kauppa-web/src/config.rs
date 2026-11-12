@@ -34,9 +34,24 @@ pub const DEV_SESSION_SECRET: &str =
 /// loopback address with `KAUPPA_COOKIE_SECURE=false` (RR-0026 sub-answer
 /// 4). The error never contains a secret.
 pub fn check_session_secret(secret: &str, bind: &str, cookie_secure: bool) -> anyhow::Result<()> {
-    // RED: not enforced yet.
-    let _ = (secret, bind, cookie_secure);
-    Ok(())
+    if secret != DEV_SESSION_SECRET || (is_loopback_bind(bind) && !cookie_secure) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "KAUPPA_SESSION_SECRET is the development secret from .env.example, which only \
+         serves a loopback KAUPPA_BIND with KAUPPA_COOKIE_SECURE=false; set your own \
+         secret, e.g. `openssl rand -base64 64 | tr -d '\\n' | cut -c1-64`"
+    )
+}
+
+/// Whether `bind` (`host:port`) names a loopback address: `localhost`,
+/// `127.0.0.0/8` or `::1`.
+fn is_loopback_bind(bind: &str) -> bool {
+    if let Ok(addr) = bind.parse::<std::net::SocketAddr>() {
+        return addr.ip().is_loopback();
+    }
+    bind.rsplit_once(':')
+        .is_some_and(|(host, _)| host.eq_ignore_ascii_case("localhost"))
 }
 
 /// An empty `KAUPPA_PUBLIC_ORIGIN=` means unset, as in `.env.example`.
@@ -126,8 +141,10 @@ mod tests {
             ("not an address", false),
         ] {
             let err = check_session_secret(DEV_SESSION_SECRET, bind, secure)
-                .expect_err(&format!("{bind} secure={secure}: refused"))
-                .to_string();
+                .err()
+                .map(|e| e.to_string());
+            assert!(err.is_some(), "{bind} secure={secure}: refused");
+            let err = err.unwrap_or_default();
             assert!(err.contains("KAUPPA_SESSION_SECRET"), "{err}");
             assert!(!err.contains(DEV_SESSION_SECRET), "{err}");
         }
