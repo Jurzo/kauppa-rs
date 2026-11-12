@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "feature.md escalation triggers: `rust-toolchain.toml`, `deny.toml`, `deploy/Dockerfile`; dependency-bump.md entry gate (an RR per bump) and a proposed edit to that Runbook; CODEOWNERS: `.github/`, `scripts/agentic/`; RR-0027 does-not-cover (branch-protection changes); MB-0045 autonomy.escalate"
 ---
 ```

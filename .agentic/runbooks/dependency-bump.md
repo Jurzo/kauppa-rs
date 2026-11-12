@@ -16,6 +16,14 @@ a trigger path.
 Automatic `Cargo.lock` churn from an in-scope feature change is NOT a bump;
 record it in the Merge-Readiness Pack and move on.
 
+Routine updates proposed by Dependabot in the four classes RR-0032 approves
+(lockfile-only cargo updates, action SHA updates, image digest or same-line
+tag updates under `deploy/`, and the toolchain-and-Rust-image pair) need no
+brief or consult: they merge under RR-0032's conditions, with the owner's
+approval of each PR, and image or toolchain PRs name 'Standing approval:
+RR-0032, class N' in their body. Any other dependency change follows this
+runbook.
+
 ## Entry gate
 
 1. Mission Brief exists and names the dependency change.
