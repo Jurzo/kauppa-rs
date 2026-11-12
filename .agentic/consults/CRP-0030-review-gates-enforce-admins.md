@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "RR-0027 constraint 4 (`enforce_admins` stays `true`; turning it off needs an RR) conflicts with the owner's choice of 2026-11-12"
 ---
 ```

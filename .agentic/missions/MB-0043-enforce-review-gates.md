@@ -47,7 +47,7 @@ runbook: .agentic/runbooks/feature.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: [RR-0027]
+resolutions: [RR-0027, RR-0030]
 ---
 ```
 

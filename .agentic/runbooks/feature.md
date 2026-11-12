@@ -99,7 +99,9 @@ first.
 
 Merges: the owner approves each merge, in chat or in GitHub. The agent may
 then merge with the owner's account, never past a failing or missing
-required check (RR-0027).
+required check (RR-0027). GitHub doesn't enforce this for the owner's admin
+account (`enforce_admins` is off, RR-0030); neither the owner nor the agent
+merges past a failing or missing required check.
 
 ## Required outputs
 

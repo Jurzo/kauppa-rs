@@ -145,3 +145,7 @@ To be applied in MB-0043's implementation PR:
 
 Status: active once approved. Supersedes nothing; extends the trigger list
 first set in the feature runbook.
+
+Amended by RR-0030 (2026-11-12): `enforce_admins` stays `false` while
+code-owner reviews are required (sub-answer 4); constraint 4 is replaced by
+RR-0030's "No bypass by practice".
