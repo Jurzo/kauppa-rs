@@ -96,6 +96,7 @@ def changed_files(base: str) -> list[str]:
     # even in a single-branch clone.
     refspec = f"+refs/heads/{base}:refs/remotes/origin/{base}"
     merge_base = None
+    fetch = None
     if _is_shallow():
         for _ in range(DEEPEN_ROUNDS):
             fetch = _git(
@@ -105,11 +106,19 @@ def changed_files(base: str) -> list[str]:
             if merge_base or fetch.returncode != 0 or not _is_shallow():
                 break
     else:
-        _git("fetch", "--no-tags", "origin", refspec)
+        fetch = _git("fetch", "--no-tags", "origin", refspec)
         merge_base = _merge_base(base)
 
-    # Fallback: if git merge-base fails, diff against HEAD~1.
+    # Fallback: if git merge-base fails, diff against HEAD~1. Say why, so a
+    # CI log shows what the fetch answered.
     if merge_base is None:
+        print(
+            f"warning: no merge base with origin/{base}; diffing HEAD~1 "
+            f"(shallow={_is_shallow()}, fetch exit "
+            f"{fetch.returncode if fetch else 'n/a'}: "
+            f"{(fetch.stderr.strip() if fetch else '')[:500]!r})",
+            file=sys.stderr,
+        )
         merge_base = "HEAD~1"
 
     out = subprocess.check_output(
