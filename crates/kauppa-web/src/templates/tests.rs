@@ -1,7 +1,8 @@
 //! MB-0024 P1/P2 (templates) and P4; MB-0016 P5; MB-0027 P1/P2 (vendored
 //! htmx); MB-0040 P1/P2 (navigation panel); MB-0029 P1/P2/P5 (boosted
 //! form errors, secret pages); MB-0031 P2 (CSP); MB-0051 P1/P3/P4 (language
-//! selector, bodies in `tests/language.rs`).
+//! selector, bodies in `tests/language.rs`); MB-0053 P1 (select chevron,
+//! body in `tests/select.rs`).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -16,6 +17,7 @@ use super::{Registry, TEMPLATES};
 use crate::i18n::I18n;
 
 mod language;
+mod select;
 
 /// The English registry over the embedded catalogs.
 fn build_registry() -> anyhow::Result<Registry> {
@@ -606,6 +608,12 @@ fn language_dropdown_names() {
 #[test]
 fn language_dropdown_accessible() {
     language::accessible();
+}
+
+/// MB-0053 P1: every `<select>` shows the app's chevron, in `tests/select.rs`.
+#[test]
+fn select_chevron() {
+    select::chevron();
 }
 
 /// MB-0040 P2 (and MB-0031's CSP): the panel is native HTML (`popover`
