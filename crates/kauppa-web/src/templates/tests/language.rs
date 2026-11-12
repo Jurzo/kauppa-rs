@@ -16,6 +16,11 @@ const NAMES: [(Language, &str, &str); 2] = [
     (Language::Fi, "Suomi", "FI"),
 ];
 
+/// `app.css`: the phone media query (MB-0040's 40rem breakpoint), and the
+/// default rule that hides the short name.
+const NARROW: &str = "@media (max-width: 39.9375rem) {";
+const HIDE_SHORT: &str = ".lang-short { display: none; }";
+
 /// The opener's accessible name on a page in each language.
 const OPENER_NAMES: [(Language, &str); 2] = [
     (Language::En, "Language: English"),
@@ -265,15 +270,23 @@ pub fn names() {
         }
     }
 
-    // The stylesheet: one rule set per width, and the full name is only
-    // ever hidden visually.
+    // The stylesheet: the short name is hidden by default (wide screens);
+    // a later rule below MB-0040's 40rem breakpoint shows it and hides the
+    // full name, visually only.
     let css = std::fs::read_to_string(assets().join("app.css")).expect("app.css");
-    let narrow = css
-        .split("@media (max-width: 39.9375rem) {")
-        .skip(1)
-        .find(|block| block.contains(".lang-full"))
-        .expect("a rule for .lang-full below 40rem");
-    assert!(narrow.contains(".lang-short"), "the short name shows");
+    let (narrow_at, _) = css
+        .match_indices(NARROW)
+        .find(|(at, _)| {
+            let block = &css[at + NARROW.len()..];
+            let end = block.find("@media").unwrap_or(block.len());
+            block[..end].contains(".lang-full") && block[..end].contains(".lang-short")
+        })
+        .expect("a rule for the names below 40rem");
+    assert_eq!(css.matches(HIDE_SHORT).count(), 1, "{HIDE_SHORT}");
+    assert!(
+        css.find(HIDE_SHORT).is_some_and(|at| at < narrow_at),
+        "the default (wide) rule comes first, so the narrow one overrides it"
+    );
     for (at, _) in css.match_indices(".lang-full") {
         let rule = &css[at..];
         let rule = &rule[..rule.find('}').expect("closed rule")];
@@ -282,11 +295,6 @@ pub fn names() {
             "the full name is hidden from assistive technology: {rule}"
         );
     }
-    let wide = &css[..css.find("@media (max-width: 39.9375rem) {").expect("media")];
-    assert!(
-        wide.contains(".lang-short { display: none; }"),
-        "the short name is hidden on wide screens"
-    );
 }
 
 /// MB-0051 P4: the control's accessible name says it chooses the language
