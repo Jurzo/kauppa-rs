@@ -37,20 +37,13 @@ workspace-default-features = "allow"
 # Review and prune every quarter; new entries require a Resolution Record
 # citing why the duplicate cannot be collapsed.
 skip = [
-    # Windows cross-platform shims — unavoidable while handlebars/walkdir pull
-    # windows-sys 0.48 and ring/rustls pull 0.52+. We don't ship Windows binaries.
+    # Windows shims: ring pulls windows-sys 0.52; tokio, mio, socket2, rustix
+    # and tempfile pull 0.61. We don't ship Windows binaries.
     { crate = "windows-sys" },
-    { crate = "windows-targets" },
-    { crate = "windows_x86_64_msvc" },
-    { crate = "windows_x86_64_gnu" },
-    { crate = "windows_x86_64_gnullvm" },
-    { crate = "windows_i686_msvc" },
-    { crate = "windows_i686_gnu" },
-    { crate = "windows_aarch64_msvc" },
-    { crate = "windows_aarch64_gnullvm" },
 
-    # proc-macro ecosystem split: syn 1.x still pulled by older proc-macro
-    # crates; syn 2.x is dominant. Collapsing requires upstream bumps.
+    # proc-macro ecosystem split: syn 2.x (sqlx-macros, derive_more-impl,
+    # tracing-attributes) and syn 3.x (serde_derive, actix-web-codegen,
+    # thiserror-impl, tokio-macros). Collapsing requires upstream bumps.
     { crate = "syn" },
 
     # cookie 0.16 (via actix-web) uses base64 0.20; sqlx uses 0.22.
@@ -65,8 +58,9 @@ skip = [
     { crate = "hashbrown" },
     { crate = "foldhash" },
 
-    # getrandom 0.2 (via older crypto crates) coexists with 0.3 (via newer);
-    # same story for rand_core 0.6 vs 0.10 (proptest's chacha20 pulls both).
+    # getrandom 0.2 (ring, rand_core 0.6) coexists with 0.4 (uuid, tempfile,
+    # rand 0.10); same story for rand_core 0.6 (password-hash, rand 0.8) vs
+    # 0.10 (proptest's rand 0.10 and chacha20).
     { crate = "getrandom" },
     { crate = "rand_core" },
 ]
