@@ -47,7 +47,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions: [RR-0026]
 ---
 ```
 
@@ -73,7 +73,7 @@ secret can forge a session for any user id.
 
 1. **Clarify (S1).** CRP to security: lifetimes, mechanism
    (actix-identity deadlines are the smallest change), and the dev-secret
-   rule.
+   rule. Answered by RR-0026.
 2. Tests first, then the middleware configuration in `main.rs` mirrored in
    `wired_app!`, and the startup check in `Settings::load`.
 3. RR roll-back into `security.md`; `.env.example` and `deploy/README.md`
