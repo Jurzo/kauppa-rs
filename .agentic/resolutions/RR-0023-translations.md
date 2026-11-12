@@ -351,3 +351,7 @@ To be applied in MB-0035's (first) implementation PR:
 
 Status: active once signed. Supersedes nothing. The first translation rule
 in `templating.md`.
+
+Amended by RR-0031 (2026-11-12): the switcher is a dropdown in the top bar
+with SVG flags, not footer buttons (sub-answer 7); the rest of sub-answer 7
+stands.

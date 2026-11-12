@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: product
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0051 autonomy.escalate (RR-0023 sub-answer 7 amendment, mechanism, phone placement, flags → owner; flag files → platform-owner; note to security); AGENTS.md do-not-touch: third-party files under `assets/`; feature.md escalation trigger `.agentic/resolutions/**`"
 ---
 ```
