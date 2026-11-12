@@ -443,6 +443,21 @@ docker compose ps; docker compose logs --tail 20 kauppa
 Then §4's checks, and `smoke_compose.sh https://<domain>` from your laptop.
 Expect a few seconds of downtime while the app container is replaced.
 
+**Before the first image with migration `0010_email_nocase.sql`**
+(MB-0044, RR-0028): that migration makes email addresses unique
+regardless of ASCII case, and fails if two accounts already differ only by
+case. Check first; the query prints nothing when it is safe:
+
+```bash
+docker compose exec backup sqlite3 -readonly /data/kauppa.db \
+  "SELECT lower(email), count(*) FROM users GROUP BY 1 HAVING count(*) > 1;"
+```
+
+Resolve any address it prints by hand before updating (the app never
+merges or deletes accounts). If the migration fails anyway, the new image
+won't start and nothing in the database has changed: go back to the
+previous tag as in §8.2's first case.
+
 ### 8.2 Rolling back
 
 - **No migration in between** (the new version added no file under
@@ -459,7 +474,9 @@ Expect a few seconds of downtime while the app container is replaced.
   docker compose up -d
   ```
 
-  Writes made between the update and the rollback are lost. Never edit
+  Writes made between the update and the rollback are lost. This applies
+  to `0010_email_nocase.sql` too: it only adds an index, but the older
+  image refuses a database with a migration it doesn't know. Never edit
   `_sqlx_migrations` by hand unless an RR says so.
 
 ## 9. Testing the deployment locally

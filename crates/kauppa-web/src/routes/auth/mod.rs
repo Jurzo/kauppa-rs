@@ -116,12 +116,14 @@ pub async fn login_submit(
     // Limit before cost (RR-0013 constraint 1): client, then account, before
     // the lookup and Argon2. Unknown and known emails are keyed alike.
     let client = state.limiter.client_key(req.peer_addr(), req.headers());
-    let account = state.limiter.account_key(&form.email);
+    // Trimmed before any use; the lookup ignores ASCII case (RR-0028).
+    let email = form.email.trim();
+    let account = state.limiter.account_key(email);
     if let Some(throttled) = state.limiter.check_login(client, account) {
         return render_login_throttled(&state, &ui, throttled);
     }
 
-    let found = state.pool.find_by_email(&form.email).await?;
+    let found = state.pool.find_by_email(email).await?;
     // On the blocking pool, never on this worker (RR-0029).
     let user = if let Some((user, stored_hash)) = found {
         hashing::verify(form.password.clone(), stored_hash)
@@ -291,7 +293,8 @@ async fn register(
     let outcome = InvitationRepo::register(
         &state.pool,
         &token::hash(&form.invite),
-        &form.email,
+        // Stored trimmed, as typed; unique ignoring ASCII case (RR-0028).
+        form.email.trim(),
         &form.display_name,
         &password_hash,
         Utc::now(),

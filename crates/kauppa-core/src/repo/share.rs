@@ -580,15 +580,14 @@ async fn share_by_email() {
     assert_eq!(again.role, ShareRole::Edit);
     assert_eq!(count().await, 1);
 
-    // Two accounts that differ only by case are ambiguous: nobody is granted.
+    // Two accounts that differ only by case can no longer exist (MB-0044,
+    // RR-0028), so the lookup can't be ambiguous; the query's `LIMIT 2`
+    // guard stays for safety.
     make_user(&pool, "twin@example.com").await;
-    make_user(&pool, "TWIN@example.com").await;
-    assert!(
-        ShoppingListRepo::share(&pool, owner, f.list, "twin@example.com", ShareRole::View)
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(matches!(
+        UserRepo::create(&pool, "TWIN@example.com", "Test User", "argon2-hash").await,
+        Err(CoreError::Conflict(crate::Conflict::EmailTaken))
+    ));
     assert_eq!(count().await, 1);
 }
 

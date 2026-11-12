@@ -18,7 +18,7 @@ impl UserRepo for SqlitePool {
         let row = sqlx::query(
             r"SELECT id, email, display_name, password_hash, created_at
                 FROM users
-                WHERE email = ?1",
+                WHERE email = ?1 COLLATE NOCASE",
         )
         .bind(email)
         .fetch_optional(&self.inner)

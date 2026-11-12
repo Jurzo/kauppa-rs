@@ -38,6 +38,9 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
   + `sqlx::query_as!` + `cargo sqlx prepare` offline cache under `.sqlx/`,
   then add `SQLX_OFFLINE=true` to CI. Track in a Mission Brief.
 - Prefer named columns in SELECT, never `*`.
+- Email addresses are unique and compared ignoring ASCII case: the
+  `users_email_nocase` index, and `COLLATE NOCASE` in every comparison on
+  `users.email` (MB-0044, RR-0028). The address is stored as typed.
 - One `repo/sqlite/<area>.rs` per repo trait implementation (RR-0009).
 - The list tables (`shopping_lists`, `list_items`, `list_shares`) are named
   only in `repo/sqlite/list.rs`, behind the central access predicate;
