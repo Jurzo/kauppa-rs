@@ -14,6 +14,11 @@ The files are byte for byte from the archive `Inter,JetBrains_Mono,Space_Grotesk
 
 Each family is under the SIL Open Font License 1.1; its `OFL.txt` sits beside the font and must travel with it. None of the three declares a Reserved Font Name. See also `THIRD_PARTY_NOTICES.md` at the repository root.
 
-## Not served yet
+## How the app serves them
 
-These are source files. The app serves nothing from this directory, and `assets/` doesn't take font files yet: that needs a content type in `crates/kauppa-web/build.rs`, a place in AGENTS.md's assets rule, and choices about format and size (TTF as it is, or WOFF2, possibly cut down to the characters Finnish and English need; Inter alone is 875 kB here). Those are decided in MB-0054's consult. Until then the font stacks fall through to system fonts.
+These are source files; the app serves nothing from this directory. RR-0034 decided how the fonts reach the browser:
+
+- `build_fonts.py` (added with MB-0054) writes one WOFF2 file per family into `assets/fonts/`: the Latin subset, every weight kept, about 173 kB together instead of 1.2 MB. It uses `fonttools` and `brotli` at pinned versions and is run by hand when a font changes, not by CI or `cargo build`.
+- Subset ranges: `U+0000-00FF, U+0131, U+0152-0153, U+0160-0161, U+017D-017E, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD`, all layout features kept. Text outside them shows in the system font.
+- The outputs are committed and the test suite pins their size and sha256. `assets/app.css` declares them with `@font-face` and `font-display: swap`.
+- Another format, character set or family needs a new Resolution Record.

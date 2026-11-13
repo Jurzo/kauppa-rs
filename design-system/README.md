@@ -60,7 +60,7 @@ The swap of `on-brand` mirrors the icon: the light icon has a black tick, the da
 
 Space Grotesk for headings, Inter for everything people read and tap, JetBrains Mono for quantities and code.
 
-The font files are in `fonts/`, one variable font per family, each with its licence. The app loads nothing from other hosts, so there is no Google Fonts link: the fonts will be served from `/assets/`, through `@font-face` rules in `assets/app.css` with `font-display: swap`. How they are served (format, size) is a decision for MB-0054; until then the stacks in `--font-display`, `--font-sans` and `--font-mono` fall through to the system fonts they end with, and the layout must look right with those.
+The font files are in `fonts/`, one variable font per family, each with its licence. The app loads nothing from other hosts, so there is no Google Fonts link: the fonts will be served from `/assets/`, through `@font-face` rules in `assets/app.css` with `font-display: swap`. The served files are WOFF2 copies cut to the Latin character set, every weight kept (about 173 kB together), written to `assets/fonts/` by `fonts/build_fonts.py` (RR-0034). Text in other scripts, and everything before the fonts arrive, uses the system fonts the stacks in `--font-display`, `--font-sans` and `--font-mono` end with, so the layout must look right with those too.
 
 - List names are `heading-1`, aisle or category headings `heading-2`.
 - Item names are `body` (16px, so iOS doesn't zoom when editing), metadata `body-sm` in `ink-muted`.
