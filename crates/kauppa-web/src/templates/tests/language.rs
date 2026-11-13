@@ -28,7 +28,7 @@ const OPENER_NAMES: [(Language, &str); 2] = [
 ];
 
 /// The layout in `lang`, around a one-line body.
-fn render(lang: Language, signed_in: bool) -> String {
+pub(super) fn render(lang: Language, signed_in: bool) -> String {
     let mut hb =
         super::super::build_registry(&I18n::load().expect("catalogs"), lang).expect("registry");
     hb.register_template_string(

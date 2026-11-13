@@ -12,12 +12,17 @@ use std::path::{Path, PathBuf};
 /// `; charset=utf-8` on `text/css`, `text/plain` and `text/html`). The build
 /// fails on a file whose
 /// extension isn't here. `svg` is MB-0051's (RR-0031 sub-answer 6): the
-/// flag images under `assets/flags/`.
+/// flag images under `assets/flags/`. `ico`, `png` and `woff2` are MB-0054's
+/// (RR-0034 sub-answer 2): the app icons under `assets/icons/` and the fonts
+/// under `assets/fonts/`; `image/x-icon` is what `mime_guess` 2 gives `.ico`.
 const CONTENT_TYPES: &[(&str, &str)] = &[
     ("css", "text/css; charset=utf-8"),
+    ("ico", "image/x-icon"),
     ("js", "text/javascript"),
+    ("png", "image/png"),
     ("svg", "image/svg+xml"),
     ("webmanifest", "application/manifest+json"),
+    ("woff2", "font/woff2"),
 ];
 
 fn main() -> io::Result<()> {

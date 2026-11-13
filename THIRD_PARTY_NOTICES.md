@@ -55,4 +55,11 @@ SOFTWARE.
   - `design-system/fonts/JetBrains_Mono/JetBrainsMono-VariableFont_wght.ttf`,
     licence `design-system/fonts/JetBrains_Mono/OFL.txt`
     (Copyright 2020 The JetBrains Mono Project Authors)
-- Not served by the app yet (MB-0054).
+- Served by the app as modified copies (RR-0034): WOFF2 files cut to a
+  Latin character set, every weight kept, written by
+  `design-system/fonts/build_fonts.py` from the files above. They keep the
+  families' names (none declares a Reserved Font Name) and the same
+  licence:
+  - `assets/fonts/inter.woff2`
+  - `assets/fonts/space-grotesk.woff2`
+  - `assets/fonts/jetbrains-mono.woff2`

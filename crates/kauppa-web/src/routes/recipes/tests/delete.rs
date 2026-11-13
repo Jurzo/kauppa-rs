@@ -72,7 +72,7 @@ async fn delete_recipe() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Pannukakku — kauppa</title>"));
+    assert!(body.contains("<title>Pannukakku — kauppalista.app</title>"));
     assert!(body.contains(&format!(
         r#"method="post" action="/recipes/{pancakes}/delete""#
     )));

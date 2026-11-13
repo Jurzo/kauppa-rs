@@ -3,6 +3,9 @@
 A self-hosted web app for shopping lists and recipes. Mobile- and
 desktop-friendly, built with **Rust + Tokio + actix-web + handlebars + htmx**.
 
+The app calls itself **kauppalista.app**; `kauppa-rs` is the name of this
+repository and its crates.
+
 ## Status
 
 Scaffold. The runnable baseline (health check, login, register, empty list and

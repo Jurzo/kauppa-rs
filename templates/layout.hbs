@@ -3,8 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#1f6feb" />
-    <title>{{page_title}} — kauppa</title>
+    {{!-- MB-0054 (RR-0034): the site's page background per colour scheme
+    (design-system/README.md), so the mobile browser bar matches the page.
+    These are site colours, not the icon's. --}}
+    <meta name="theme-color" content="#fbf8f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)" />
+    <meta name="apple-mobile-web-app-title" content="kauppalista" />
+    <title>{{page_title}} — kauppalista.app</title>
+    {{!-- MB-0054 (RR-0034 sub-answers 2, 3 and 6): the app icons, from
+    design-system/assets/, served from the icons folder under /assets/ only. The SVG follows
+    the OS colour scheme; the ICO is for browsers that don't take SVG. --}}
+    <link rel="icon" href="/assets/icons/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/assets/manifest.webmanifest" />
     <link rel="stylesheet" href="/assets/app.css" />
     <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}' />
@@ -18,7 +29,7 @@
   </head>
   <body hx-boost="true" hx-ext="response-targets">
     <header class="topbar">
-      <a class="brand" href="/">kauppa</a>
+      <a class="brand" href="/"><img class="brand-icon" src="/assets/icons/favicon.svg" alt="" width="28" height="28" />kauppalista.app</a>
       {{!-- MB-0040: on phones the nav is a native popover panel opened by
       the menu button (no JavaScript); on wide screens app.css shows it
       inline and hides both buttons. Boosted navigation swaps <body>, so
