@@ -37,3 +37,22 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Inter 4.001, Space Grotesk 2.000, JetBrains Mono 2.211 (fonts)
+
+- Projects: <https://github.com/rsms/inter>,
+  <https://github.com/floriankarsten/space-grotesk>,
+  <https://github.com/JetBrains/JetBrainsMono>
+- Source: a Google Fonts download supplied by the owner (2026-11-13)
+- Licence: SIL Open Font License 1.1, each family's full text beside it
+- Files, byte for byte (checksums in `design-system/fonts/README.md`):
+  - `design-system/fonts/Inter/Inter-VariableFont_opsz,wght.ttf`,
+    licence `design-system/fonts/Inter/OFL.txt`
+    (Copyright 2020 The Inter Project Authors)
+  - `design-system/fonts/Space_Grotesk/SpaceGrotesk-VariableFont_wght.ttf`,
+    licence `design-system/fonts/Space_Grotesk/OFL.txt`
+    (Copyright 2020 The Space Grotesk Project Authors)
+  - `design-system/fonts/JetBrains_Mono/JetBrainsMono-VariableFont_wght.ttf`,
+    licence `design-system/fonts/JetBrains_Mono/OFL.txt`
+    (Copyright 2020 The JetBrains Mono Project Authors)
+- Not served by the app yet (MB-0054).
