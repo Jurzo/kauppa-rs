@@ -1,5 +1,6 @@
 //! MB-0024 P1–P3: the embedded `/assets/` service. MB-0051 P5 (RR-0031):
-//! the flag images.
+//! the flag images. MB-0054 P5 and P9 (RR-0034): the app icons and the
+//! fonts.
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::fmt::Write as _;
@@ -29,6 +30,88 @@ const SERVED_AS: &[(&str, &str)] = &[
     // charset: `actix-files` 0.7.4 added one only to text types.
     ("flags/en.svg", "image/svg+xml"),
     ("flags/fi.svg", "image/svg+xml"),
+    // MB-0054 (RR-0034 sub-answer 2): the app icons and the fonts.
+    ("icons/apple-touch-icon.png", "image/png"),
+    ("icons/favicon.ico", "image/x-icon"),
+    ("icons/favicon.svg", "image/svg+xml"),
+    ("icons/icon-192.png", "image/png"),
+    ("icons/icon-512.png", "image/png"),
+    ("icons/icon-maskable-512.png", "image/png"),
+    ("fonts/inter.woff2", "font/woff2"),
+    ("fonts/jetbrains-mono.woff2", "font/woff2"),
+    ("fonts/space-grotesk.woff2", "font/woff2"),
+];
+
+/// The app icons (MB-0054 P5, RR-0034 sub-answer 2): byte for byte the
+/// files of the same name in `design-system/assets/`.
+/// `(path under /assets/, bytes, SHA-256 hex)`. File and hash change
+/// together, with the design system's file (RR-0034 constraint 2).
+const ICONS: &[(&str, usize, &str)] = &[
+    (
+        "icons/apple-touch-icon.png",
+        3758,
+        "abbe3c733c5d5b809d391c803dd9f8d0b4138736ad3fa38860a695a54fc3b4d4",
+    ),
+    (
+        "icons/favicon.ico",
+        3628,
+        "05127b260746e53f31bbf8838b89e1dbaa508b7e6b99cc9bc2c723a371b0ddca",
+    ),
+    (
+        "icons/favicon.svg",
+        1022,
+        "cce6532f406b885b8583766dba3b70747b2ef00a947b0f469ae438b76c3cd5c7",
+    ),
+    (
+        "icons/icon-192.png",
+        6047,
+        "33669056e90fe658b9edad757135990e5907792e7ad5f6fe854990ca05c8c348",
+    ),
+    (
+        "icons/icon-512.png",
+        17530,
+        "3d992c9d1b04ea70f8721a4a50b88702e6dc8ac4bed542f9db76d05a79bd7888",
+    ),
+    (
+        "icons/icon-maskable-512.png",
+        9631,
+        "16476c61a533ac218f4ae4c810dc4e47ce0b4e9002636cd8143b9dcf2a6d53a3",
+    ),
+];
+
+/// The one SVG that may carry a `<style>` block (RR-0034 sub-answer 3 and
+/// constraint 4): the favicon, which switches colours with the OS's colour
+/// scheme. It is also the top bar's brand icon.
+const FAVICON: &str = "icons/favicon.svg";
+
+/// The fonts (MB-0054 P9, RR-0034 sub-answer 1): the Latin subset of each
+/// family's variable font, as `design-system/fonts/build_fonts.py` writes
+/// it with fonttools 4.65.0 and brotli 1.2.1 from the TTFs in
+/// `design-system/fonts/`; SIL OFL 1.1 (see `THIRD_PARTY_NOTICES.md`).
+/// `(path under /assets/, bytes, SHA-256 hex, family, weights)`. File,
+/// hash and the script's inputs change together (RR-0034 constraint 3).
+const FONTS: &[(&str, usize, &str, &str, &str)] = &[
+    (
+        "fonts/inter.woff2",
+        105_860,
+        "e6c39f376a193728734a01931ca81e25b0599f6c94d126e9f0ae7f5bdd70bef0",
+        "Inter",
+        "100 900",
+    ),
+    (
+        "fonts/jetbrains-mono.woff2",
+        40852,
+        "bdb88efcd0b3f3290de90d815a641d446e32df3fdc1c9b3afc93839de3606f20",
+        "JetBrains Mono",
+        "100 800",
+    ),
+    (
+        "fonts/space-grotesk.woff2",
+        26644,
+        "acce646b157752956cbb92b860866edd479375a2f778b567fbb0e03f1ee392a0",
+        "Space Grotesk",
+        "300 700",
+    ),
 ];
 
 /// The flag images (MB-0051, RR-0031 sub-answer 5): flag-icons 7.6.0, MIT
@@ -309,31 +392,42 @@ fn is_svg(name: &str) -> bool {
 }
 
 /// MB-0051 P5 (RR-0031 sub-answer 7, constraint 2): the flags are exactly
-/// the pinned flag-icons 7.6.0 files, and they are the only SVG images.
+/// the pinned flag-icons 7.6.0 files, and they are the only SVG images
+/// besides the favicon (MB-0054, pinned in [`ICONS`]).
 #[test]
 fn flag_checksums() {
     let svgs: Vec<&str> = ASSETS
         .iter()
         .map(|(name, ..)| *name)
-        .filter(|name| is_svg(name) || name.starts_with("flags/"))
+        .filter(|name| (is_svg(name) && *name != FAVICON) || name.starts_with("flags/"))
         .collect();
     let pinned: Vec<&str> = FLAGS.iter().map(|(name, ..)| *name).collect();
     assert_eq!(svgs, pinned, "every SVG and every flag is pinned in FLAGS");
 
     for (name, len, sha256) in FLAGS {
-        let (.., bytes) = ASSETS
-            .iter()
-            .find(|(n, ..)| n == name)
-            .unwrap_or_else(|| panic!("{name}: not embedded"));
-        assert_eq!(bytes.len(), *len, "{name}");
-        let hex = Sha256::digest(bytes)
-            .iter()
-            .fold(String::new(), |mut hex, b| {
-                write!(hex, "{b:02x}").expect("write to String");
-                hex
-            });
-        assert_eq!(hex, *sha256, "{name}");
+        assert_pinned(name, *len, sha256);
     }
+}
+
+/// The embedded file `name`: its content type and bytes.
+fn embedded(name: &str) -> (&'static str, &'static [u8]) {
+    ASSETS
+        .iter()
+        .find(|(n, ..)| *n == name)
+        .map_or_else(|| panic!("{name}: not embedded"), |(_, t, _, b)| (*t, *b))
+}
+
+/// The embedded file `name` has `len` bytes and the SHA-256 `sha256`.
+fn assert_pinned(name: &str, len: usize, sha256: &str) {
+    let (_, bytes) = embedded(name);
+    assert_eq!(bytes.len(), len, "{name}");
+    let hex = Sha256::digest(bytes)
+        .iter()
+        .fold(String::new(), |mut hex, b| {
+            write!(hex, "{b:02x}").expect("write to String");
+            hex
+        });
+    assert_eq!(hex, sha256, "{name}");
 }
 
 /// What makes `svg` (lowercased) more than an inert image: script, an
@@ -370,14 +464,15 @@ fn active_content(svg: &str) -> Vec<String> {
 }
 
 /// MB-0051 P5 (RR-0031 sub-answer 7, constraint 1): every SVG under
-/// `assets/` is an inert image, with no `<script>`, `on…` attribute,
+/// `assets/` but the favicon (which `brand_icons` checks, RR-0034
+/// constraint 4) is an inert image, with no `<script>`, `on…` attribute,
 /// `href`, `xlink:href`, `url(`, `<use>`, `<image>`, `<foreignObject>`,
 /// `<style>` or `style=`. The scan finds each of them when planted.
 #[test]
 fn flags_are_inert_images() {
     let mut checked = 0;
     for (name, _, _, bytes) in ASSETS {
-        if !is_svg(name) {
+        if !is_svg(name) || *name == FAVICON {
             continue;
         }
         let svg = std::str::from_utf8(bytes).unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -412,4 +507,257 @@ fn flags_are_inert_images() {
         active_content(r#"<svg id="icon" viewbox="0 0 4 3"><path d="m0 0"/></svg>"#),
         Vec::<String>::new()
     );
+}
+
+/// A file under the workspace root, for comparison only.
+fn workspace_file(path: &str) -> Vec<u8> {
+    let full = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(path);
+    std::fs::read(&full).unwrap_or_else(|e| panic!("{}: {e}", full.display()))
+}
+
+/// A text file under the workspace root.
+fn workspace_text(path: &str) -> String {
+    String::from_utf8(workspace_file(path)).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+/// The opening tags named `name` in `html`.
+fn tags<'a>(html: &'a str, name: &str) -> Vec<&'a str> {
+    let open = format!("<{name} ");
+    html.match_indices(&open)
+        .map(|(start, _)| {
+            let len = html[start..].find('>').expect("closed tag");
+            &html[start..=start + len]
+        })
+        .collect()
+}
+
+/// The value of the attribute `name` in `tag`.
+fn attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let open = format!(" {name}=\"");
+    let start = tag.find(&open)? + open.len();
+    let len = tag[start..].find('"')?;
+    Some(&tag[start..start + len])
+}
+
+/// MB-0054 P5 (RR-0034 sub-answers 2, 3, 6 and 7): the app icons.
+///
+/// 1. The six icons under `assets/icons/` are pinned and equal their files
+///    in `design-system/assets/`; nothing else is in that folder.
+/// 2. The layout links the ICO, the SVG and the Apple touch icon, and the
+///    manifest lists the 192 px, 512 px and maskable icons. Every icon
+///    either names is embedded, under `/assets/icons/`; nothing points at
+///    the site root (no `/favicon.ico` route).
+/// 3. `theme-color` is the page background of each theme, as `app.css`
+///    serves it (`--bg`); the manifest's two colours are the light one.
+/// 4. The favicon's style block only colours shapes: of what the flags'
+///    scan finds, it has `<style>` and nothing else, and no `@import`.
+#[test]
+fn brand_icons() {
+    // 1. Pinned, and the design system's bytes.
+    let in_folder: Vec<&str> = ASSETS
+        .iter()
+        .map(|(name, ..)| *name)
+        .filter(|name| name.starts_with("icons/"))
+        .collect();
+    let pinned: Vec<&str> = ICONS.iter().map(|(name, ..)| *name).collect();
+    assert_eq!(in_folder, pinned, "every icon is pinned in ICONS");
+    for (name, len, sha256) in ICONS {
+        assert_pinned(name, *len, sha256);
+        let file = name.strip_prefix("icons/").expect("under icons/");
+        assert_eq!(
+            embedded(name).1,
+            workspace_file(&format!("design-system/assets/{file}")).as_slice(),
+            "{name} is design-system/assets/{file}"
+        );
+    }
+    assert_eq!(embedded("icons/favicon.ico").0, "image/x-icon");
+    assert_eq!(embedded(FAVICON).0, "image/svg+xml");
+    assert_eq!(embedded("icons/icon-192.png").0, "image/png");
+
+    // 2. The layout's links.
+    let layout = workspace_text("templates/layout.hbs");
+    let links = tags(&layout, "link");
+    let link = |rel: &str| -> Vec<&str> {
+        links
+            .iter()
+            .copied()
+            .filter(|tag| attr(tag, "rel") == Some(rel))
+            .collect()
+    };
+    let icons = link("icon");
+    assert_eq!(icons.len(), 2, "an ICO and an SVG icon: {icons:?}");
+    assert_eq!(attr(icons[0], "href"), Some("/assets/icons/favicon.ico"));
+    assert_eq!(attr(icons[0], "sizes"), Some("48x48"));
+    assert_eq!(attr(icons[1], "href"), Some("/assets/icons/favicon.svg"));
+    assert_eq!(attr(icons[1], "type"), Some("image/svg+xml"));
+    let touch = link("apple-touch-icon");
+    assert_eq!(touch.len(), 1, "one Apple touch icon");
+    assert_eq!(
+        attr(touch[0], "href"),
+        Some("/assets/icons/apple-touch-icon.png")
+    );
+    assert!(
+        !layout.contains("\"/favicon") && !layout.contains("\"/apple-touch-icon"),
+        "no icon at the site root (RR-0034 sub-answer 6)"
+    );
+
+    // The manifest's icons.
+    let manifest_source = workspace_text("assets/manifest.webmanifest");
+    let manifest: serde_json::Value = serde_json::from_str(&manifest_source).expect("manifest");
+    let listed: Vec<(&str, &str, &str, Option<&str>)> = manifest["icons"]
+        .as_array()
+        .expect("icons")
+        .iter()
+        .map(|icon| {
+            (
+                icon["src"].as_str().expect("src"),
+                icon["sizes"].as_str().expect("sizes"),
+                icon["type"].as_str().expect("type"),
+                icon["purpose"].as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("/assets/icons/icon-192.png", "192x192", "image/png", None),
+            ("/assets/icons/icon-512.png", "512x512", "image/png", None),
+            (
+                "/assets/icons/icon-maskable-512.png",
+                "512x512",
+                "image/png",
+                Some("maskable")
+            ),
+        ]
+    );
+
+    // Every icon the layout or the manifest names is served, and every
+    // served icon is named by one of them.
+    let mut named: Vec<&str> = Vec::new();
+    for source in [layout.as_str(), manifest_source.as_str()] {
+        for (at, _) in source.match_indices("/assets/icons/") {
+            let rest = &source[at + "/assets/".len()..];
+            let len = rest.find('"').expect("a quoted path");
+            named.push(&rest[..len]);
+        }
+    }
+    named.sort_unstable();
+    named.dedup();
+    assert_eq!(named, pinned, "the icons the layout and manifest name");
+
+    assert_site_colours(&layout, &manifest);
+    assert_favicon_only_colours_shapes();
+}
+
+/// `brand_icons` 3: `theme-color` and the manifest's colours.
+fn assert_site_colours(layout: &str, manifest: &serde_json::Value) {
+    // 3. Colours: the site's page background, not the icon's.
+    let css = workspace_text("assets/app.css");
+    let backgrounds: Vec<&str> = css
+        .match_indices("--bg:")
+        .map(|(at, _)| {
+            let rest = &css[at + "--bg:".len()..];
+            rest[..rest.find(';').expect("declaration end")].trim()
+        })
+        .collect();
+    let [light, dark, chosen_dark] = backgrounds[..] else {
+        panic!("--bg in the three token rules: {backgrounds:?}");
+    };
+    assert_eq!(dark, chosen_dark);
+    let theme_colors: Vec<(Option<&str>, Option<&str>)> = tags(layout, "meta")
+        .into_iter()
+        .filter(|tag| attr(tag, "name") == Some("theme-color"))
+        .map(|tag| (attr(tag, "content"), attr(tag, "media")))
+        .collect();
+    assert_eq!(
+        theme_colors,
+        [
+            (Some(light), Some("(prefers-color-scheme: light)")),
+            (Some(dark), Some("(prefers-color-scheme: dark)")),
+        ]
+    );
+    assert_eq!((light, dark), ("#fbf8f5", "#121212"));
+    assert_eq!(manifest["theme_color"], light);
+    assert_eq!(manifest["background_color"], light);
+}
+
+/// `brand_icons` 4: the favicon's content test.
+fn assert_favicon_only_colours_shapes() {
+    // 4. The favicon's own content test.
+    let svg = std::str::from_utf8(embedded(FAVICON).1).expect("utf-8");
+    assert!(svg.trim_start().starts_with("<svg "), "not an SVG");
+    let lower = svg.to_ascii_lowercase();
+    assert_eq!(active_content(&lower), ["<style"], "only a style block");
+    assert!(
+        !lower.contains("@import"),
+        "the style block imports nothing"
+    );
+    assert_eq!(lower.matches("<style").count(), 1, "one style block");
+}
+
+/// MB-0054 P9 (RR-0034 sub-answer 1): the fonts.
+///
+/// 1. `assets/fonts/` holds exactly the three pinned WOFF2 files, served
+///    as `font/woff2`.
+/// 2. `app.css` declares each with one `@font-face` rule: its family, its
+///    same-origin file, the weights the variable font holds and
+///    `font-display: swap`. No other rule of `app.css` has a `url(`.
+/// 3. Nothing preloads a font, and the layout names no other host.
+#[test]
+fn brand_fonts() {
+    let in_folder: Vec<&str> = ASSETS
+        .iter()
+        .map(|(name, ..)| *name)
+        .filter(|name| name.starts_with("fonts/"))
+        .collect();
+    let pinned: Vec<&str> = FONTS.iter().map(|(name, ..)| *name).collect();
+    assert_eq!(in_folder, pinned, "every font is pinned in FONTS");
+
+    let css = workspace_text("assets/app.css");
+    let faces: Vec<&str> = css
+        .match_indices("@font-face {")
+        .map(|(at, _)| {
+            let rest = &css[at..];
+            &rest[..rest.find('}').expect("closed rule")]
+        })
+        .collect();
+    assert_eq!(faces.len(), FONTS.len(), "one @font-face per font");
+
+    for (name, len, sha256, family, weights) in FONTS {
+        assert_pinned(name, *len, sha256);
+        let (content_type, bytes) = embedded(name);
+        assert_eq!(content_type, "font/woff2", "{name}");
+        assert!(bytes.starts_with(b"wOF2"), "{name} is WOFF2");
+
+        let src = format!("src: url(\"/assets/{name}\") format(\"woff2\");");
+        let face: Vec<&&str> = faces.iter().filter(|face| face.contains(&src)).collect();
+        assert_eq!(face.len(), 1, "one @font-face with `{src}`");
+        let face = face[0];
+        for declaration in [
+            format!("font-family: \"{family}\";"),
+            format!("font-weight: {weights};"),
+            "font-style: normal;".to_owned(),
+            "font-display: swap;".to_owned(),
+        ] {
+            assert!(face.contains(&declaration), "{name}: {declaration}");
+        }
+        // The family is one the token stacks name.
+        assert!(
+            css.contains(&format!("\"{family}\", ")),
+            "{family} leads a font stack"
+        );
+    }
+    assert_eq!(
+        css.matches("url(").count(),
+        FONTS.len(),
+        "the only url()s of app.css are the fonts'"
+    );
+
+    let layout = workspace_text("templates/layout.hbs");
+    assert!(!layout.contains("preload"), "no font is preloaded");
+    for host in ["http://", "https://", "fonts.googleapis", "fonts.gstatic"] {
+        assert!(!layout.contains(host), "the layout names {host}");
+    }
 }
