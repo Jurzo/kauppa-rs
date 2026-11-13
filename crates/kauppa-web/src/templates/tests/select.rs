@@ -9,7 +9,7 @@
 //! 1. One top-level rule has the bare type selector `select`, so it matches
 //!    every `<select>` whatever its ancestors. It sets `appearance: none`
 //!    (and the `-webkit-` form), two `linear-gradient` layers in
-//!    `background-image` coloured by `var(--muted)` (defined for light and
+//!    `background-image` coloured by `var(--ink-muted)` (defined for light and
 //!    dark), `background-repeat: no-repeat`, a `background-size` of `W H`
 //!    and a `background-position` of `right A center, right B center`, all
 //!    in `rem`. The two layers are the chevron's halves: they touch
@@ -56,13 +56,13 @@ const CHEVRON_PROPERTIES: [&str; 13] = [
 ];
 
 /// `app.css`, as the binary serves it.
-fn app_css() -> String {
+pub(super) fn app_css() -> String {
     std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/app.css"))
         .expect("app.css")
 }
 
 /// `css` without its `/* … */` comments.
-fn without_comments(css: &str) -> String {
+pub(super) fn without_comments(css: &str) -> String {
     let mut out = String::with_capacity(css.len());
     let mut rest = css;
     while let Some(start) = rest.find("/*") {
@@ -75,21 +75,26 @@ fn without_comments(css: &str) -> String {
 }
 
 /// A style rule: its selectors and its `property: value` declarations.
-struct Rule<'a> {
-    selectors: Vec<&'a str>,
-    declarations: Vec<(&'a str, &'a str)>,
+pub(super) struct Rule<'a> {
+    pub(super) selectors: Vec<&'a str>,
+    pub(super) declarations: Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> Rule<'a> {
     /// The value of `property`, declared exactly once.
-    fn value(&self, property: &str) -> &'a str {
+    pub(super) fn value(&self, property: &str) -> &'a str {
         let values: Vec<&str> = self
             .declarations
             .iter()
             .filter(|(name, _)| *name == property)
             .map(|(_, value)| *value)
             .collect();
-        assert_eq!(values.len(), 1, "`select` declares {property} once");
+        assert_eq!(
+            values.len(),
+            1,
+            "`{}` declares {property} once",
+            self.selectors.join(", ")
+        );
         values[0]
     }
 
@@ -110,7 +115,7 @@ impl<'a> Rule<'a> {
 
 /// Every style rule in `css` (comments removed), also those inside `@media`
 /// and `@supports` blocks: the blocks that contain no other block.
-fn rules(css: &str) -> Vec<Rule<'_>> {
+pub(super) fn rules(css: &str) -> Vec<Rule<'_>> {
     let mut out = Vec::new();
     let mut prelude = 0;
     let mut open = None;
@@ -143,7 +148,7 @@ fn rules(css: &str) -> Vec<Rule<'_>> {
 }
 
 /// A length in `rem` (`2.25rem`, `0.5rem`) in thousandths of a `rem`.
-fn millirem(length: &str) -> u32 {
+pub(super) fn millirem(length: &str) -> u32 {
     let number = length
         .strip_suffix("rem")
         .unwrap_or_else(|| panic!("{length} is in rem"));
@@ -227,11 +232,11 @@ pub fn chevron() {
     assert_eq!(image.matches("linear-gradient(").count(), 2, "{image}");
     assert!(!image.contains("url("), "{image}");
     assert_eq!(
-        image.matches("var(--muted)").count() % 2,
+        image.matches("var(--ink-muted)").count() % 2,
         0,
-        "both halves use --muted: {image}"
+        "both halves use --ink-muted: {image}"
     );
-    assert!(image.contains("var(--muted)"), "{image}");
+    assert!(image.contains("var(--ink-muted)"), "{image}");
     assert!(
         !image.contains('#') && !image.contains("rgb"),
         "theme colours only: {image}"
@@ -268,13 +273,14 @@ pub fn chevron() {
         far + width
     );
 
-    // The colour is themed: `--muted` in `:root` and in the dark block.
+    // The colour is themed: `--ink-muted` (MB-0054's token for the old
+    // `--muted`) in `:root` and in the dark block.
     let dark = css
         .split_once("@media (prefers-color-scheme: dark)")
         .expect("dark block");
-    assert!(dark.0.contains("--muted:"), "light --muted");
+    assert!(dark.0.contains("--ink-muted:"), "light --ink-muted");
     let dark_block = dark.1.split_once("}\n}").expect("end of dark block").0;
-    assert!(dark_block.contains("--muted:"), "dark --muted");
+    assert!(dark_block.contains("--ink-muted:"), "dark --ink-muted");
 
     // 3. Nothing else restyles a select's arrow, padding or outline.
     for other in rules.iter().filter(|r| r.styles_a_select()) {

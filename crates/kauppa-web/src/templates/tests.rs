@@ -2,7 +2,8 @@
 //! htmx); MB-0040 P1/P2 (navigation panel); MB-0029 P1/P2/P5 (boosted
 //! form errors, secret pages); MB-0031 P2 (CSP); MB-0051 P1/P3/P4 (language
 //! selector, bodies in `tests/language.rs`); MB-0053 P1 (select chevron,
-//! body in `tests/select.rs`).
+//! body in `tests/select.rs`); MB-0054 P1–P3 (design tokens, contrast and
+//! components, bodies in `tests/design.rs`).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -16,6 +17,7 @@ use kauppa_core::domain::Language;
 use super::{Registry, TEMPLATES};
 use crate::i18n::I18n;
 
+mod design;
 mod language;
 mod select;
 
@@ -614,6 +616,25 @@ fn language_dropdown_accessible() {
 #[test]
 fn select_chevron() {
     select::chevron();
+}
+
+/// MB-0054 P1 (RR-0034): `app.css` holds the design tokens, in
+/// `tests/design.rs`.
+#[test]
+fn design_tokens() {
+    design::tokens();
+}
+
+/// MB-0054 P2: the tokens' contrast, and `on-brand` on brand fills.
+#[test]
+fn design_contrast() {
+    design::contrast();
+}
+
+/// MB-0054 P3: buttons, fields, rows and the one primary button per page.
+#[test]
+fn design_components() {
+    design::components();
 }
 
 /// MB-0040 P2 (and MB-0031's CSP): the panel is native HTML (`popover`
