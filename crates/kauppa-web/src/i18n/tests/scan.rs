@@ -2,7 +2,7 @@
 
 /// Visible text a template may hold as is: the brand, and the page title's
 /// brand suffix.
-const ALLOWED: &[&str] = &["kauppa", "— kauppa"];
+const ALLOWED: &[&str] = &["kauppalista.app", "— kauppalista.app"];
 
 /// Attributes whose value a person reads (or a screen reader speaks).
 const READ_ATTRS: &[&str] = &[

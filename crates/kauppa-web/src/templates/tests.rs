@@ -247,7 +247,10 @@ fn layout_params_do_not_shadow_body() {
             }),
         )
         .expect("render");
-    assert!(body.contains("<title>Page — kauppa</title>"), "{body}");
+    assert!(
+        body.contains("<title>Page — kauppalista.app</title>"),
+        "{body}"
+    );
     assert!(body.contains("Sign out"), "the layout's own signed_in");
     assert!(body.contains("<b>Body|false</b>"), "{body}");
     assert!(body.contains("<i>Item|true</i>"), "{body}");

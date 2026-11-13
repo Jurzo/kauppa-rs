@@ -74,7 +74,10 @@ async fn add_to_list_form() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Puuro — kauppalista.app</title>"),
+        "full page"
+    );
     assert!(body.contains(&format!(r#"action="/recipes/{recipe}/add-to-list""#)));
     assert!(body.contains(r#"<option value="" disabled selected>Choose a list</option>"#));
     let option = |id: Uuid, name: &str| format!(r#"<option value="{id}">{name}</option>"#);
@@ -103,7 +106,10 @@ async fn add_to_list_form() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Leipä — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Leipä — kauppalista.app</title>"),
+        "full page"
+    );
     assert!(body.contains(r#"<a href="/lists">create a list</a>"#));
     assert!(!body.contains(r#"name="list_id""#));
     assert!(!body.contains("Viikonloppu") && !body.contains("Heidän lista"));

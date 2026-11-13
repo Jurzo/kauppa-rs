@@ -92,7 +92,10 @@ async fn ingredient_suggestions() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Puuro — kauppalista.app</title>"),
+        "full page"
+    );
     assert!(body.contains(r#"list="ingredient-suggestions""#), "linked");
     assert_eq!(suggestion_options(&body), ["Kaura", "Maito", "äyräs"]);
     for theirs in ["Salaatti", "Zucchini"] {
@@ -239,7 +242,10 @@ async fn ingredient_match_hint() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Puuro — kauppalista.app</title>"),
+        "full page"
+    );
     for attr in [
         format!(r#"hx-get="/recipes/{recipe}/ingredients/match""#),
         r#"hx-trigger="input changed delay:300ms""#.to_owned(),
@@ -344,7 +350,10 @@ async fn ingredient_match_hint() {
     let resp = call_service(&app, post("kahvi")).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Puuro — kauppalista.app</title>"),
+        "full page"
+    );
     assert!(body.contains(
         r#"aria-live="polite">Kahvi has no category — choose one for it on Favorites first.</p>"#
     ));
@@ -353,7 +362,10 @@ async fn ingredient_match_hint() {
     let resp = call_service(&app, post("Kaurajuoma")).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Puuro — kauppalista.app</title>"),
+        "full page"
+    );
     assert!(body.contains("Kaurajuoma is a new product — choose its category"));
     assert!(body.contains(EMPTY_HINT), "the prompt replaces the hint");
     assert_eq!(ingredient_names(&state, user, recipe).await, ["Maito"]);

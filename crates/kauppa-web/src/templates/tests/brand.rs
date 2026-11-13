@@ -118,9 +118,22 @@ pub fn name() {
     for lang in Language::ALL {
         let path = format!("locales/{}.json", lang.tag());
         let catalog: Value = serde_json::from_str(&workspace_file(&path)).expect("catalog");
-        for (key, value) in catalog.as_object().expect("a flat catalog") {
-            let value = value.as_str().unwrap_or_else(|| panic!("{path}: {key}"));
-            assert!(!has_old_name(value), "{path}: {key}: {value}");
+        for (key, value) in catalog.as_object().expect("a catalog object") {
+            // A string, or an object of plural forms.
+            let forms: Vec<&str> = value.as_str().map_or_else(
+                || {
+                    value
+                        .as_object()
+                        .unwrap_or_else(|| panic!("{path}: {key}"))
+                        .values()
+                        .map(|form| form.as_str().unwrap_or_else(|| panic!("{path}: {key}")))
+                        .collect()
+                },
+                |text| vec![text],
+            );
+            for form in forms {
+                assert!(!has_old_name(form), "{path}: {key}: {form}");
+            }
         }
     }
     for (key, value) in manifest.as_object().expect("manifest object") {

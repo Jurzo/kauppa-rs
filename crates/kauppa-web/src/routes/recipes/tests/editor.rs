@@ -434,7 +434,10 @@ async fn new_product_asks_category() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Puuro — kauppa</title>"), "full page");
+    assert!(
+        body.contains("<title>Puuro — kauppalista.app</title>"),
+        "full page"
+    );
     assert!(body.contains("Kaura is a new product — choose its category"));
     assert!(body.contains(PICKER), "a required picker");
     assert!(body.contains(r#"value="Kaura""#) && body.contains(r#"value="2 dl""#));

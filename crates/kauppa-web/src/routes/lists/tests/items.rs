@@ -405,7 +405,10 @@ async fn edit_quantity() {
             let body = get(uri.clone(), htmx).await;
             assert_eq!(body.contains("<html"), !htmx, "{uri} htmx={htmx}");
             if !htmx {
-                assert!(body.contains("<title>Viikko — kauppa</title>"), "{uri}");
+                assert!(
+                    body.contains("<title>Viikko — kauppalista.app</title>"),
+                    "{uri}"
+                );
             }
             assert!(body.contains(&shown("3 dl")), "{uri} htmx={htmx}");
             assert!(body.contains(&shown("2 kpl")), "{uri} htmx={htmx}");
