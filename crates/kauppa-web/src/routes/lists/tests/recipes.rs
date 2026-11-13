@@ -284,7 +284,7 @@ async fn recipe_picker_shows_titles() {
         let body = body_string(resp).await;
         assert_eq!(body.contains("<html"), !htmx, "htmx={htmx}");
         if !htmx {
-            assert!(body.contains("<title>Viikonloppu — kauppa</title>"));
+            assert!(body.contains("<title>Viikonloppu — kauppalista.app</title>"));
         }
         for option in &options {
             assert!(body.contains(option.as_str()), "htmx={htmx}: {option}");

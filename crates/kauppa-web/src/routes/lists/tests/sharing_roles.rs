@@ -39,7 +39,10 @@ async fn view_role_is_read_only() {
             let body = body_string(resp).await;
             assert_eq!(body.contains("<html"), !htmx, "{uri} htmx={htmx}");
             if !htmx {
-                assert!(body.contains("<title>Kauppa — kauppa</title>"), "{uri}");
+                assert!(
+                    body.contains("<title>Kauppa — kauppalista.app</title>"),
+                    "{uri}"
+                );
             }
             assert!(body.contains(marker), "{uri} htmx={htmx}: shows the items");
             // No form posts to the list (the layout's sign-out form is the
@@ -325,7 +328,7 @@ async fn owner_only_administration() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Kauppa — kauppa</title>"));
+    assert!(body.contains("<title>Kauppa — kauppalista.app</title>"));
     assert!(body.contains("People with access (2)"));
     assert!(body.contains("viewer@example.com"));
     assert!(body.contains(&format!("{base}/shares/{}/revoke", s.editor_share)));

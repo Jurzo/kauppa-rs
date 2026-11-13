@@ -562,7 +562,7 @@ fn templates_have_no_literal_text() {
     );
     assert_eq!(
         scan::literal_text(
-            r#"{{!-- a comment --}}<h1>kauppa</h1><p>{{t "a.b"}}</p><input placeholder="{{t "c.d"}}" />↑ ·"#
+            r#"{{!-- a comment --}}<h1>kauppalista.app</h1><p>{{t "a.b"}}</p><input placeholder="{{t "c.d"}}" />↑ ·"#
         ),
         Vec::<String>::new()
     );

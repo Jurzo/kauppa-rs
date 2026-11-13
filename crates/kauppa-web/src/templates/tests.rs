@@ -3,7 +3,8 @@
 //! form errors, secret pages); MB-0031 P2 (CSP); MB-0051 P1/P3/P4 (language
 //! selector, bodies in `tests/language.rs`); MB-0053 P1 (select chevron,
 //! body in `tests/select.rs`); MB-0054 P1–P3 (design tokens, contrast and
-//! components, bodies in `tests/design.rs`).
+//! components, bodies in `tests/design.rs`) and P4 (the name, body in
+//! `tests/brand.rs`).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -17,6 +18,7 @@ use kauppa_core::domain::Language;
 use super::{Registry, TEMPLATES};
 use crate::i18n::I18n;
 
+mod brand;
 mod design;
 mod language;
 mod select;
@@ -245,7 +247,10 @@ fn layout_params_do_not_shadow_body() {
             }),
         )
         .expect("render");
-    assert!(body.contains("<title>Page — kauppa</title>"), "{body}");
+    assert!(
+        body.contains("<title>Page — kauppalista.app</title>"),
+        "{body}"
+    );
     assert!(body.contains("Sign out"), "the layout's own signed_in");
     assert!(body.contains("<b>Body|false</b>"), "{body}");
     assert!(body.contains("<i>Item|true</i>"), "{body}");
@@ -616,6 +621,13 @@ fn language_dropdown_accessible() {
 #[test]
 fn select_chevron() {
     select::chevron();
+}
+
+/// MB-0054 P4 (RR-0034 sub-answer 5): the app is called `kauppalista.app`,
+/// in `tests/brand.rs`.
+#[test]
+fn brand_name() {
+    brand::name();
 }
 
 /// MB-0054 P1 (RR-0034): `app.css` holds the design tokens, in

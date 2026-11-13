@@ -36,7 +36,7 @@ async fn index_shows_titles() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Recipes — kauppa</title>"));
+    assert!(body.contains("<title>Recipes — kauppalista.app</title>"));
     for (id, title) in [(pancakes, "Pannukakku"), (porridge, "Puuro")] {
         let card = format!(r#"<a href="/recipes/{id}">{title}</a>"#);
         assert!(body.contains(&card), "{card}");
@@ -73,7 +73,7 @@ async fn new_recipe_draft() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Recipes — kauppa</title>"));
+    assert!(body.contains("<title>Recipes — kauppalista.app</title>"));
     assert!(body.contains(&input("")), "empty on a normal load");
 
     let resp = call_service(
@@ -87,7 +87,7 @@ async fn new_recipe_draft() {
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Recipes — kauppa</title>"));
+    assert!(body.contains("<title>Recipes — kauppalista.app</title>"));
     assert!(body.contains("must not be empty"));
     assert!(body.contains(&input(" ")), "keeps the typed value");
 }
@@ -121,7 +121,7 @@ async fn details_draft_survives_rejection() {
     .await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = body_string(resp).await;
-    assert!(body.contains("<title>Pannukakku — kauppa</title>"));
+    assert!(body.contains("<title>Pannukakku — kauppalista.app</title>"));
     assert!(body.contains("<h1>Pannukakku</h1>"));
     assert!(
         body.contains(r#"<input name="title" type="text" required value="Uusi nimi" />"#),
