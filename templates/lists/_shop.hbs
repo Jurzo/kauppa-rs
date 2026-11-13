@@ -17,7 +17,7 @@
               <button type="submit" class="link shop-toggle" name="checked"
                       value="{{#if this.checked}}false{{else}}true{{/if}}" aria-pressed="{{this.checked}}"
                       aria-label="{{#if this.checked}}{{t "shop.mark_not_found" item=this.text}}{{else}}{{t "shop.mark_found" item=this.text}}{{/if}}">
-                <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
+                <span class="shop-box" aria-hidden="true"></span>
                 <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               </button>
             </form>
@@ -27,7 +27,7 @@
             </form>
             {{else}}
             <span class="shop-toggle">
-              <span aria-hidden="true">{{#if this.checked}}☑{{else}}☐{{/if}}</span>
+              <span class="shop-box" aria-hidden="true"></span>
               <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               {{#if this.checked}}<span class="visually-hidden">{{t "shop.found_hidden"}}</span>{{/if}}
             </span>

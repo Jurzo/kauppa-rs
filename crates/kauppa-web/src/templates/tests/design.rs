@@ -60,7 +60,7 @@ const MIN_ROW: u32 = 3000;
 /// `(text, background, least ratio)`: the design system's contrast table
 /// (`design-system/README.md`), then the other pairs `app.css` writes text
 /// in. 4.5:1 for text, 3:1 for the edge of a control.
-const CONTRAST: [(&str, &str, f64); 16] = [
+const CONTRAST: [(&str, &str, f64); 17] = [
     ("ink", "surface", 4.5),
     ("ink-muted", "surface", 4.5),
     ("ink-subtle", "surface", 4.5),
@@ -76,6 +76,7 @@ const CONTRAST: [(&str, &str, f64); 16] = [
     ("on-brand", "brand-hover", 4.5),
     ("ink", "brand-subtle", 4.5),
     ("ink", "surface-raised", 4.5),
+    ("danger", "danger-subtle", 4.5),
     ("border-strong", "bg", 3.0),
 ];
 
@@ -425,7 +426,8 @@ fn primary_buttons(name: &str, source: &str) -> usize {
                 continue;
             }
             let end = rest.find("}}").expect("closed tag");
-            let tag = rest[2..end].trim();
+            // `~` is handlebars' whitespace control: `{{~#if x~}}`.
+            let tag = rest[2..end].trim().trim_matches('~').trim();
             rest = &rest[end + 2..];
             if let Some(partial) = tag.strip_prefix('>') {
                 let partial = partial.split_whitespace().next().expect("partial name");

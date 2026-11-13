@@ -4,7 +4,7 @@
     <h1>{{list.name}}</h1>
     <a href="/lists">{{t "lists.all"}}</a>
     {{#if list.is_owner}}<a href="/lists/{{list.id}}/sharing">{{t "sharing.share"}}</a>{{/if}}
-    <a class="button primary" href="/lists/{{list.id}}/shop">{{t "lists.go_shopping"}}</a>
+    <a class="button" href="/lists/{{list.id}}/shop">{{t "lists.go_shopping"}}</a>
   </header>
 
   {{> lists/_list list }}
