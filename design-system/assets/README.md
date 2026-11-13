@@ -17,29 +17,29 @@ The 16 to 48 px files use a simplified mark (one ticked row, thicker strokes). T
 
 ## `<head>` tags
 
-The app serves static files only under `/assets/`, so the icons MB-0054 ships are copied there and linked from `templates/layout.hbs`:
+The app serves static files only under `/assets/`. Six of these files are copied, byte for byte, to `assets/icons/` (`favicon.svg`, `favicon.ico`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`, `icon-maskable-512.png`) and linked from `templates/layout.hbs`. The test suite pins each copy to its file here, so a changed icon is changed in both places:
 
 ```html
-<link rel="icon" href="/assets/favicon.ico" sizes="48x48">
-<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="icon" href="/assets/icons/favicon.ico" sizes="48x48">
+<link rel="icon" href="/assets/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="/assets/manifest.webmanifest">
 ```
 
 The `theme-color` metas are site colours, not icon colours: see `../README.md` (`#fbf8f5` light, `#121212` dark).
 
-`favicon.svg` switches with an inline `<style>` block. The app's Content-Security-Policy forbids inline styles, so whether browsers apply it has to be checked under the app's headers (MB-0054).
+`favicon.svg` switches with an inline `<style>` block. It is the one SVG the app serves with a style block, and the block may only colour shapes (RR-0034). The app's Content-Security-Policy forbids inline styles in pages; a Chromium browser still applies the icon's own block, and Firefox and Safari are checked in MB-0054's browser check. The same file is the icon beside the name in the top bar.
 
 ## `manifest.webmanifest`
 
-The app's manifest is `assets/manifest.webmanifest`. Its `name` is `kauppalista.app`. It gains these icons, and its colours are the site's light page background (a manifest can't follow the colour scheme, and light is the default theme):
+The app's manifest is `assets/manifest.webmanifest`. Its `name` is `kauppalista.app` and its `short_name` `kauppalista`. It lists these icons, and its colours are the site's light page background (a manifest can't follow the colour scheme, and light is the default theme):
 
 ```json
 {
   "icons": [
-    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "background_color": "#fbf8f5",
   "theme_color": "#fbf8f5"
