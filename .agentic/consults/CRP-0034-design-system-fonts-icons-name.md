@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0054 autonomy.escalate (fonts, new asset kinds, tokens at run time → platform-owner; adaptive favicon → platform-owner and security; root route → api-owner; name → owner); AGENTS.md do-not-touch: files under `assets/`; feature.md escalation trigger `.agentic/resolutions/**`"
 ---
 ```

@@ -23,14 +23,17 @@ acceptance:
     property: "Components: buttons (primary, secondary, quiet, danger), text fields, selects and list rows follow `design-system/components/`: controls at least 44px tall, list rows at least 48px, input text 16px, control edges in `border-strong`, a 2px `focus` outline with 2px offset on every interactive element, checked items in `ink-subtle` with a line-through and a `brand` checkbox. At most one primary button per page. MB-0053's select chevron and MB-0040's and MB-0051's popovers keep their rules, in the new tokens."
     check: cargo test -p kauppa-web templates::tests::design_components
   - id: P4
-    property: "Name: the page title suffix, the top bar brand, the home page heading and the manifest's `name` say `kauppalista.app`; no user-visible `kauppa` on its own remains in a template, a catalog or the manifest. The brand in the top bar shows the app icon beside the name and still links to `/`."
+    property: "Name: the page title suffix, the top bar brand, the home page heading and the manifest's `name` say `kauppalista.app`; the manifest's `short_name` and the `apple-mobile-web-app-title` meta say `kauppalista`; no user-visible `kauppa` on its own remains in a template, a catalog or the manifest. The brand in the top bar shows the app icon beside the name and still links to `/`."
     check: cargo test -p kauppa-web templates::tests::brand_name
   - id: P5
-    property: "Icons: the layout links a favicon and an Apple touch icon, the manifest lists the 192 px, 512 px and maskable icons, and every linked file is served from `/assets/` with the right content type and is byte for byte the file in `design-system/assets/` (checksums in the test). `theme-color` is the site's page background from `design-system/README.md` (`#fbf8f5` light, `#121212` dark), and the manifest's `theme_color` and `background_color` are the light one; the icon colours in `design-system/assets/README.md` are used for nothing but the icons."
+    property: "Icons: the layout links a favicon and an Apple touch icon, the manifest lists the 192 px, 512 px and maskable icons, and every linked file is served from `/assets/icons/` with the right content type and is byte for byte the file in `design-system/assets/` (checksums in the test). `favicon.svg` passes its own content test (RR-0034 sub-answer 3): a style block that only colours shapes, no `@import`, `url(`, script, handler or link. `theme-color` is the site's page background from `design-system/README.md` (`#fbf8f5` light, `#121212` dark), and the manifest's `theme_color` and `background_color` are the light one; the icon colours in `design-system/assets/README.md` are used for nothing but the icons."
     check: cargo test -p kauppa-web routes::assets::tests::brand_icons
   - id: P6
     property: "The Content-Security-Policy and the other security headers are unchanged (or changed only as an approved Resolution Record says), every page loads nothing from another origin, and the templates stay free of inline styles and scripts."
     check: cargo test -p kauppa-web templates::tests::csp_compatible_templates
+  - id: P9
+    property: "Fonts: `assets/fonts/` holds one WOFF2 file per family (Inter, Space Grotesk, JetBrains Mono), the Latin subset of the TTF in `design-system/fonts/` with every weight kept, served as `font/woff2` and pinned by size and sha256; `app.css` declares each with an `@font-face` rule whose `src` is that same-origin file and whose `font-display` is `swap`; nothing preloads them."
+    check: cargo test -p kauppa-web routes::assets::tests::brand_fonts
   - id: P7
     property: "Nothing else changes: same routes, forms, field names, labels, translations and keyboard behaviour; the whole suite passes, with tests that pinned old variable names updated to the new tokens and no assertion about behaviour weakened."
     check: cargo test --workspace --all-targets
@@ -59,6 +62,8 @@ context:
   - .agentic/resolutions/RR-0019-content-security-policy.md
   - .agentic/resolutions/RR-0029-request-handling.md
   - .agentic/resolutions/RR-0031-language-dropdown.md
+  - .agentic/resolutions/RR-0034-design-system-fonts-icons-name.md
+  - .agentic/consults/CRP-0034-design-system-fonts-icons-name.md
   - THIRD_PARTY_NOTICES.md
 autonomy:
   may_decide:
@@ -68,13 +73,12 @@ autonomy:
     - "test names inside `templates::tests` and `routes::assets::tests` (record a rename here)"
     - "leaving out icon files nothing links to (the light 192/512 PNGs, `source/`)"
   escalate:
-    - { when: "fonts: the owner supplied the files (`design-system/fonts/`, 1.2 MB of variable TTF), so the app self-hosts them. Still to decide before any font is served: font files as a new kind of asset under `assets/` and their content type and cache rule, the format (TTF as supplied, or WOFF2, possibly cut down to the characters Finnish and English need), and a size budget for a slow phone", to: platform-owner }
-    - { when: "new asset kinds: PNG and ICO icons and the icon SVGs under `assets/` (AGENTS.md's assets rule names only vendored JS and the flags), their content types in `build.rs`, and their cache rule", to: platform-owner }
-    - { when: "`favicon.svg` switches colours with an inline `<style>` block; `/assets/` responses carry `style-src 'self'`, which may stop it, and RR-0031's inert-image rule forbids `<style>` for the flags. Keep it (and exempt it), or ship fixed-colour icons", to: "platform-owner and security" }
-    - { when: "where the tokens live at run time: `design-system/tokens.css` copied or built into `assets/` (and what keeps the copy in step with `tokens.json`), or `design-system/` staying a reference that `app.css` implements", to: platform-owner }
+    - { when: "a font format, character set, weight range or family other than RR-0034 sub-answer 1's (WOFF2, Latin subset, the three families), or `build_fonts.py` can't reproduce the committed font files", to: platform-owner }
+    - { when: "a file under `assets/` beyond the six icons and three fonts RR-0034 names, or another cache rule for them", to: platform-owner }
+    - { when: "the browser check finds a browser that shows `favicon.svg` as a black square: switch to the fixed-colour icon as RR-0034 sub-answer 3 says, and tell the owner (no new consult)", to: owner }
     - { when: "any change to the Content-Security-Policy or to `csp.rs`", to: security }
     - { when: "a route outside `/assets/` (browsers ask for `/favicon.ico` on their own)", to: api-owner }
-    - { when: "the name's exact form: `kauppalista.app` in lower case everywhere, the manifest's `short_name` (home screens cut names near 12 characters; `kauppalista.app` has 15), and whether the README and repository description change", to: owner }
+    - { when: "the name in any place or form RR-0034 sub-answer 5 doesn't name", to: owner }
     - { when: "a template needs new structure (a wrapper element, a moved control) to match a component, or a design rule conflicts with what the app does (more than one primary action on a page, orange used where the design forbids it)", to: owner }
     - { when: "a correction to a file under `design-system/`", to: owner }
   forbidden:
@@ -89,7 +93,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0034]
 ---
 ```
 
@@ -172,13 +176,14 @@ icon entries with `/assets/` paths.
    items that need an owner's decision before any code: fonts, the new asset
    kinds and their rule in AGENTS.md, the adaptive favicon, where the tokens
    live, the name's form and `short_name`. It closes in one Resolution
-   Record.
+   Record. Answered by RR-0034.
 2. **Tokens and components** (tests first: P1, P2, P3). Replace the variable
    block with the tokens; restyle buttons, fields, selects, list rows, cards,
    the top bar, the popovers and banners from the component notes; move the
    pinned tests to the new names.
-3. **Name and icons** (tests first: P4, P5). Layout, home page, manifest,
-   the icon files and their content types and checksums.
+3. **Name, icons and fonts** (tests first: P4, P5, P9). Layout, home page,
+   manifest, the icon files, `build_fonts.py` and the font files, their
+   content types and checksums.
 4. **Browser check** (P8) by the owner, from a checklist in the Continuity
    Pack.
 
@@ -210,6 +215,10 @@ Open questions: the `escalate` list. None is answered by this brief.
   with its content type and its sha256 equal to the file in
   `design-system/assets/`; plus the existing `serves_every_asset` and
   `cache_headers`.
+- P9: a test that each font file is served as `font/woff2` with its pinned
+  size and sha256, and that `app.css` has the three `@font-face` rules with
+  same-origin `src` and `font-display: swap`. Re-running `build_fonts.py`
+  and comparing checksums is a manual step, recorded in the Continuity Pack.
 - P6: the existing CSP template scan and `csp::tests`, unchanged.
 - P7: the full suite and the fast gate.
 - P8: the owner's browser check, with screenshots at 320 px and desktop in

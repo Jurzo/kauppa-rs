@@ -156,7 +156,11 @@ consult.
   from the npm registry). Adding, upgrading or modifying a vendored file is
   a platform decision. SVG images under `assets/flags/` are not executable:
   they are shown through `<img>`, pinned by checksum, and a test keeps them
-  free of script, links and styles (RR-0031).
+  free of script, links and styles (RR-0031). The app icons under
+  `assets/icons/` (PNG, ICO and one SVG) and the font files under
+  `assets/fonts/` (WOFF2) are not executable: they come from
+  `design-system/`, are pinned by checksum in the test suite, and the icon
+  SVG's style block may only colour its shapes (RR-0034).
 
 ---
 
