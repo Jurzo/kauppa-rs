@@ -1,5 +1,5 @@
 /* Black Steel theme tokens, generated from tokens.json. Edit tokens.json, not this file. */
-/* Fonts: Inter, Space Grotesk and JetBrains Mono, falling back to system fonts; nothing loads from another host (see README). */
+/* Fonts: Inter, Space Grotesk and JetBrains Mono, from the files in fonts/, falling back to system fonts; nothing loads from another host (see README). */
 
 /* Light steel (default) */
 :root {

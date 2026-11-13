@@ -45,6 +45,7 @@ context:
   - design-system/components/TextField.md
   - design-system/components/ListItem.md
   - design-system/assets/README.md
+  - design-system/fonts/README.md
   - assets/app.css
   - assets/manifest.webmanifest
   - templates/layout.hbs
@@ -67,7 +68,7 @@ autonomy:
     - "test names inside `templates::tests` and `routes::assets::tests` (record a rename here)"
     - "leaving out icon files nothing links to (the light 192/512 PNGs, `source/`)"
   escalate:
-    - { when: "fonts: the design system loads Inter, Space Grotesk and JetBrains Mono from Google Fonts, which the Content-Security-Policy blocks (`default-src 'self'`). Self-host the font files under `assets/` (a new kind of asset, with licence notices), fall back to the system fonts already in the token stacks, or loosen the policy", to: "platform-owner and security" }
+    - { when: "fonts: the owner supplied the files (`design-system/fonts/`, 1.2 MB of variable TTF), so the app self-hosts them. Still to decide before any font is served: font files as a new kind of asset under `assets/` and their content type and cache rule, the format (TTF as supplied, or WOFF2, possibly cut down to the characters Finnish and English need), and a size budget for a slow phone", to: platform-owner }
     - { when: "new asset kinds: PNG and ICO icons and the icon SVGs under `assets/` (AGENTS.md's assets rule names only vendored JS and the flags), their content types in `build.rs`, and their cache rule", to: platform-owner }
     - { when: "`favicon.svg` switches colours with an inline `<style>` block; `/assets/` responses carry `style-src 'self'`, which may stop it, and RR-0031's inert-image rule forbids `<style>` for the flags. Keep it (and exempt it), or ship fixed-colour icons", to: "platform-owner and security" }
     - { when: "where the tokens live at run time: `design-system/tokens.css` copied or built into `assets/` (and what keeps the copy in step with `tokens.json`), or `design-system/` staying a reference that `app.css` implements", to: platform-owner }
@@ -133,12 +134,16 @@ There is no favicon.
 app as it is, and each belongs to an owner rather than to the agent:
 
 1. *Fonts.* The design names three families (Inter, Space Grotesk,
-   JetBrains Mono) that the app doesn't have. The policy in `csp.rs` is
-   `default-src 'self'; style-src 'self'; …` (RR-0019), so they can't come
-   from a font host without an RR. Self-hosting means font files under
-   `assets/` (a new kind of asset, a `woff2` content type, OFL notices in
-   `THIRD_PARTY_NOTICES.md`) and more bytes on a slow phone. The token
-   stacks already end in system fonts, so doing nothing also works.
+   JetBrains Mono). The owner supplied the files (2026-11-13), now in
+   `design-system/fonts/` with their OFL licences and a notice in
+   `THIRD_PARTY_NOTICES.md`: one upright variable TTF per family, 1.2 MB
+   together (Inter is 875 kB). The policy in `csp.rs` is
+   `default-src 'self'; …` (RR-0019), which already lets fonts load from
+   the app's own origin, so self-hosting needs no policy change. It does
+   need font files under `assets/` (a new kind of asset and a content type
+   in `build.rs`), and a choice of format: 1.2 MB is a lot for a slow
+   phone, and WOFF2 or a cut-down character set would shrink it (none of
+   the three reserves its font name, so the licence allows converting).
 2. *Icons as assets.* AGENTS.md allows vendored JS under `assets/vendor/`
    and the flag SVGs under `assets/flags/`, each pinned by checksum.
    `build.rs` knows `css`, `js`, `svg` and `webmanifest` and fails the build

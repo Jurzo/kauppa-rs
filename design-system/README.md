@@ -8,6 +8,7 @@ This directory is the reference; nothing in it is served. The app is server-rend
 
 - `tokens.json` is the source of the values. `tokens.css` is the same values as CSS custom properties.
 - `components/` describes how buttons, text fields and list rows look and behave.
+- `fonts/` holds the three font families and their licences.
 - `assets/` holds the app icons and their sources. Its README gives the icons' own colours, which are not the site's: site colours, including the browser's `theme-color`, come from this file.
 
 Some of what follows describes where the app is going rather than what it does today: the floating add button, toasts with Undo, swipe to delete, the "To get" / "In cart" groups and a theme choice aren't built yet. Adoption is tracked in `.agentic/missions/MB-0054-design-system-and-branding.md`.
@@ -59,7 +60,7 @@ The swap of `on-brand` mirrors the icon: the light icon has a black tick, the da
 
 Space Grotesk for headings, Inter for everything people read and tap, JetBrains Mono for quantities and code.
 
-The app loads nothing from other hosts, so there is no Google Fonts link. Until the font files are served from `/assets/` (a decision for MB-0054), the stacks in `--font-display`, `--font-sans` and `--font-mono` fall through to the system fonts they end with, and the layout must look right with those.
+The font files are in `fonts/`, one variable font per family, each with its licence. The app loads nothing from other hosts, so there is no Google Fonts link: the fonts will be served from `/assets/`, through `@font-face` rules in `assets/app.css` with `font-display: swap`. How they are served (format, size) is a decision for MB-0054; until then the stacks in `--font-display`, `--font-sans` and `--font-mono` fall through to the system fonts they end with, and the layout must look right with those.
 
 - List names are `heading-1`, aisle or category headings `heading-2`.
 - Item names are `body` (16px, so iOS doesn't zoom when editing), metadata `body-sm` in `ink-muted`.
