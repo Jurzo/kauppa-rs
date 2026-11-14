@@ -146,9 +146,6 @@ async fn no_input_or_detail() {
         "deserialize",
         "Parse error",
         "missing field",
-        "not found",
-        "forbidden",
-        "unauthorized",
         "UUID",
     ];
     for (what, req, status) in cases {

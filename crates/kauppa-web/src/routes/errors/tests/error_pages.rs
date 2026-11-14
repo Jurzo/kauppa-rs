@@ -189,14 +189,31 @@ async fn language_and_theme() {
 #[actix_web::test]
 async fn server_error() {
     let state = test_state().await;
-    let app = init_service(actix_web::App::new().app_data(state.clone()).service(
-        web::scope("").wrap(from_fn(errors::pages)).route(
-            "/boom",
-            web::get().to(|| async {
-                Err::<HttpResponse, _>(WebError::Internal("secret detail".to_owned()))
-            }),
-        ),
-    ))
+    // No route returns a 500 on purpose, so a scope with one that does, inside
+    // the identity and session middleware as in `main.rs` (`Identity` needs
+    // them: RR-0038 constraint 3).
+    let app = init_service(
+        actix_web::App::new()
+            .app_data(state.clone())
+            .wrap(crate::identity_middleware(
+                crate::SESSION_IDLE,
+                crate::SESSION_MAX,
+            ))
+            .wrap(
+                actix_session::SessionMiddleware::builder(
+                    actix_session::storage::CookieSessionStore::default(),
+                    actix_web::cookie::Key::from(&[0u8; 64]),
+                )
+                .cookie_secure(false)
+                .build(),
+            )
+            .service(web::scope("").wrap(from_fn(errors::pages)).route(
+                "/boom",
+                web::get().to(|| async {
+                    Err::<HttpResponse, _>(WebError::Internal("secret detail".to_owned()))
+                }),
+            )),
+    )
     .await;
     let resp = call_service(&app, TestRequest::get().uri("/boom").to_request()).await;
     assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
