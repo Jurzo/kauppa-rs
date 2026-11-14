@@ -33,10 +33,17 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
   row (`category_id`, `product_id`) verifies ownership in the same statement —
   `INSERT … SELECT … FROM categories WHERE id = ? AND owner_id = ?` — or in the
   same transaction, and cross-table reads also join on `owner_id`.
-- The scaffold uses runtime `sqlx::query(...)` so builds don't require a live
-  DB. **Target state:** once the schema is stable, migrate to `sqlx::query!`
-  + `sqlx::query_as!` + `cargo sqlx prepare` offline cache under `.sqlx/`,
-  then add `SQLX_OFFLINE=true` to CI. Track in a Mission Brief.
+- Queries use the compile-time-checked macros (`sqlx::query!`,
+  `query_as!`, `query_scalar!`) with the offline cache committed under
+  `.sqlx/`, so builds need no database (MB-0049, RR-0037). After changing a
+  query or adding a migration, run `scripts/sqlx-prepare.sh` to regenerate
+  the cache; CI builds with `SQLX_OFFLINE=true` and runs
+  `scripts/sqlx-prepare.sh --check`. No `sqlx-cli` is needed.
+- Exception: `repo/sqlite/list.rs` (and its access helpers) and
+  `repo/sqlite/mod.rs`'s setup queries use runtime `sqlx::query(...)` by
+  decision (RR-0037): the list queries are built from shared SQL constants
+  around the central predicate, which the macros can't reference (they take
+  only string literals).
 - Prefer named columns in SELECT, never `*`.
 - Email addresses are unique and compared ignoring ASCII case: the
   `users_email_nocase` index, and `COLLATE NOCASE` in every comparison on

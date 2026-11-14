@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0049 autonomy.escalate (the decision and its timing against sqlx 0.9 → platform-owner; the stale-cache tool in CI → platform-owner; the Mentorship Pack edit → owner); feature.md escalation trigger `.agentic/{mentorship,resolutions}/**`"
 ---
 ```
