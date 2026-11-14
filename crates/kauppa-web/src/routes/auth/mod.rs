@@ -35,6 +35,7 @@ use kauppa_core::{CoreError, token};
 use crate::error::{WebError, WebResult};
 use crate::i18n::messages::Message;
 use crate::i18n::{COOKIE, Ui, VARY};
+use crate::routes::language::same_site_path;
 use crate::state::AppState;
 
 use self::limiter::Throttled;
@@ -51,6 +52,17 @@ pub mod tests;
 pub struct Credentials {
     pub email: String,
     pub password: String,
+    /// Where to go after signing in: the page a 401 interrupted (MB-0056,
+    /// RR-0038 sub-answer 4). Used only through `same_site_path`.
+    #[serde(default, rename = "return")]
+    pub return_to: Option<String>,
+}
+
+impl Credentials {
+    /// The `return` field, when it holds anything.
+    fn return_to(&self) -> Option<&str> {
+        self.return_to.as_deref().filter(|r| !r.is_empty())
+    }
 }
 
 /// The register form. `invite` is the hidden field; a missing one is the
@@ -120,7 +132,7 @@ pub async fn login_submit(
     let email = form.email.trim();
     let account = state.limiter.account_key(email);
     if let Some(throttled) = state.limiter.check_login(client, account) {
-        return render_login_throttled(&state, &ui, throttled);
+        return render_login_throttled(&state, &ui, throttled, form.return_to());
     }
 
     let found = state.pool.find_by_email(email).await?;
@@ -136,14 +148,18 @@ pub async fn login_submit(
     };
     let Some(user) = user else {
         state.limiter.record_login_failure(client, account);
-        return render_login_error(&state, &ui, &ui.message(Message::InvalidLogin)?);
+        let msg = ui.message(Message::InvalidLogin)?;
+        return render_login_error(&state, &ui, &msg, form.return_to());
     };
 
     Identity::login(&req.extensions(), user.id.to_string())
         .map_err(|e| WebError::Internal(format!("session login failed: {e}")))?;
 
+    // Back to the page a 401 interrupted, if it is a same-site path
+    // (RR-0038 constraint 6); otherwise the lists, as before.
+    let target = form.return_to().map_or("/lists", same_site_path);
     Ok(HttpResponse::SeeOther()
-        .append_header((header::LOCATION, "/lists"))
+        .append_header((header::LOCATION, target))
         .finish())
 }
 
@@ -153,11 +169,12 @@ fn render_login_throttled(
     state: &AppState,
     ui: &Ui,
     throttled: Throttled,
+    return_to: Option<&str>,
 ) -> WebResult<HttpResponse> {
     let body = ui.render(
         state,
         "auth/login",
-        &json!({ "error": too_many_attempts(ui, throttled)? }),
+        &json!({ "error": too_many_attempts(ui, throttled)?, "return_to": return_to }),
     )?;
     Ok(HttpResponse::TooManyRequests()
         .insert_header((header::RETRY_AFTER, throttled.retry_after_s))
@@ -174,8 +191,17 @@ fn too_many_attempts(ui: &Ui, throttled: Throttled) -> WebResult<String> {
     })
 }
 
-fn render_login_error(state: &AppState, ui: &Ui, msg: &str) -> WebResult<HttpResponse> {
-    let body = ui.render(state, "auth/login", &json!({ "error": msg }))?;
+fn render_login_error(
+    state: &AppState,
+    ui: &Ui,
+    msg: &str,
+    return_to: Option<&str>,
+) -> WebResult<HttpResponse> {
+    let body = ui.render(
+        state,
+        "auth/login",
+        &json!({ "error": msg, "return_to": return_to }),
+    )?;
     Ok(HttpResponse::Unauthorized()
         .content_type("text/html")
         .insert_header(VARY)

@@ -527,8 +527,10 @@ fn vendored_response_targets_checksum() {
 
 /// The boosted full-page forms whose handler answers a 4xx with a rendered
 /// page (MB-0029's inventory, RR-0018 sub-answer 3): `(template, action)`.
+/// The sign-in form is a partial since MB-0056, shared by the login page
+/// and the 401 error page (RR-0038 sub-answer 4).
 const ERROR_PAGE_FORMS: [(&str, &str); 3] = [
-    ("auth/login", "/auth/login"),
+    ("auth/_login_form", "/auth/login"),
     ("auth/register", "/auth/register"),
     ("admin/invitations", "/admin/invitations"),
 ];

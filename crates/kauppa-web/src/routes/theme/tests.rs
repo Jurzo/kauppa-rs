@@ -99,10 +99,16 @@ async fn rejects_other_values() {
             assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "{bad:?}");
             assert!(set_theme_cookie(&resp).is_none(), "{bad:?}: nothing set");
             let body = String::from_utf8(read_body(resp).await.to_vec()).unwrap();
+            // What the error page says, not the layout around it: the
+            // layout's theme switch says "Dark" itself (MB-0056).
+            let start = body.find("<main>").expect("<main>");
+            let end = body.find("</main>").expect("</main>");
+            let main = &body[start..end];
             assert!(
-                bad.is_empty() || !body.contains(bad),
-                "{bad:?} echoed: {body}"
+                bad.is_empty() || !main.contains(bad),
+                "{bad:?} echoed: {main}"
             );
+            assert!(!body.contains("<b>x</b>"), "unescaped: {body}");
         }
     }
     let resp = call_service(

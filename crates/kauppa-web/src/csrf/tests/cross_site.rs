@@ -57,7 +57,7 @@ const MISSING: &[Proof] = &[
 ];
 
 /// Sends every write route each proof in `proofs`, signed in, as a plain
-/// post and over htmx; each must get the plain 403, keep the session (only
+/// post and over htmx; each must get the 403 page, keep the session (only
 /// the visit-time renewal RR-0026 adds) and change nothing. Returns how many requests were sent.
 async fn assert_all_rejected(proofs: &[Proof]) -> usize {
     let state = test_state().await;
@@ -68,6 +68,20 @@ async fn assert_all_rejected(proofs: &[Proof]) -> usize {
         .insert_header((header::ORIGIN, TEST_ORIGIN));
     let session: Cookie<'static> = session_cookie(&call_service(&app, login.to_request()).await);
     let before = w.snapshot(&state).await;
+    let forbidden = format!(
+        "<h1>{}</h1>",
+        handlebars::html_escape(
+            &state
+                .templates
+                .i18n()
+                .text(
+                    kauppa_core::domain::Language::En,
+                    "error_page.forbidden.title",
+                    &[]
+                )
+                .expect("catalog key")
+        )
+    );
 
     let mut sent = 0;
     for route in write_routes() {
@@ -92,7 +106,9 @@ async fn assert_all_rejected(proofs: &[Proof]) -> usize {
                     session_kept(&resp),
                     "{what}: no session issued or purged (RR-0026 renews its visit time)"
                 );
-                assert_eq!(body_string(resp).await, "forbidden", "{what}: plain 403");
+                // The same 403 page as any other (MB-0056, RR-0038 sub-answer 3).
+                let body = body_string(resp).await;
+                assert!(body.contains(&forbidden), "{what}: the 403 page\n{body}");
                 sent += 1;
             }
         }
