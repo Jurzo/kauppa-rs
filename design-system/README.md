@@ -83,7 +83,7 @@ The app icon itself lives in the Assets section: `icon-light.svg`, `icon-dark.sv
 
 ## Implementing in CSS
 
-Tokens become CSS custom properties in `assets/app.css`. Light is the default and dark applies from the OS setting. The `data-theme` selectors are there for a later theme choice (an attribute the server would render on `<html>`); the app has none today, so only the OS setting decides:
+Tokens become CSS custom properties in `assets/app.css`. Light is the default and dark applies from the OS setting. Below is the design system's portable form, which `tokens.css` keeps: a `data-theme` attribute on `<html>` overrides the OS.
 
 ```css
 :root {
@@ -107,6 +107,8 @@ body { background: var(--bg); color: var(--ink); font: 16px/24px var(--font-sans
 ```
 
 Components only ever read tokens (`background: var(--surface)`), never raw hex, so a theme switch is a single attribute change.
+
+**How the app chooses the theme (RR-0035).** The app has a theme switch (System, Light, Dark) and does not use `data-theme`. `app.css` keys the same two dark blocks on the switch's checked radio instead: `:root:has(<dark radio>:checked)`, and inside `@media (prefers-color-scheme: dark)` `:root:not(:has(<light radio>:checked))`. The server renders the saved choice `checked` (from the `kauppa_theme` cookie), so the first paint is right and a click repaints at once with no script. Browsers without `:has()` follow the OS setting. Token values are the same in both forms.
 
 ## Implementing in the templates
 

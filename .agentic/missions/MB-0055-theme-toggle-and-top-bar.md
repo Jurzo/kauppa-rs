@@ -19,19 +19,19 @@ acceptance:
     property: "`POST /theme`, behind the cross-site check, accepts only `system`, `light` or `dark` (anything else is a 400 and sets nothing), stores the choice in a cookie, and answers an htmx request with 204 and no body, and a plain form post with 303 to the `return` path (through `same_site_path`). No GET changes the theme."
     check: cargo test -p kauppa-web routes::theme::tests
   - id: P3
-    property: "First paint is already in the chosen theme: the server renders `data-theme=\"light\"` or `data-theme=\"dark\"` on `<html>` from the cookie, and no attribute for System; the `theme-color` meta is the chosen theme's page background (`#fbf8f5` or `#121212`), or the two media-keyed metas for System. A boosted navigation keeps the choice."
+    property: "First paint is already in the chosen theme: the server renders the saved choice's radio `checked`, and `app.css` applies the theme from it (`:has()`), so nothing is rendered on `<html>`; the `theme-color` meta is the chosen theme's page background (`#fbf8f5` or `#121212`), or the two media-keyed metas for System. A boosted navigation keeps the choice."
     check: cargo test -p kauppa-web templates::tests::theme_first_paint
   - id: P4
-    property: "Choosing a theme repaints the page at once, before the response arrives, with no JavaScript beyond htmx and no `hx-on`: by the mechanism the owner chooses (S1). Choosing System, after Light or Dark was saved, goes back to the OS setting on the same page."
+    property: "Choosing a theme repaints the page at once, before the response arrives, with no JavaScript beyond htmx and no `hx-on`: by CSS keyed on the checked radio (`:has()`, RR-0035 sub-answer 3). Choosing System, after Light or Dark was saved, goes back to the OS setting on the same page."
     check: cargo test -p kauppa-web templates::tests::theme_switch_applies
   - id: P5
     property: "The switch is accessible: the group's accessible name says it chooses the colour theme, each option's label stays available to assistive technology at every width (an icon-only look hides it visually only), the radios are operable with the keyboard as native radios are (arrow keys move and choose), the focus ring shows, and the selected option is distinguishable by more than colour."
     check: cargo test -p kauppa-web templates::tests::theme_switch_accessible
   - id: P6
-    property: "The top bar never wraps: there is one breakpoint, shared by the top bar's rules, below which the navigation is the menu panel and above which brand, navigation, language selector and theme switch sit on one line in either language, signed in or out. The inline navigation doesn't wrap (`flex-wrap: nowrap`). The breakpoint is the widest of the measured one-line widths (Finnish, signed in, is expected to be the widest) plus a margin, and the measurements are recorded in the Continuity Pack."
+    property: "The top bar never wraps: there is one breakpoint, shared by the top bar's rules, below which the navigation is the menu panel and above which brand, navigation, language selector and theme switch sit on one line in either language, signed in or out. Where popover is supported, the inline navigation doesn't wrap (`flex-wrap: nowrap`); without it, it keeps wrapping. The breakpoint is 60rem unless the real markup measures wider, in which case it is the widest measured one-line width (Finnish, signed out, measured widest in CRP-0035) plus a margin, and the measurements are recorded in the Continuity Pack."
     check: cargo test -p kauppa-web templates::tests::top_bar_breakpoint
   - id: P7
-    property: "On a phone, the theme switch sits where the owner chooses (S1): inside the menu panel or in the top bar. At 320 px the top bar still holds brand, language selector and menu button on one line, none hidden (RR-0031 sub-answer 4)."
+    property: "On a phone, the theme switch sits inside the menu panel, as a headed group of three labelled rows; on wide screens the same switch shows inline as icon-only segments (RR-0035 sub-answers 4, 5). At 320 px the top bar still holds brand, language selector and menu button on one line, none hidden (RR-0031 sub-answer 4)."
     check: cargo test -p kauppa-web templates::tests::theme_switch_on_phones
   - id: P8
     property: "The Content-Security-Policy and the other security headers are unchanged; templates stay free of inline scripts, inline styles, `style=` and `hx-on`; no template gains literal text, and the English and Finnish catalogs have the same keys."
@@ -72,14 +72,11 @@ autonomy:
     - "updating `design-system/README.md`'s theming paragraph (\"only the OS setting decides\") to describe the switch"
     - "which PRs the work is split into (suggested: top bar first, then the switch)"
   escalate:
-    - { when: "the new cookie (name, lifetime, `HttpOnly`, `SameSite`, `Secure`) and the new route `POST /theme`: a consult answered by an RR before any code", to: security }
-    - { when: "the new public route `POST /theme`", to: api-owner }
-    - { when: "how the page repaints at once without `hx-on` (the baseline's `hx-on:change` can't run: the htmx config sets `allowEval: false` and the CSP has no `'unsafe-eval'`): CSS keyed on the checked radio, a full page load as the language switch does, or a same-origin script", to: owner }
-    - { when: "where the switch sits on a phone: inside the menu panel with its labels, or in the top bar icon-only", to: owner }
     - { when: "the measured breakpoint is above 64rem (tablets in landscape would get the menu panel), or the bar can't fit on one line at any width without dropping something", to: owner }
     - { when: "keeping the choice on the account as well (a schema change)", to: data-owner }
     - { when: "the brand icon (`favicon.svg` through `<img>`) follows the OS instead of the chosen theme, and fixing it needs a different icon file under `assets/`", to: platform-owner }
     - { when: "any change to the Content-Security-Policy, the htmx config, or a new file under `assets/` that isn't CSS", to: security }
+    - { when: "a change to the `kauppa_theme` cookie or `POST /theme` beyond RR-0035 sub-answers 1 and 2", to: security }
   forbidden:
     - "`hx-on`, inline scripts, inline styles or `style=` attributes, or JavaScript beyond the vendored htmx"
     - "a GET that changes the theme, or `?theme=` links"
@@ -93,7 +90,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0035]
 ---
 ```
 
@@ -125,7 +122,8 @@ so the breakpoint has to come from measurement, not a guess. CSS can't
 detect wrapping, so the fix is a breakpoint wide enough for the widest
 bar, plus `nowrap` so that a too-low value overflows visibly in testing
 instead of wrapping quietly. Finnish labels are longer (`Kategoriat`,
-`Kirjaudu ulos`).
+`Kirjaudu sisään`); measured, Finnish signed out is the widest bar
+(CRP-0035 Evidence bundle).
 
 **The baseline and this app's rules.** The baseline is a radio group in a
 form: htmx posts on change (`hx-swap="none"`), a `<noscript>` Save button
@@ -134,15 +132,15 @@ fits as is. Three parts don't:
 
 - `hx-on:change="…"` is inline JavaScript. The htmx config in the layout
   sets `allowEval: false`, and the CSP (`script-src 'self'`, RR-0019) has no
-  `'unsafe-eval'`, so it would not run. The owner chooses the replacement
-  (S1). Recommended: CSS. `app.css` applies the light or dark token set
-  from `:root:has(.theme-switch input[value="dark"]:checked)` (and the same
-  for light), so the checked radio repaints the page with no script. Since
-  the server renders the saved radio as `checked`, that also covers first
-  paint. `data-theme` remains for browsers without `:has()`. The token
-  blocks then need one selector list per theme, ordered so the checked
-  radio wins over a stale `data-theme` (htmx boost swaps `<body>`, not
-  `<html>`).
+  `'unsafe-eval'`, so it would not run. Replaced by CSS (RR-0035
+  sub-answer 3). `app.css` applies dark from
+  `:root:has(<dark radio>:checked)`, and from the OS unless the light
+  radio is checked; light stays on `:root`. The checked radio repaints the
+  page with no script, and since the server renders the saved radio
+  `checked`, that also covers first paint. `data-theme` is dropped from
+  `app.css`: a value rendered on `<html>` would go stale after a boosted
+  navigation (htmx swaps `<body>`, not `<html>`). Browsers without `:has()`
+  follow the OS.
 - `name="return_to"`: the language form uses `return` and `same_site_path`.
   Reuse both.
 - The `<noscript>` button: the app's no-JS story is "the form still
@@ -174,8 +172,8 @@ The top bar described here is the one on `main` after those merges.
    `POST /theme`. To the owner: the repaint mechanism (recommend CSS
    `:has()`) and where the switch sits on phones (recommend inside the menu
    panel with labels, since the 320 px bar is already full with brand,
-   language and menu button). Answered by an RR. Record it in
-   `resolutions`.
+   language and menu button). Answered by RR-0035 (CRP-0035, all as
+   recommended).
 2. **Top bar first (P6).** Measure the one-line width of the bar in both
    languages, signed in and out, with a placeholder the size of the compact
    switch. Set the breakpoint, make the inline nav `nowrap`, and check that
