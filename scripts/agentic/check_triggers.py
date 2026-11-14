@@ -43,6 +43,8 @@ TRIGGERS = [
     # MB-0008; enforced here since MB-0043 (RR-0027 constraint 1).
     ("crates/kauppa-web/src/routes/lists/", "security:shared-lists"),
     ("crates/kauppa-core/src/repo/sqlite/list.rs", "security:shared-lists"),
+    # The central predicate's own file (RR-0036 sub-answer 5).
+    ("crates/kauppa-core/src/repo/sqlite/list_access.rs", "security:shared-lists"),
     # Cross-site check, security headers, settings, the language cookie
     # (RR-0010, RR-0019, RR-0023; RR-0027 sub-answer 2).
     ("crates/kauppa-web/src/csrf/", "security:csrf"),

@@ -265,6 +265,7 @@ expect_labels crates/kauppa-web/src/i18n/request.rs security:language-cookie
 expect_labels crates/kauppa-web/src/routes/language.rs security:language-cookie
 expect_labels crates/kauppa-web/src/routes/lists/items.rs security:shared-lists
 expect_labels crates/kauppa-core/src/repo/sqlite/list.rs security:shared-lists
+expect_labels crates/kauppa-core/src/repo/sqlite/list_access.rs security:shared-lists
 expect_labels deploy/Dockerfile platform:deploy
 expect_labels deploy/compose.yaml platform:deploy
 expect_labels deploy/Caddyfile platform:deploy

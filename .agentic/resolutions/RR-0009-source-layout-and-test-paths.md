@@ -141,3 +141,9 @@ To be applied in MB-0019's PRs (the first PR carries the doc edits):
 
 Status: active. Supersedes nothing. Extends RR-0002 constraint 1's
 enforcement to the split repository layout; doesn't change the constraint.
+
+Amended by RR-0036 (2026-11-14): list SQL lives in two files, not one.
+`repo/sqlite/list_access.rs` holds the central predicate and the
+granted-row helpers, `repo/sqlite/list.rs` the `impl ShoppingListRepo`
+block; the bypass guard reads both (constraint 3 and sub-answer 3). The
+rest of both stands.

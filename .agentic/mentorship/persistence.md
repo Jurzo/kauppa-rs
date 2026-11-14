@@ -43,8 +43,10 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
   `users.email` (MB-0044, RR-0028). The address is stored as typed.
 - One `repo/sqlite/<area>.rs` per repo trait implementation (RR-0009).
 - The list tables (`shopping_lists`, `list_items`, `list_shares`) are named
-  only in `repo/sqlite/list.rs`, behind the central access predicate;
-  `repo::share`'s bypass guard enforces it (RR-0009 constraint 3).
+  only in `repo/sqlite/list_access.rs` (the central access predicate and
+  the granted-row helpers) and `repo/sqlite/list.rs` (the
+  `impl ShoppingListRepo` block, behind that predicate); `repo::share`'s
+  bypass guard enforces it (RR-0009 constraint 3, as amended by RR-0036).
 
 ## Point-in-time data
 
