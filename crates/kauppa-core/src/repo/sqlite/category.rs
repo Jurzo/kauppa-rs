@@ -2,8 +2,7 @@
 
 use crate::{Conflict, Entity, Invalid};
 use async_trait::async_trait;
-use chrono::Utc;
-use sqlx::Row;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::CoreResult;
@@ -12,7 +11,7 @@ use crate::error::CoreError;
 use crate::repo::CategoryRepo;
 use crate::repo::name_key::name_key;
 
-use super::{SqlitePool, clean_name, row_to_category};
+use super::{CategoryRow, SqlitePool, clean_name};
 
 #[async_trait]
 impl CategoryRepo for SqlitePool {
@@ -24,26 +23,26 @@ impl CategoryRepo for SqlitePool {
         let now = Utc::now();
 
         // Append at the end of this owner's ordering.
-        let position: i64 = sqlx::query(
-            r"SELECT COALESCE(MAX(position), -1) + 1 AS next
+        let position = sqlx::query_scalar!(
+            r#"SELECT COALESCE(MAX(position), -1) + 1 AS "next!: i64"
                 FROM categories
-                WHERE owner_id = ?1",
+                WHERE owner_id = ?1"#,
+            owner
         )
-        .bind(&owner)
         .fetch_one(&self.inner)
-        .await?
-        .try_get("next")?;
+        .await?;
 
-        sqlx::query(
+        let key = name_key(name);
+        sqlx::query!(
             r"INSERT INTO categories (id, owner_id, name, name_key, position, created_at)
               VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            id_str,
+            owner,
+            name,
+            key,
+            position,
+            now
         )
-        .bind(&id_str)
-        .bind(&owner)
-        .bind(name)
-        .bind(name_key(name))
-        .bind(position)
-        .bind(now)
         .execute(&self.inner)
         .await
         .map_err(|e| match &e {
@@ -67,17 +66,18 @@ impl CategoryRepo for SqlitePool {
 
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<Category>> {
         let owner = owner_id.to_string();
-        let rows = sqlx::query(
-            r"SELECT id, owner_id, name, position, created_at
+        let rows = sqlx::query_as!(
+            CategoryRow,
+            r#"SELECT id, owner_id, name, position, created_at AS "created_at: DateTime<Utc>"
                 FROM categories
                 WHERE owner_id = ?1
-                ORDER BY position ASC, name ASC",
+                ORDER BY position ASC, name ASC"#,
+            owner
         )
-        .bind(&owner)
         .fetch_all(&self.inner)
         .await?;
 
-        rows.iter().map(row_to_category).collect()
+        rows.into_iter().map(CategoryRow::into_category).collect()
     }
 
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Category> {
@@ -85,13 +85,14 @@ impl CategoryRepo for SqlitePool {
         let owner = owner_id.to_string();
         let id_str = id.to_string();
 
-        let result = sqlx::query(
+        let key = name_key(name);
+        let result = sqlx::query!(
             r"UPDATE categories SET name = ?1, name_key = ?2 WHERE id = ?3 AND owner_id = ?4",
+            name,
+            key,
+            id_str,
+            owner
         )
-        .bind(name)
-        .bind(name_key(name))
-        .bind(&id_str)
-        .bind(&owner)
         .execute(&self.inner)
         .await
         .map_err(|e| match &e {
@@ -108,17 +109,18 @@ impl CategoryRepo for SqlitePool {
             return Err(CoreError::NotFound);
         }
 
-        let row = sqlx::query(
-            r"SELECT id, owner_id, name, position, created_at
+        let row = sqlx::query_as!(
+            CategoryRow,
+            r#"SELECT id, owner_id, name, position, created_at AS "created_at: DateTime<Utc>"
                 FROM categories
-                WHERE id = ?1 AND owner_id = ?2",
+                WHERE id = ?1 AND owner_id = ?2"#,
+            id_str,
+            owner
         )
-        .bind(&id_str)
-        .bind(&owner)
         .fetch_one(&self.inner)
         .await?;
 
-        row_to_category(&row)
+        row.into_category()
     }
 
     async fn reorder(&self, owner_id: Uuid, ordered_ids: &[Uuid]) -> CoreResult<()> {
@@ -128,12 +130,15 @@ impl CategoryRepo for SqlitePool {
         for (index, id) in ordered_ids.iter().enumerate() {
             let position = i64::try_from(index)
                 .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Category)))?;
-            sqlx::query(r"UPDATE categories SET position = ?1 WHERE id = ?2 AND owner_id = ?3")
-                .bind(position)
-                .bind(id.to_string())
-                .bind(&owner)
-                .execute(&mut *tx)
-                .await?;
+            let id = id.to_string();
+            sqlx::query!(
+                r"UPDATE categories SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
+                position,
+                id,
+                owner
+            )
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;
@@ -142,11 +147,14 @@ impl CategoryRepo for SqlitePool {
 
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
         let owner = owner_id.to_string();
-        let result = sqlx::query(r"DELETE FROM categories WHERE id = ?1 AND owner_id = ?2")
-            .bind(id.to_string())
-            .bind(&owner)
-            .execute(&self.inner)
-            .await?;
+        let id = id.to_string();
+        let result = sqlx::query!(
+            r"DELETE FROM categories WHERE id = ?1 AND owner_id = ?2",
+            id,
+            owner
+        )
+        .execute(&self.inner)
+        .await?;
 
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);

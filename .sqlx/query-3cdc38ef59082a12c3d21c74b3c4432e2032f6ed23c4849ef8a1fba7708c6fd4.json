@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM categories WHERE id = ?1 AND owner_id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3cdc38ef59082a12c3d21c74b3c4432e2032f6ed23c4849ef8a1fba7708c6fd4"
+}

@@ -117,16 +117,25 @@ fn parse_uuid(s: &str) -> CoreResult<Uuid> {
     Uuid::parse_str(s).map_err(|e| CoreError::Storage(format!("invalid uuid: {e}")))
 }
 
-fn row_to_category(row: &SqliteRow) -> CoreResult<Category> {
-    let id: String = row.try_get("id")?;
-    let owner_id: String = row.try_get("owner_id")?;
-    Ok(Category {
-        id: parse_uuid(&id)?,
-        owner_id: parse_uuid(&owner_id)?,
-        name: row.try_get("name")?,
-        position: row.try_get("position")?,
-        created_at: row.try_get("created_at")?,
-    })
+/// A `categories` row as the query macros return it (`query_as!`).
+struct CategoryRow {
+    id: String,
+    owner_id: String,
+    name: String,
+    position: i64,
+    created_at: DateTime<Utc>,
+}
+
+impl CategoryRow {
+    fn into_category(self) -> CoreResult<Category> {
+        Ok(Category {
+            id: parse_uuid(&self.id)?,
+            owner_id: parse_uuid(&self.owner_id)?,
+            name: self.name,
+            position: self.position,
+            created_at: self.created_at,
+        })
+    }
 }
 
 fn row_to_product(row: &SqliteRow) -> CoreResult<Product> {
