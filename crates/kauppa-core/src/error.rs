@@ -149,6 +149,9 @@ pub enum Invalid {
     FoundState,
     #[error("unsupported language")]
     Language,
+    /// A theme other than System, Light or Dark (MB-0055, RR-0035).
+    #[error("unsupported theme")]
+    Theme,
 }
 
 /// Why a write conflicted with existing data (MB-0035); `Display` as

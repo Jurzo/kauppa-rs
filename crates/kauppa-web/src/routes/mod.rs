@@ -12,6 +12,7 @@ pub mod pages;
 pub mod products;
 pub mod recipes;
 pub mod request;
+pub mod theme;
 
 #[cfg(test)]
 pub mod test_support;
@@ -32,6 +33,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(pages::index)
         .service(language::switch)
+        .service(theme::switch)
         .service(
             web::scope("/auth")
                 .service(auth::login_form)

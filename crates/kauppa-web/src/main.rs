@@ -28,6 +28,7 @@ mod routes;
 mod state;
 mod telemetry;
 mod templates;
+mod theme;
 
 use crate::routes::auth::limiter::{AuthLimiter, SystemClock};
 use crate::state::AppState;

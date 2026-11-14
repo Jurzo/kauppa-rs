@@ -55,6 +55,7 @@ pub fn invalid(reason: &Invalid) -> Text {
         ),
         Invalid::FoundState => key("errors.found_state"),
         Invalid::Language => key("errors.language"),
+        Invalid::Theme => key("errors.theme"),
     }
 }
 
@@ -138,6 +139,7 @@ pub fn every_text() -> Vec<Text> {
         Invalid::NoteTooLong { max: 200 },
         Invalid::FoundState,
         Invalid::Language,
+        Invalid::Theme,
     ];
     let mut conflicts = vec![Conflict::EmailTaken];
     for entity in Entity::ALL {
@@ -210,9 +212,10 @@ mod tests {
             Invalid::NoteTooLong { .. } => 18,
             Invalid::FoundState => 19,
             Invalid::Language => 20,
+            Invalid::Theme => 21,
         };
         let keys: BTreeSet<String> = every_text().into_iter().map(|(k, _)| k).collect();
-        // 18 single reasons + 3 entity reasons × 7 entities.
+        // 19 single reasons + 3 entity reasons × 7 entities.
         let errors = keys
             .iter()
             .filter(|k| {
@@ -221,7 +224,7 @@ mod tests {
                     && *k != "errors.email_taken"
             })
             .count();
-        assert_eq!(errors, 18 + 3 * 7);
-        assert_eq!(variant(&Invalid::Language), 20, "21 variants");
+        assert_eq!(errors, 19 + 3 * 7);
+        assert_eq!(variant(&Invalid::Theme), 21, "22 variants");
     }
 }

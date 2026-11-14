@@ -14,25 +14,25 @@ non_goals:
 acceptance:
   - id: P1
     property: "Every page, signed in or out, has one theme switch in the top bar: a form posting to `/theme` with a `<fieldset>` and `<legend>`, three radio buttons `theme=system|light|dark`, each with an icon and a label, and the saved choice checked (no cookie, or a cookie with any other value, checks System). Labels and the legend come from the catalogs; the icons are decorative inline SVG with no `style` attribute."
-    check: cargo test -p kauppa-web templates::tests::theme_switch
+    check: cargo test -p kauppa-web templates::tests::theme::switch_markup
   - id: P2
     property: "`POST /theme`, behind the cross-site check, accepts only `system`, `light` or `dark` (anything else is a 400 and sets nothing), stores the choice in a cookie, and answers an htmx request with 204 and no body, and a plain form post with 303 to the `return` path (through `same_site_path`). No GET changes the theme."
     check: cargo test -p kauppa-web routes::theme::tests
   - id: P3
     property: "First paint is already in the chosen theme: the server renders the saved choice's radio `checked`, and `app.css` applies the theme from it (`:has()`), so nothing is rendered on `<html>`; the `theme-color` meta is the chosen theme's page background (`#fbf8f5` or `#121212`), or the two media-keyed metas for System. A boosted navigation keeps the choice."
-    check: cargo test -p kauppa-web templates::tests::theme_first_paint
+    check: cargo test -p kauppa-web templates::tests::theme::first_paint
   - id: P4
     property: "Choosing a theme repaints the page at once, before the response arrives, with no JavaScript beyond htmx and no `hx-on`: by CSS keyed on the checked radio (`:has()`, RR-0035 sub-answer 3). Choosing System, after Light or Dark was saved, goes back to the OS setting on the same page."
-    check: cargo test -p kauppa-web templates::tests::theme_switch_applies
+    check: cargo test -p kauppa-web templates::tests::theme::applies
   - id: P5
     property: "The switch is accessible: the group's accessible name says it chooses the colour theme, each option's label stays available to assistive technology at every width (an icon-only look hides it visually only), the radios are operable with the keyboard as native radios are (arrow keys move and choose), the focus ring shows, and the selected option is distinguishable by more than colour."
-    check: cargo test -p kauppa-web templates::tests::theme_switch_accessible
+    check: cargo test -p kauppa-web templates::tests::theme::accessible
   - id: P6
     property: "The top bar never wraps: there is one breakpoint, shared by the top bar's rules, below which the navigation is the menu panel and above which brand, navigation, language selector and theme switch sit on one line in either language, signed in or out. Where popover is supported, the inline navigation doesn't wrap (`flex-wrap: nowrap`); without it, it keeps wrapping. The breakpoint is 60rem unless the real markup measures wider, in which case it is the widest measured one-line width (Finnish, signed out, measured widest in CRP-0035) plus a margin, and the measurements are recorded in the Continuity Pack."
-    check: cargo test -p kauppa-web templates::tests::top_bar_breakpoint
+    check: cargo test -p kauppa-web templates::tests::theme::top_bar_breakpoint
   - id: P7
     property: "On a phone, the theme switch sits inside the menu panel, as a headed group of three labelled rows; on wide screens the same switch shows inline as icon-only segments (RR-0035 sub-answers 4, 5). At 320 px the top bar still holds brand, language selector and menu button on one line, none hidden (RR-0031 sub-answer 4)."
-    check: cargo test -p kauppa-web templates::tests::theme_switch_on_phones
+    check: cargo test -p kauppa-web templates::tests::theme::on_phones
   - id: P8
     property: "The Content-Security-Policy and the other security headers are unchanged; templates stay free of inline scripts, inline styles, `style=` and `hx-on`; no template gains literal text, and the English and Finnish catalogs have the same keys."
     check: cargo test -p kauppa-web templates::tests::csp_compatible_templates

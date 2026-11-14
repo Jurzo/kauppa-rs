@@ -662,21 +662,29 @@ fn assert_site_colours(layout: &str, manifest: &serde_json::Value) {
             rest[..rest.find(';').expect("declaration end")].trim()
         })
         .collect();
-    let [light, dark, chosen_dark] = backgrounds[..] else {
-        panic!("--bg in the three token rules: {backgrounds:?}");
+    // Light, then dark from the OS, dark chosen and the no-`:has()`
+    // fallback (MB-0055, RR-0035 sub-answer 3).
+    let [light, dark, chosen_dark, fallback_dark] = backgrounds[..] else {
+        panic!("--bg in the four token rules: {backgrounds:?}");
     };
     assert_eq!(dark, chosen_dark);
+    assert_eq!(dark, fallback_dark);
     let theme_colors: Vec<(Option<&str>, Option<&str>)> = tags(layout, "meta")
         .into_iter()
         .filter(|tag| attr(tag, "name") == Some("theme-color"))
         .map(|tag| (attr(tag, "content"), attr(tag, "media")))
         .collect();
+    // The layout's source has a branch per choice (MB-0055, RR-0035
+    // sub-answer 3): Light, Dark, then System's OS-keyed pair, written
+    // twice (no `request_theme` is System too). Which one a page renders is
+    // `templates::tests::theme::first_paint`'s; here, only site colours.
+    let system = [
+        (Some(light), Some("(prefers-color-scheme: light)")),
+        (Some(dark), Some("(prefers-color-scheme: dark)")),
+    ];
     assert_eq!(
         theme_colors,
-        [
-            (Some(light), Some("(prefers-color-scheme: light)")),
-            (Some(dark), Some("(prefers-color-scheme: dark)")),
-        ]
+        [[(Some(light), None), (Some(dark), None)], system, system].concat()
     );
     assert_eq!((light, dark), ("#fbf8f5", "#121212"));
     assert_eq!(manifest["theme_color"], light);

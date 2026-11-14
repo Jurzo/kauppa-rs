@@ -45,6 +45,10 @@ async fn view_role_is_read_only() {
                 );
             }
             assert!(body.contains(marker), "{uri} htmx={htmx}: shows the items");
+            // The layout's theme switch (MB-0055) posts to `/theme` with
+            // htmx on every page; it isn't a list control, so the checks
+            // below look at the page without it.
+            let body = without_theme_switch(&body);
             // No form posts to the list (the layout's sign-out form is the
             // page's only form besides the language switcher, MB-0035), and
             // no link to its sharing page.
@@ -776,4 +780,14 @@ async fn add_follows_roles() {
         }
     }
     assert_eq!(list_snapshot(&state, &s).await, before, "nothing changed");
+}
+
+/// `body` without the layout's theme switch form, if it has one.
+#[allow(clippy::expect_used)]
+fn without_theme_switch(body: &str) -> String {
+    let Some(start) = body.find(r#"<form class="theme-switch""#) else {
+        return body.to_owned();
+    };
+    let len = body[start..].find("</form>").expect("theme switch ends") + "</form>".len();
+    format!("{}{}", &body[..start], &body[start + len..])
 }

@@ -1,13 +1,17 @@
 /* kauppalista.app's one stylesheet. It implements the Black Steel design
    system in design-system/ (MB-0054, RR-0034).
 
-   Tokens. The three rules below hold the tokens of
-   design-system/tokens.json, value for value
-   (`templates::tests::design_tokens`): change a token there first. Light
-   is the default and dark follows the OS; the `data-theme` selectors are
-   for a later theme choice and nothing sets the attribute today. `--maxw`
-   is the app's own page width, not a design token. Every other rule reads
-   tokens through var(): no raw colours below this block. */
+   Tokens. The rules below hold the tokens of design-system/tokens.json,
+   value for value (`templates::tests::design_tokens`): change a token there
+   first. Light is the default. Dark applies when the theme switch's Dark
+   radio is checked, or when the OS is dark and Light isn't checked
+   (MB-0055, RR-0035 sub-answer 3): `:has()` on the checked radio, so a
+   click repaints the page with no script, and the server renders the saved
+   choice checked, so the first paint is right. design-system/tokens.css
+   writes the same choice as `data-theme`; the app doesn't use it. Browsers
+   without `:has()` follow the OS (the fallback after these rules).
+   `--maxw` is the app's own page width, not a design token. Every other
+   rule reads tokens through var(): no raw colours below this block. */
 
 /* Light steel (default) */
 :root {
@@ -52,9 +56,9 @@
   color-scheme: light;
 }
 
-/* Black steel: follows the OS unless the user chose light */
+/* Black steel: follows the OS unless the user chose Light */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not(:has(#theme-light:checked)) {
     --bg: #121212;
     --surface: #1b1b1b;
     --surface-raised: #242424;
@@ -80,8 +84,8 @@
   }
 }
 
-/* Black steel: explicit choice */
-:root[data-theme="dark"] {
+/* Black steel: the user chose Dark */
+:root:has(#theme-dark:checked) {
   --bg: #121212;
   --surface: #1b1b1b;
   --surface-raised: #242424;
@@ -104,6 +108,39 @@
   --shadow-sm: 0 0 0 1px #3a3a3a;
   --shadow-md: 0 0 0 1px #3a3a3a, 0 8px 24px rgba(0,0,0,0.5);
   color-scheme: dark;
+}
+
+/* Browsers without `:has()` drop both rules above (an unknown selector
+   voids its rule), so here they follow the OS whatever is chosen
+   (RR-0035 sub-answer 3). `html` rather than `:root` keeps this rule apart
+   from the token rules above; for a page they are the same element. */
+@supports not selector(:has(*)) {
+  @media (prefers-color-scheme: dark) {
+    html {
+      --bg: #121212;
+      --surface: #1b1b1b;
+      --surface-raised: #242424;
+      --surface-sunken: #0c0c0c;
+      --border: #3a3a3a;
+      --border-strong: #6b6b6b;
+      --ink: #f2ede9;
+      --ink-muted: #b9afa8;
+      --ink-subtle: #948a84;
+      --brand: #f74c00;
+      --brand-hover: #ff6a26;
+      --on-brand: #1b1b1b;
+      --brand-subtle: #2a1a12;
+      --steel: #1b1b1b;
+      --shell: #fff1e6;
+      --focus: var(--brand);
+      --success: #5fd38a;
+      --danger: #ff6b6b;
+      --danger-subtle: #3a1616;
+      --shadow-sm: 0 0 0 1px #3a3a3a;
+      --shadow-md: 0 0 0 1px #3a3a3a, 0 8px 24px rgba(0,0,0,0.5);
+      color-scheme: dark;
+    }
+  }
 }
 
 /* Fonts (MB-0054, RR-0034 sub-answer 1): one variable WOFF2 file per
@@ -199,10 +236,14 @@ a:hover { color: var(--brand-hover); text-decoration: underline; }
 .nav-open:hover, .nav-close:hover { background: var(--brand-subtle); }
 .nav-icon { font-size: 1.2rem; line-height: 1; }
 
-/* Phones (below 40rem = 640px), where popover is supported: the nav is a
-   full-height panel sliding in from the right over a dimmed backdrop. */
+/* Below 60rem (960px), where popover is supported: the nav is a
+   full-height panel sliding in from the right over a dimmed backdrop.
+   MB-0055 (RR-0035 sub-answer 6): one breakpoint for the navigation, the
+   widest one-line top bar measured (913px: Finnish, signed out, with the
+   theme switch) plus a margin. Above it the inline nav never wraps; below
+   it the menu button takes over, before anything would wrap. */
 @supports selector(:popover-open) {
-  @media (max-width: 39.9375rem) {
+  @media (max-width: 59.9375rem) {
     /* MB-0051: brand, language selector, menu button; a tighter gap so the
        three fit at 320px. */
     .topbar { gap: var(--space-2); }
@@ -229,8 +270,29 @@ a:hover { color: var(--brand-hover); text-decoration: underline; }
     /* The active entry: a brand-subtle row with ink text. */
     .site-nav a[aria-current="page"] { border-left-color: var(--brand); background: var(--brand-subtle); }
     .site-nav form.inline { display: block; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); }
+    /* MB-0055 (RR-0035 sub-answer 5): in the panel the theme switch is a
+       headed group of labelled rows, like the entries above it. */
+    .site-nav .theme-switch { display: block; margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); }
+    .site-nav .theme-switch fieldset { display: flex; flex-direction: column; gap: 0; padding: 0; border: 0; border-radius: 0; background: none; }
+    .site-nav .theme-switch legend, .site-nav .theme-label {
+      position: static; width: auto; height: auto; overflow: visible;
+      clip: auto; clip-path: none; white-space: normal;
+    }
+    .site-nav .theme-switch legend { padding: var(--space-2) var(--space-3) var(--space-1); font-size: 0.875rem; color: var(--ink-muted); }
+    .site-nav .theme-option {
+      justify-content: flex-start; gap: var(--space-3); width: 100%; min-height: 3rem;
+      padding: 0 var(--space-3); border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      font-size: 1.125rem; font-weight: 400;
+    }
+    /* The chosen row: a brand bar at its edge, as the current entry has. */
+    .site-nav .theme-option:has(input:checked) { background: var(--brand-subtle); box-shadow: inset 3px 0 0 var(--brand); }
   }
-  @media (max-width: 39.9375rem) and (prefers-reduced-motion: no-preference) {
+  /* Above the breakpoint the inline nav stays on one line. Without popover
+     support there is no panel to fall back to, so it keeps wrapping. */
+  @media (min-width: 60rem) {
+    .site-nav { flex-wrap: nowrap; }
+  }
+  @media (max-width: 59.9375rem) and (prefers-reduced-motion: no-preference) {
     .site-nav {
       transform: translateX(100%);
       transition: transform 0.2s ease-out, overlay 0.2s allow-discrete, display 0.2s allow-discrete;
@@ -240,6 +302,43 @@ a:hover { color: var(--brand-hover); text-decoration: underline; }
       .site-nav:popover-open { transform: translateX(100%); }
     }
   }
+}
+
+/* Theme switch (MB-0055, RR-0035), from the owner's baseline: a group of
+   three radios, each covering its option, so the tap target is large and
+   the keyboard works as for any radios (arrow keys move and choose). Inline
+   it is icon-only segments; the legend and labels are hidden visually only
+   (assistive technology still reads them), and each option has a `title`.
+   The panel shows them (above). The radio is see-through, so the option
+   carries the focus ring. */
+.theme-switch { flex: none; margin: 0; }
+.theme-switch fieldset {
+  display: inline-flex; gap: 2px; min-width: 0; margin: 0; padding: 1px;
+  border: 1px solid var(--border); border-radius: var(--radius-full); background: var(--surface-sunken);
+}
+.theme-switch legend, .theme-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.theme-option {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-width: 2.75rem; min-height: 2.75rem; padding: 0;
+  border-radius: var(--radius-full); color: var(--ink-muted); cursor: pointer;
+}
+.theme-option:hover { color: var(--ink); }
+.theme-option input {
+  position: absolute; inset: 0; min-height: 0; margin: 0; padding: 0;
+  border: 0; opacity: 0; cursor: pointer;
+}
+.theme-option:has(input:checked) { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.theme-option:has(input:checked) svg { color: var(--brand); }
+.theme-option:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+.theme-option svg {
+  flex: none; width: 1.125rem; height: 1.125rem;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .theme-switch .theme-option { transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease; }
 }
 
 /* Buttons (design-system/components/Button.md). `.button` alone is the
@@ -308,15 +407,16 @@ label { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; }
 
 /* Where popover is supported: the button shows, and the list drops down
    under it in the top layer. First a fixed place under the sticky top bar
-   at the right edge (the bar is 4.25rem tall: a 2.75rem control and
-   0.75rem of padding twice); then, where CSS anchor positioning exists,
+   at the right edge (the bar is at most 4.5rem tall: the 3rem theme switch
+   on wide screens, MB-0055, and 0.75rem of padding twice); then, where CSS
+   anchor positioning exists,
    exactly under the button, right edges aligned. */
 @supports selector(:popover-open) {
   .lang-open { display: inline-flex; anchor-name: --lang-open; }
   .lang-menu:not(:popover-open) { display: none; }
   .lang-menu {
     flex-direction: column; gap: 0;
-    position: fixed; inset: 4.5rem max(0.5rem, env(safe-area-inset-right)) auto auto;
+    position: fixed; inset: 4.75rem max(0.5rem, env(safe-area-inset-right)) auto auto;
     min-width: 9rem; max-width: calc(100vw - 1rem); max-height: calc(100dvh - 5rem); overflow-y: auto;
     padding: var(--space-1); border: 1px solid var(--border); border-radius: var(--radius-md);
     background: var(--surface-raised); color: var(--ink); box-shadow: var(--shadow-md);

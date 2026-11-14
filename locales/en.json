@@ -79,6 +79,7 @@
   "errors.servings_not_whole": "servings must be a whole number",
   "errors.servings_too_few": "servings must be at least 1",
   "errors.share_role": "choose view or edit",
+  "errors.theme": "unsupported theme",
   "errors.title_empty": "recipe title must not be empty",
   "errors.too_many.category": "too many categories",
   "errors.too_many.favorite": "too many favorites",
@@ -246,5 +247,9 @@
   "shop.mark_found": "Mark {item} found",
   "shop.mark_not_found": "Mark {item} not found",
   "shop.progress": "{found} of {total} found",
-  "shop.remove": "Remove {item} — not needed"
+  "shop.remove": "Remove {item} — not needed",
+  "theme.dark": "Dark",
+  "theme.label": "Theme",
+  "theme.light": "Light",
+  "theme.system": "System"
 }
