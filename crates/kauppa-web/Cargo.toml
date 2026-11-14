@@ -25,7 +25,6 @@ actix-session = { workspace = true }
 actix-identity = { workspace = true }
 tracing-actix-web = { workspace = true }
 
-sqlx = { workspace = true }
 handlebars = { workspace = true }
 
 tracing = { workspace = true }
@@ -45,5 +44,8 @@ dotenvy = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+# Tests only: the web layer reaches the database through kauppa-core's
+# repo traits (persistence.md; MB-0048, RR-0036 sub-answer 1).
+sqlx = { workspace = true }
 # Checksums of the vendored htmx in `templates::tests` (MB-0027, RR-0015).
 sha2 = "0.10.9"
