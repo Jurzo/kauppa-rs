@@ -129,3 +129,7 @@ No Mentorship Pack or Runbook change.
 
 Status: active once approved. Amends RR-0018 (placement and constraint 5);
 supersedes nothing.
+
+Amended by RR-0038 (2026-11-14): the error-page middleware sends
+`HX-Retarget: body` on its pages for htmx requests (constraint 3 and
+sub-answer 3 allow it for that case only).

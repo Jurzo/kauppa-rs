@@ -17,7 +17,9 @@ Version: v1 · Scope: `crates/kauppa-web/src/routes/**` and middleware.
 - Form POSTs that succeed respond `303 See Other` with `Location: /...`, so a
   browser refresh is safe.
 - Error paths return the sanitized message from `WebError::error_response`,
-  never a `Debug` of the inner error.
+  never a `Debug` of the inner error; the error-page middleware turns it
+  into a page (RR-0038). A handler that renders its own 4xx sets
+  `Content-Type: text/html`.
 
 ## State
 

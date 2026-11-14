@@ -47,6 +47,8 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
 - **Input.** Deserialize into typed structs; reject on invalid. For HTML
   rendering, handlebars escapes by default — never use `{{{raw}}}` on
   user-provided content.
+- **Redirect targets.** A redirect target taken from a request (`return`)
+  goes through `language::same_site_path` (RR-0038 constraint 6).
 - **Logging.** Never log passwords, hashes, session cookies, or full emails
   in error messages at `info` or higher. Request log spans record the path
   only, never the query string (RR-0012).

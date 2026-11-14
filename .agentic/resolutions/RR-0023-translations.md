@@ -355,3 +355,7 @@ in `templating.md`.
 Amended by RR-0031 (2026-11-12): the switcher is a dropdown in the top bar
 with SVG flags, not footer buttons (sub-answer 7); the rest of sub-answer 7
 stands.
+
+Amended by RR-0038 (2026-11-14): error pages are translated by a middleware
+around the RR-0010 scope; sub-answer 10's "no middleware is added around the
+RR-0010 scope" no longer applies.
