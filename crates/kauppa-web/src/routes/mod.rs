@@ -12,6 +12,7 @@ pub mod pages;
 pub mod products;
 pub mod recipes;
 pub mod request;
+pub mod theme;
 
 #[cfg(test)]
 pub mod test_support;

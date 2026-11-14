@@ -22,6 +22,7 @@ mod brand;
 mod design;
 mod language;
 mod select;
+mod theme;
 
 /// The English registry over the embedded catalogs.
 fn build_registry() -> anyhow::Result<Registry> {
