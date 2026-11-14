@@ -153,6 +153,9 @@ Crisp questions:
    changed, extend the ignore by three months with this assessment (a
    new RR), or start Option B's trial instead?
 
+**Answered by the owner, 2026-11-14:** "Go with the recommendations"
+(Q1 A, Q2 A with C, Q3 the three-month default). Recorded in RR-0039.
+
 ## Blast radius and rollback
 
 What can break: under A, nothing now. The eventual upgrade touches every
