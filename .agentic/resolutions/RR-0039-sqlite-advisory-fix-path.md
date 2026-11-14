@@ -102,4 +102,8 @@ No Mentorship Pack or Runbook change.
 
 ## Supersession and history
 
-Status: active once signed. Supersedes nothing; follows RR-0016.
+Status: active once signed. Follows RR-0016.
+
+Supersedes RR-0021 (owner, 2026-11-14): RR-0021 decided the same fix
+path on 2026-11-10 but was never merged; both are recorded, and RR-0039
+governs.

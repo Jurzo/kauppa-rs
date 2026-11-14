@@ -56,7 +56,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/persistence.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: [RR-0016, RR-0039]
+resolutions: [RR-0016, RR-0021, RR-0039]
 ---
 ```
 

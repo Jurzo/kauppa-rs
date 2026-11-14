@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: medium
-state: open
+state: superseded
 runbook_trigger: ".agentic/runbooks/dependency-bump.md (\"Bumping a crate across a major version\": sqlx 0.8 → 0.9; \"Changing enabled features\"; entry gate 2–3: CRP open, RR approved before the PR); CI trigger paths `Cargo.toml`, `deny.toml`, `deploy/backup/Dockerfile`; MB-0041 autonomy.escalate (the path → platform-owner; the backup image's sqlite → platform-owner; exposure → security)"
 ---
 ```

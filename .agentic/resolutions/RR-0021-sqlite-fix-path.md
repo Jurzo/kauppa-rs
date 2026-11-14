@@ -9,8 +9,8 @@ decided_by: "@juuso.kalliomaki"
 role: platform
 risk_tier: medium
 decided_at: 2026-11-10T08:21:00Z
-status: approved
-superseded_by: null
+status: superseded
+superseded_by: RR-0039
 rolls_back_into:
   - .agentic/missions/MB-0041-sqlite-wal-advisory.md
   - .agentic/consults/CRP-0021-sqlite-fix-path.md
@@ -165,3 +165,11 @@ No Mentorship Pack or Runbook change.
 
 Status: active once signed. Supersedes nothing. Leaves RR-0016 in force
 until the upgrade PR removes its entry; RR-0016's review date is unchanged.
+
+Superseded by RR-0039 (owner, 2026-11-14). This record was signed on
+2026-11-10 but stayed on the unpushed branch `agentic/mb-0041-sqlite-fix`;
+its roll-back was never applied, and a later session decided the same
+question again in CRP-0039 / RR-0039. RR-0039 governs MB-0041; this record
+is kept as history. Where they differ (the sqlx feature list,
+`rust-version` 1.94, the 2026-12-15 report-back without a default), RR-0039
+and the upgrade PR's own review decide.
