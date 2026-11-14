@@ -140,3 +140,7 @@ To be applied after this record is signed, in the consult's PR:
 ## Supersession and history
 
 Status: active. Superseded by: none.
+
+Amended by RR-0040 (2026-11-14): `recipe.rs`'s `fetch_ingredients` stays
+runtime (`INGREDIENT_SELECT`, shared with `list.rs`); the image build ships
+`.sqlx/`.

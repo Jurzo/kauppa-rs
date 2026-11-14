@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0049 autonomy.escalate (a query left runtime against RR-0037 sub-answer 1 → platform); feature.md escalation trigger `deploy/Dockerfile` (platform:deploy), outside RR-0037's Covers"
 ---
 ```
