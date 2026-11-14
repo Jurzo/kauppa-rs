@@ -6,7 +6,8 @@
 //! 2. `main.rs` registers nothing besides `routes::assets::Assets` and
 //!    `routes::configure`;
 //! 3. `routes::configure` registers one scope, wrapped in `csrf::guard`,
-//!    around `routes::protected`;
+//!    around `routes::protected`, and the guard in `errors::pages`
+//!    (RR-0038);
 //! 4. every handler attribute in the source is registered in
 //!    `routes::protected`, and every registration there is a handler found;
 //! 5. behind the real wiring, each write route answers a forged request
@@ -108,8 +109,10 @@ async fn every_write_route_is_covered() {
     assert_eq!(
         configure,
         "fnconfigure(cfg:&mutweb::ServiceConfig){cfg.service(web::scope(\"\")\
-         .wrap(from_fn(crate::csrf::guard)).configure(protected),);",
-        "routes::configure wraps every route in the cross-site check"
+         .wrap(from_fn(crate::csrf::guard)).wrap(from_fn(errors::pages))\
+         .configure(protected),);",
+        "routes::configure wraps every route in the cross-site check, and that in \
+         the error pages (RR-0038 sub-answer 1)"
     );
 
     // 4. Every handler is registered in `protected`, and every registration

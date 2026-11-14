@@ -4,11 +4,6 @@
   {{#if error}}
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
-  <form method="post" action="/auth/login" hx-target-4xx="body">
-    <label>{{t "auth.email"}}<input type="email" name="email" required autocomplete="email" /></label>
-    <label>{{t "auth.password"}}<input type="password" name="password" required autocomplete="current-password" /></label>
-    <button type="submit" class="button primary">{{t "auth.sign_in"}}</button>
-  </form>
-  <p class="muted">{{t "auth.login_invite_hint"}}</p>
+  {{> auth/_login_form}}
 </section>
 {{/layout}}

@@ -474,6 +474,8 @@ main { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: var(--space
 .form-card label { display: block; margin: var(--space-3) 0; }
 .form-card input { display: block; width: 100%; margin-top: var(--space-1); }
 .form-card .button { width: 100%; margin-top: var(--space-2); }
+/* Stacked full width, so no side-by-side gap (`.button + .button`). */
+.form-card .button + .button { margin-left: 0; }
 
 /* Errors and notices (design-system/README.md → Colour usage): `danger`
    text, on `danger-subtle` when it is a banner; information on

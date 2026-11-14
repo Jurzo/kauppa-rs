@@ -5,6 +5,7 @@ pub mod admin;
 pub mod assets;
 pub mod auth;
 pub mod categories;
+pub mod errors;
 pub mod health;
 pub mod language;
 pub mod lists;
@@ -19,11 +20,14 @@ pub mod test_support;
 
 /// Every route, behind the app-wide cross-site check (MB-0018, RR-0010): one
 /// catch-all scope wrapped in [`crate::csrf::guard`], so no handler is
-/// registered outside it (`csrf::tests::coverage` checks).
+/// registered outside it (`csrf::tests::coverage` checks). Outside the
+/// guard, [`errors::pages`] turns error answers into pages, the guard's 403
+/// among them (MB-0056, RR-0038).
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("")
             .wrap(from_fn(crate::csrf::guard))
+            .wrap(from_fn(errors::pages))
             .configure(protected),
     );
 }

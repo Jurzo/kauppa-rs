@@ -60,6 +60,16 @@ impl Templates {
     pub const fn i18n(&self) -> &I18n {
         &self.i18n
     }
+
+    /// Replaces template `name` in every language's registry (tests only:
+    /// MB-0056's forced render failure).
+    #[cfg(test)]
+    pub fn replace_template(&mut self, name: &str, source: &str) -> anyhow::Result<()> {
+        for registry in &mut self.registries {
+            registry.register_template_string(name, source)?;
+        }
+        Ok(())
+    }
 }
 
 impl std::fmt::Debug for Templates {

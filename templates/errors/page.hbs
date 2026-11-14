@@ -1,0 +1,19 @@
+{{!-- MB-0056 (RR-0038): the page for an error answer. It shows only what
+the status says (`title`, `text`), never why the request was refused or
+what it carried (RR-0038 constraints 1 and 2). A 401 offers the sign-in
+form. --}}
+{{#> layout page_title=title page_signed_in=signed_in}}
+<section class="form-card">
+  <h1>{{title}}</h1>
+  <p>{{text}}</p>
+  {{#if sign_in}}
+    {{> auth/_login_form}}
+  {{/if}}
+  <p>
+    {{#if signed_in}}
+      <a class="button" href="/lists">{{t "home.your_lists"}}</a>
+    {{/if}}
+    <a class="button" href="/">{{t "error_page.front_page"}}</a>
+  </p>
+</section>
+{{/layout}}

@@ -2,6 +2,7 @@
 //! core's typed reasons and the web layer's own messages, each mapped in one
 //! exhaustive `match`, so a new reason without a key doesn't compile.
 
+use actix_web::http::StatusCode;
 use kauppa_core::domain::{InvitationState, PASSWORD_MAX_CHARS, PASSWORD_MIN_CHARS};
 use kauppa_core::{Conflict, Entity, Invalid};
 
@@ -104,6 +105,66 @@ pub fn message(message: Message) -> Text {
     }
 }
 
+/// What an error page is about (MB-0056, RR-0038): one kind per group of
+/// statuses. A page depends only on this, never on why the request was
+/// refused (RR-0038 constraint 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorPage {
+    /// 400: a rejected value or a malformed form.
+    BadRequest,
+    /// 401: not signed in, or the sign-in ended.
+    SignedOut,
+    /// 403: authorization or the cross-site check, alike.
+    Forbidden,
+    /// 404: an unknown URL, a missing or hidden item.
+    NotFound,
+    /// Any other 4xx (405, 409, …).
+    Other,
+    /// 5xx.
+    Server,
+}
+
+impl ErrorPage {
+    /// Every kind, for the catalog check.
+    #[cfg(test)]
+    pub const ALL: [Self; 6] = [
+        Self::BadRequest,
+        Self::SignedOut,
+        Self::Forbidden,
+        Self::NotFound,
+        Self::Other,
+        Self::Server,
+    ];
+
+    /// The page for an error status (4xx or 5xx).
+    pub fn for_status(status: StatusCode) -> Self {
+        match status {
+            StatusCode::BAD_REQUEST => Self::BadRequest,
+            StatusCode::UNAUTHORIZED => Self::SignedOut,
+            StatusCode::FORBIDDEN => Self::Forbidden,
+            StatusCode::NOT_FOUND => Self::NotFound,
+            s if s.is_server_error() => Self::Server,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// An error page's heading (also its `<title>`) and text.
+pub fn error_page(page: ErrorPage) -> (Text, Text) {
+    let (title, text) = match page {
+        ErrorPage::BadRequest => (
+            "error_page.bad_request.title",
+            "error_page.bad_request.text",
+        ),
+        ErrorPage::SignedOut => ("error_page.signed_out.title", "error_page.signed_out.text"),
+        ErrorPage::Forbidden => ("error_page.forbidden.title", "error_page.forbidden.text"),
+        ErrorPage::NotFound => ("error_page.not_found.title", "error_page.not_found.text"),
+        ErrorPage::Other => ("error_page.other.title", "error_page.other.text"),
+        ErrorPage::Server => ("error_page.server.title", "error_page.server.text"),
+    };
+    (key(title), key(text))
+}
+
 /// The key for an invitation's state label.
 pub fn invitation_state(state: InvitationState) -> Text {
     key(match state {
@@ -172,6 +233,10 @@ pub fn every_text() -> Vec<Text> {
         InvitationState::Expired,
     ] {
         out.push(invitation_state(state));
+    }
+    for page in ErrorPage::ALL {
+        let texts: [Text; 2] = error_page(page).into();
+        out.extend(texts);
     }
     out
 }

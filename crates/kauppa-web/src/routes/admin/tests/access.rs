@@ -1,5 +1,5 @@
 //! MB-0023 P3: only administrators reach `/admin/*`. Anonymous requests go
-//! to login, signed-in non-admins get the plain 404, and admin status is
+//! to login, signed-in non-admins get the 404 page, and admin status is
 //! read from the database on every request (RR-0012 constraint 5).
 
 use std::str::FromStr;
@@ -19,7 +19,8 @@ use crate::routes::test_support::{
 };
 
 /// What the app answers for a page that doesn't exist for this user.
-const PLAIN_404: &str = "not found";
+/// Stands in for the request path in a compared page.
+const PATH: &str = "PATH";
 
 /// P3: anonymous requests to every admin route are sent to the login page
 /// and change nothing.
@@ -65,16 +66,20 @@ async fn admin_only_non_admin_gets_404() {
         .id;
     let session = session_cookie(&call_service(&app, login_request(MEMBER).to_request()).await);
 
+    // The same 404 page as an unknown list; only the path the layout's
+    // switches return to differs (MB-0056, RR-0038).
+    let unknown_path = format!("/lists/{}", uuid::Uuid::new_v4());
     let unknown = call_service(
         &app,
         TestRequest::get()
-            .uri(&format!("/lists/{}", uuid::Uuid::new_v4()))
+            .uri(&unknown_path)
             .cookie(session.clone())
             .to_request(),
     )
     .await;
     assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
-    assert_eq!(body_string(unknown).await, PLAIN_404);
+    let not_found = body_string(unknown).await.replace(&unknown_path, PATH);
+    assert!(not_found.contains("<main>"), "a page: {not_found}");
 
     for htmx in [false, true] {
         for req in admin_requests(pending, Some(&session)) {
@@ -84,10 +89,15 @@ async fn admin_only_non_admin_gets_404() {
                 req
             };
             let req = req.to_request();
-            let what = format!("{} {} htmx={htmx}", req.method(), req.path());
+            let path = req.path().to_owned();
+            let what = format!("{} {path} htmx={htmx}", req.method());
             let resp = call_service(&app, req).await;
             assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{what}");
-            assert_eq!(body_string(resp).await, PLAIN_404, "{what}");
+            assert_eq!(
+                body_string(resp).await.replace(&path, PATH),
+                not_found,
+                "{what}"
+            );
         }
     }
     let listed = InvitationRepo::list(&state.pool).await.expect("list");

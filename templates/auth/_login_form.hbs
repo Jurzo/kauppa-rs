@@ -1,0 +1,12 @@
+{{!-- MB-0056 (RR-0038 sub-answer 4): the sign-in form, shared by the login
+page and the 401 error page. `return_to`, when set, is the page to go back
+to after signing in; `login_submit` checks it with `same_site_path`. --}}
+<form method="post" action="/auth/login" hx-target-4xx="body">
+  {{#if return_to}}
+    <input type="hidden" name="return" value="{{return_to}}" />
+  {{/if}}
+  <label>{{t "auth.email"}}<input type="email" name="email" required autocomplete="email" /></label>
+  <label>{{t "auth.password"}}<input type="password" name="password" required autocomplete="current-password" /></label>
+  <button type="submit" class="button primary">{{t "auth.sign_in"}}</button>
+</form>
+<p class="muted">{{t "auth.login_invite_hint"}}</p>

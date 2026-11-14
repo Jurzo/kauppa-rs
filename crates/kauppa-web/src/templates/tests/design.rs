@@ -425,6 +425,18 @@ fn length(rule: &Rule<'_>, property: &str) -> u32 {
     millirem(rule.value(property))
 }
 
+/// A card stacks its buttons full width, so the side-by-side gap that
+/// `.button + .button` adds must not push the second one right (MB-0056 P7:
+/// the error page's "Your lists" and "Front page").
+fn card_buttons(rules: &[Rule<'_>]) {
+    assert_eq!(rule(rules, &[".form-card .button"]).value("width"), "100%");
+    assert_eq!(
+        rule(rules, &[".form-card .button + .button"]).value("margin-left"),
+        "0",
+        "stacked card buttons line up"
+    );
+}
+
 /// How many primary buttons a page built from `source` can show at once.
 /// Partials (`{{> name}}`) count with their page; of the branches of an
 /// `{{#if}}` or `{{#unless}}` only one shows, so the largest counts; a
@@ -504,6 +516,7 @@ pub fn components() {
     assert_eq!(button.value("font-weight"), "600");
     let primary = rule(&rules, &[".button.primary"]);
     assert_eq!(primary.value("background"), "var(--brand)");
+    card_buttons(&rules);
     assert_eq!(primary.value("border-color"), "var(--brand)");
     let hover = rule(&rules, &[".button.primary:hover"]);
     assert_eq!(hover.value("background"), "var(--brand-hover)");
