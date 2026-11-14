@@ -618,10 +618,12 @@ async fn share_by_email() {
 // The structural half of P1: a test that fails if a list or list-item query
 // goes around the central predicate. It reads the SQLite repo's source.
 
-// The list repo. Every other file in `repo/sqlite/` is read when the test runs
-// (`other_sqlite_files`), so a new file can't escape RR-0009 constraint 3:
-// only `sqlite/list.rs` may name a list table.
+// The list repo: the `impl` in `list.rs`, the predicate and its helpers in
+// `list_access.rs`. Every other file in `repo/sqlite/` is read when the test
+// runs (`other_sqlite_files`), so a new file can't escape RR-0009 constraint
+// 3 (as amended by RR-0036): only these two may name a list table.
 const LIST_RS: &str = include_str!("sqlite/list.rs");
+const LIST_ACCESS_RS: &str = include_str!("sqlite/list_access.rs");
 const MOD_RS: &str = include_str!("mod.rs");
 
 /// The text from `header` to the end of its top-level block.
@@ -631,9 +633,10 @@ fn block<'a>(src: &'a str, header: &str) -> &'a str {
     &src[start..end]
 }
 
-/// Top-level items of a Rust file as `(first line, text)`.
+/// Top-level items of a Rust file as `(first line, text)`. An item made
+/// visible to the sibling file (`pub(super)`) starts an item too.
 fn items(src: &str) -> Vec<(&str, String)> {
-    const STARTS: [&str; 11] = [
+    const STARTS: [&str; 12] = [
         "fn ",
         "async fn ",
         "const ",
@@ -645,6 +648,7 @@ fn items(src: &str) -> Vec<(&str, String)> {
         "use ",
         "mod ",
         "static ",
+        "pub(super) ",
     ];
     let mut out: Vec<(&str, String)> = Vec::new();
     for line in src.lines() {
@@ -659,14 +663,18 @@ fn items(src: &str) -> Vec<(&str, String)> {
     out
 }
 
-/// Every `.rs` file in `repo/sqlite/` except `list.rs`, as `(name, source)`.
+/// Every `.rs` file in `repo/sqlite/` except `list.rs` and `list_access.rs`,
+/// as `(name, source)`.
 fn other_sqlite_files() -> Vec<(String, String)> {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/repo/sqlite");
     let mut files: Vec<(String, String)> = std::fs::read_dir(&dir)
         .expect("read repo/sqlite")
         .map(|entry| entry.expect("dir entry").path())
         .filter(|path| path.extension().is_some_and(|e| e == "rs"))
-        .filter(|path| path.file_name().is_some_and(|n| n != "list.rs"))
+        .filter(|path| {
+            path.file_name()
+                .is_some_and(|n| n != "list.rs" && n != "list_access.rs")
+        })
         .map(|path| {
             let name = format!("sqlite/{}", path.file_name().unwrap().to_string_lossy());
             (name, std::fs::read_to_string(&path).expect("read source"))
@@ -683,7 +691,8 @@ fn other_sqlite_files() -> Vec<(String, String)> {
 /// - the trait gains a method this check didn't see;
 /// - any code outside that impl and the grant-taking helpers mentions a list
 ///   table (`shopping_lists`, `list_items`, `list_shares`);
-/// - any SQLite repo file other than `sqlite/list.rs` mentions one (RR-0009).
+/// - any SQLite repo file other than `sqlite/list.rs` and
+///   `sqlite/list_access.rs` mentions one (RR-0009, as amended by RR-0036).
 #[test]
 fn list_queries_route_through_central_predicate() {
     const GATES: [&str; 3] = ["self.begin_read(", "self.begin_write(", "accessible_lists("];
@@ -726,7 +735,8 @@ fn list_queries_route_through_central_predicate() {
         .count();
     assert_eq!(seen, declared, "every trait method was checked");
 
-    for (header, text) in items(LIST_RS) {
+    for (header, text) in items(LIST_RS).into_iter().chain(items(LIST_ACCESS_RS)) {
+        let header = header.strip_prefix("pub(super) ").unwrap_or(header);
         let code: String = text
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -764,7 +774,7 @@ fn list_queries_route_through_central_predicate() {
         for table in ["shopping_lists", "list_items", "list_shares"] {
             assert!(
                 !code.contains(table),
-                "{file} names `{table}`; list SQL belongs in sqlite/list.rs"
+                "{file} names `{table}`; list SQL belongs in sqlite/list.rs or list_access.rs"
             );
         }
         for select in [
@@ -775,7 +785,7 @@ fn list_queries_route_through_central_predicate() {
         ] {
             assert!(
                 !code.contains(select),
-                "{file} uses `{select}` outside sqlite/list.rs"
+                "{file} uses `{select}` outside sqlite/list.rs and list_access.rs"
             );
         }
     }

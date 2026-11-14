@@ -1,6 +1,7 @@
 //! MB-0036 follow-up (RR-0024): an `edit` grantee's typed text matching the
-//! list owner's favorites, seen in the store view; the id-based add stays
-//! the owner's; a revoked editor is denied at once.
+//! list owner's favorites, seen in the store view; there is no id-based add
+//! (removed by MB-0048, RR-0036 sub-answer 2); a revoked editor is denied at
+//! once.
 
 use actix_web::http::StatusCode;
 
@@ -9,9 +10,10 @@ use kauppa_core::repo::ShoppingListRepo;
 use super::{list_snapshot, shared_list};
 
 /// RR-0024: the editor's "maito" lands in the store view under the owner's
-/// Kylmä, for the editor and the owner alike. `POST /lists/{id}/favorites`
-/// (by product id) stays owner-only: 403 for the editor, nothing changes.
-/// After a revoke, the editor's next add is a 404 (RR-0002 constraint 4).
+/// Kylmä, for the editor and the owner alike. The old
+/// `POST /lists/{id}/favorites` (by product id) is gone: 404 for the editor,
+/// nothing changes. After a revoke, the editor's next add is a 404 (RR-0002
+/// constraint 4).
 #[actix_web::test]
 #[allow(clippy::expect_used)]
 async fn editor_match_store_view_and_id_add() {
@@ -63,7 +65,8 @@ async fn editor_match_store_view_and_id_add() {
         }
     }
 
-    // Adding by product id stays the owner's, even for the owner's favorite.
+    // Adding by product id no longer exists (RR-0024 sub-answer 3, amended
+    // by RR-0036).
     let before = list_snapshot(&state, &s).await;
     for htmx in [false, true] {
         let mut req = TestRequest::post()
@@ -74,7 +77,7 @@ async fn editor_match_store_view_and_id_add() {
             req = req.insert_header(("HX-Request", "true"));
         }
         let resp = call_service(&app, req.to_request()).await;
-        assert_eq!(resp.status(), StatusCode::FORBIDDEN, "htmx={htmx}");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "htmx={htmx}");
     }
     assert_eq!(list_snapshot(&state, &s).await, before, "nothing changed");
 

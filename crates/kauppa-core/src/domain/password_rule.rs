@@ -10,8 +10,6 @@
 //! The error carries no data: never the password, its length or any part of
 //! it (constraint 5).
 
-use std::fmt;
-
 /// The fewest characters a new password may have (NIST SP 800-63B rev. 4,
 /// single-factor; RR-0022 sub-answer 1).
 pub const PASSWORD_MIN_CHARS: usize = 15;
@@ -29,17 +27,6 @@ pub enum PasswordLengthError {
     /// More than [`PASSWORD_MAX_CHARS`] characters.
     TooLong,
 }
-
-impl fmt::Display for PasswordLengthError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Choose a password of {PASSWORD_MIN_CHARS} to {PASSWORD_MAX_CHARS} characters."
-        )
-    }
-}
-
-impl std::error::Error for PasswordLengthError {}
 
 /// Checks a new password's length against the rule.
 pub fn check_new_password_length(password: &str) -> Result<(), PasswordLengthError> {
@@ -131,14 +118,5 @@ mod tests {
             check_new_password_length(&repeat(' ', 14)),
             Err(PasswordLengthError::TooShort)
         );
-    }
-
-    /// One message for both bounds, naming both, with no data.
-    #[test]
-    fn one_message_names_both_bounds() {
-        let short = PasswordLengthError::TooShort.to_string();
-        assert_eq!(short, PasswordLengthError::TooLong.to_string());
-        assert!(short.contains(&PASSWORD_MIN_CHARS.to_string()), "{short}");
-        assert!(short.contains(&PASSWORD_MAX_CHARS.to_string()), "{short}");
     }
 }

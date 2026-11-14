@@ -66,7 +66,7 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub use items::{add_favorite, add_item, add_recipe, remove_item, restore_item, update_item};
+pub use items::{add_item, add_recipe, remove_item, restore_item, update_item};
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};
 

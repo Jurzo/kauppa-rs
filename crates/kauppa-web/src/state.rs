@@ -25,3 +25,6 @@ impl std::fmt::Debug for AppState {
         f.debug_struct("AppState").finish_non_exhaustive()
     }
 }
+
+#[cfg(test)]
+mod tests;
