@@ -3,10 +3,11 @@
 //! Queries are checked against the schema at compile time (`sqlx::query!`,
 //! `query_as!`, `query_scalar!`), from the offline cache in `.sqlx/`; run
 //! `scripts/sqlx-prepare.sh` after changing a query or adding a migration
-//! (MB-0049, RR-0037). By decision, `list.rs` and its access helpers and the
-//! setup queries here stay runtime `sqlx::query`: the list queries are built
-//! from shared SQL constants, which the macros can't take
-//! (`.agentic/mentorship/persistence.md`).
+//! (MB-0049, RR-0037). By decision, `list.rs` and its access helpers, the
+//! setup queries here and `INGREDIENT_SELECT` (shared by `list.rs` and
+//! `recipe.rs`) stay runtime `sqlx::query`: they are shared SQL constants,
+//! which the macros can't take (RR-0037, RR-0040;
+//! `.agentic/mentorship/persistence.md`).
 //!
 //! One file per repo trait implementation (RR-0009): `user`, `category`,
 //! `product`, `list` and `recipe`; `invitation` holds the invitation and

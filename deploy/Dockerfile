@@ -28,6 +28,10 @@ COPY locales ./locales
 COPY assets ./assets
 # sqlx::migrate! embeds migrations/ at compile time.
 COPY migrations ./migrations
+# The sqlx query macros check queries against this cache instead of a
+# database (MB-0049, RR-0037, RR-0040).
+COPY .sqlx ./.sqlx
+ENV SQLX_OFFLINE=true
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \

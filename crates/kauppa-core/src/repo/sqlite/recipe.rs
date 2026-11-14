@@ -66,9 +66,10 @@ impl SqlitePool {
         recipe_id: Uuid,
         only: Option<Uuid>,
     ) -> CoreResult<Vec<Ingredient>> {
-        // Runtime, like `list.rs`, which shares the constant: pending the
-        // owner's decision (MB-0049; the macros need aliases this text
-        // can't carry, since `list.rs` reads its columns by name).
+        // Runtime by decision (RR-0040), like `list.rs`, which shares the
+        // constant: the macros would need aliases on it (LEFT JOIN
+        // nullability, COALESCE, timestamps), and `list.rs` reads its columns
+        // by name.
         let rows = sqlx::query(INGREDIENT_SELECT)
             .bind(recipe_id.to_string())
             .bind(owner_id.to_string())
