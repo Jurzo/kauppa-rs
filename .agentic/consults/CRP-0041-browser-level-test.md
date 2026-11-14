@@ -189,3 +189,15 @@ crates/kauppa-web/src/csp.rs:22  POLICY = "default-src 'self'; script-src 'self'
 No trial was run: this machine has Node 20 (jsdom 31 needs 22) and no
 browser; downloading one is part of the approved path, not of the consult.
 The first CI run records the timings.
+
+## Owner's answer (2026-11-14)
+
+1. Playwright (A).
+2. As recommended (A1): `tests/browser/` with its own `package.json` and
+   lockfile, `npm ci --ignore-scripts`, Node from `actions/setup-node`
+   pinned by SHA with an exact version; Dependabot `npm` entry, bumps
+   reviewed by hand.
+3. Not required at first (i).
+4. Yes: `actix-web.md`'s Playwright line is replaced.
+
+Recorded in RR-0041 (scaffold; the owner signs).
