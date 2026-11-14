@@ -5,11 +5,11 @@
 id: RR-0037
 closes: CRP-0037
 mission: MB-0049
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: platform
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-14T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-14T09:05:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0049-compile-time-checked-queries.md
@@ -18,22 +18,13 @@ rolls_back_into:
 ---
 ```
 
-> **Scaffold, not a decision.** The owner hasn't answered CRP-0037 yet.
-> The sub-answers below are the consult's recommendations, each marked
-> *Proposed*. Before signing, the resolver edits any sub-answer answered
-> differently (for Q1 C the record becomes "retire the target": sub-answers
-> 2 and 3 fall away and the roll-back only edits `persistence.md`), removes
-> this note and the *Proposed* marks, and fills `decided_by`, `decided_at`,
-> `status` and the Approvals line.
-
 ## Decision and outcome
 
-Approve CRP-0037's questions 1–4 as answered by the owner
-(`<owner's answer and date, e.g. "all as recommended", 2026-11-14>`).
+Approve CRP-0037's questions 1–4 as answered by the owner (@Jurzo, 2026-11-14: "All as recommended").
 
 Sub-answers:
 
-1. **Scope (Q1 B, platform).** *Proposed.* The 51 queries in
+1. **Scope (Q1 B, platform).** The 51 queries in
    `repo/sqlite/user.rs`, `category.rs`, `invitation.rs`, `recipe.rs` and
    `product.rs` move to `sqlx::query!`, `query_as!` and `query_scalar!`.
    - `list.rs` (28 queries) and `mod.rs` (2 setup queries) stay runtime
@@ -46,7 +37,7 @@ Sub-answers:
      `String` and go through `parse_uuid` as today. No query's behaviour
      changes.
    - No manifest change: the workspace already enables sqlx's `macros`.
-2. **The cache and CI (Q2, platform).** *Proposed.*
+2. **The cache and CI (Q2, platform).** 
    - `.sqlx/` at the workspace root is committed. With no `DATABASE_URL`
      the macros read it, so builds need no database.
    - `ci.yml` sets `SQLX_OFFLINE=true` for every build, so a missing cache
@@ -58,11 +49,11 @@ Sub-answers:
      `--check` fails if the two differ. CI runs `--check`; a developer or
      agent runs it after changing a query or adding a migration.
    - No `sqlx-cli` in CI or as a required tool.
-3. **Timing (Q3, platform).** *Proposed.* Convert on sqlx 0.8 now. The
+3. **Timing (Q3, platform).** Convert on sqlx 0.8 now. The
    later PR that upgrades sqlx (its own dependency-bump mission) regenerates
    `.sqlx/` with the script. sqlx 0.9 doesn't unblock MB-0041
    (`sqlx-sqlite` 0.9.0 caps `libsqlite3-sys` below 0.38).
-4. **The Mentorship Pack (Q4, owner).** *Proposed.* `persistence.md`'s
+4. **The Mentorship Pack (Q4, owner).** `persistence.md`'s
    target-state paragraph is replaced by what the code does (Roll-back,
    below); `repo/sqlite/mod.rs:4`'s comment follows in the implementation
    PR.
@@ -99,7 +90,7 @@ Does not cover:
 
 ## Approvals and authority
 
-`<resolver>` as platform for sub-answers 1–3; owner for 4.
+@Jurzo as platform for sub-answers 1–3; owner for 4.
 
 ## Linked artifacts and evidence
 
