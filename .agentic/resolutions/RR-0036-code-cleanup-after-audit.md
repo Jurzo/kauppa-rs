@@ -83,7 +83,7 @@ Sub-answers:
 8. **An error-page brief (Q8, owner).** A separate brief for a
    translated HTML error page (layout, navigation, sign-in on 401), after
    MB-0055. *Not part of MB-0048 either way.*
-9. **Order and the brief (Q9, owner).** *Proposed.* MB-0048's
+9. **Order and the brief (Q9, owner).** MB-0048's
    implementation starts from `main` after MB-0055 (PR #88) merges. The
    brief takes CRP-0036 Q7's amendments (Roll-back, below).
 
