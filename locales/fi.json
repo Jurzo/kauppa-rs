@@ -79,6 +79,7 @@
   "errors.servings_not_whole": "annosmäärän on oltava kokonaisluku",
   "errors.servings_too_few": "annoksia on oltava vähintään 1",
   "errors.share_role": "valitse katselu tai muokkaus",
+  "errors.theme": "teemaa ei tueta",
   "errors.title_empty": "reseptin nimi ei voi olla tyhjä",
   "errors.too_many.category": "liian monta kategoriaa",
   "errors.too_many.favorite": "liian monta suosikkia",
@@ -246,5 +247,9 @@
   "shop.mark_found": "Merkitse löydetyksi: {item}",
   "shop.mark_not_found": "Merkitse löytymättömäksi: {item}",
   "shop.progress": "{found}/{total} löydetty",
-  "shop.remove": "Poista: {item} — ei tarvita"
+  "shop.remove": "Poista: {item} — ei tarvita",
+  "theme.dark": "Tumma",
+  "theme.label": "Teema",
+  "theme.light": "Vaalea",
+  "theme.system": "Järjestelmä"
 }

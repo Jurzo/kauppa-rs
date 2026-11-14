@@ -42,7 +42,7 @@ impl Theme {
     }
 
     /// The value templates see as `request_theme`, and the cookie holds.
-    pub fn tag(self) -> &'static str {
+    pub const fn tag(self) -> &'static str {
         match self {
             Self::System => "system",
             Self::Light => "light",

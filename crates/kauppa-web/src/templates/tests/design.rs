@@ -2,10 +2,12 @@
 //! `design-system/`. The `#[test]` functions are in `tests.rs`, where the
 //! brief's checks name them; their bodies are here.
 //!
-//! - [`tokens`] (P1): the three token rules of `app.css` (light, dark from
-//!   the OS, dark by `data-theme`) hold exactly the tokens of
-//!   `design-system/tokens.json`, with its values; so does
-//!   `design-system/tokens.css`. No old variable is left, every `var()`
+//! - [`tokens`] (P1): the token rules of `app.css` (light; dark from the
+//!   OS unless Light is chosen, dark when Dark is chosen, by `:has()` on the
+//!   theme switch (MB-0055, RR-0035); and the OS-only fallback for browsers
+//!   without `:has()`) hold exactly the tokens of
+//!   `design-system/tokens.json`, with its values; so do the rules of
+//!   `design-system/tokens.css`, which writes the choice as `data-theme`. No old variable is left, every `var()`
 //!   names a declared token, and no other rule has a raw colour.
 //! - [`contrast`] (P2): the pairs of the design system's contrast table,
 //!   and the other pairs `app.css` uses for text, meet their level in both
@@ -21,12 +23,18 @@ use serde_json::Value;
 use super::select::{Rule, app_css, millirem, rules, without_comments};
 use super::{TEMPLATES, attr, tags, template};
 
-/// The token rules: light (the default), dark when the OS says so and the
-/// page didn't choose light, and dark chosen with `data-theme`.
+/// `app.css`'s token rules (RR-0035 sub-answer 3): light (the default),
+/// dark when the OS says so and Light isn't checked, dark when Dark is
+/// checked, and dark from the OS where `:has()` isn't supported.
 const LIGHT: &str = ":root";
-const DARK_OS: &str = r#":root:not([data-theme="light"])"#;
-const DARK_CHOSEN: &str = r#":root[data-theme="dark"]"#;
-/// The at-rule [`DARK_OS`] sits in.
+const DARK_OS: &str = ":root:not(:has(#theme-light:checked))";
+const DARK_CHOSEN: &str = ":root:has(#theme-dark:checked)";
+const DARK_FALLBACK: &str = "html";
+/// `design-system/tokens.css`'s dark rules: the same choice as
+/// `data-theme`, the design system's portable form.
+const DS_DARK_OS: &str = r#":root:not([data-theme="light"])"#;
+const DS_DARK_CHOSEN: &str = r#":root[data-theme="dark"]"#;
+/// The at-rule the OS's dark rule sits in, first.
 const DARK_MEDIA: &str = "@media (prefers-color-scheme: dark) {";
 
 /// The variables `app.css` had before the tokens.
@@ -175,17 +183,18 @@ fn variables<'a>(rule: &Rule<'a>) -> BTreeMap<&'a str, &'a str> {
     out
 }
 
-/// Whether a rule is one of the three token rules.
+/// Whether a rule is one of `app.css`'s token rules.
 fn is_token_rule(rule: &Rule<'_>) -> bool {
-    [LIGHT, DARK_OS, DARK_CHOSEN]
+    [LIGHT, DARK_OS, DARK_CHOSEN, DARK_FALLBACK]
         .iter()
         .any(|selector| rule.selectors == [*selector])
 }
 
 /// The token rules of a stylesheet (`what`, comments removed) hold the
 /// tokens of `tokens.json`, and nothing else but `color-scheme` and, in the
-/// light rule, `extra`.
-fn assert_token_rules(what: &str, css: &str, extra: &[&str]) {
+/// light rule, `extra`. `dark` are its dark rules, the OS's first.
+fn assert_token_rules(what: &str, css: &str, extra: &[&str], dark: &[&str]) {
+    let os = dark[0];
     let expected = tokens_json();
     let rules = rules(css);
 
@@ -205,7 +214,7 @@ fn assert_token_rules(what: &str, css: &str, extra: &[&str]) {
     }
     assert_eq!(light.value("color-scheme"), "light", "{what}");
 
-    for selector in [DARK_OS, DARK_CHOSEN] {
+    for &selector in dark {
         let dark = rule(&rules, &[selector]);
         let declared = variables(dark);
         let names: BTreeSet<&str> = declared.keys().copied().collect();
@@ -220,7 +229,10 @@ fn assert_token_rules(what: &str, css: &str, extra: &[&str]) {
         }
         assert_eq!(dark.value("color-scheme"), "dark", "{what}: `{selector}`");
     }
-    for token_rule in rules.iter().filter(|r| is_token_rule(r)) {
+    for token_rule in rules
+        .iter()
+        .filter(|r| r.selectors == [LIGHT] || dark.iter().any(|d| r.selectors == [*d]))
+    {
         for (property, _) in &token_rule.declarations {
             assert!(
                 property.starts_with("--") || *property == "color-scheme",
@@ -234,8 +246,8 @@ fn assert_token_rules(what: &str, css: &str, extra: &[&str]) {
         .split_once(DARK_MEDIA)
         .unwrap_or_else(|| panic!("{what}: {DARK_MEDIA}"));
     assert!(
-        after.trim_start().starts_with(DARK_OS),
-        "{what}: `{DARK_OS}` is inside the dark media query"
+        after.trim_start().starts_with(os),
+        "{what}: `{os}` is inside the dark media query"
     );
 }
 
@@ -275,12 +287,18 @@ fn raw_colour(value: &str) -> Option<String> {
 /// MB-0054 P1: see the module comment.
 pub fn tokens() {
     let css = without_comments(&app_css());
-    assert_token_rules("app.css", &css, &APP_VARIABLES);
+    assert_token_rules(
+        "app.css",
+        &css,
+        &APP_VARIABLES,
+        &[DARK_OS, DARK_CHOSEN, DARK_FALLBACK],
+    );
     // Nothing generates `tokens.css` in this repository: keep it true too.
     assert_token_rules(
         "design-system/tokens.css",
         &without_comments(&design_file("tokens.css")),
         &[],
+        &[DS_DARK_OS, DS_DARK_CHOSEN],
     );
 
     let rules = rules(&css);
@@ -355,7 +373,12 @@ pub fn contrast() {
 
     // The colours as served: the light rule, and the dark rules over it.
     let light = variables(rule(&rules, &[LIGHT]));
-    for (theme, selector) in [("light", LIGHT), ("dark", DARK_OS), ("dark", DARK_CHOSEN)] {
+    for (theme, selector) in [
+        ("light", LIGHT),
+        ("dark", DARK_OS),
+        ("dark", DARK_CHOSEN),
+        ("dark", DARK_FALLBACK),
+    ] {
         let mut colours = light.clone();
         colours.extend(variables(rule(&rules, &[selector])));
         let colour = |name: &str| -> &str {

@@ -328,21 +328,23 @@ fn applies() {
     assert_eq!(chosen[0].selectors.len(), 1);
     assert_eq!(chosen[0].value("color-scheme"), "dark");
 
-    // Dark from the OS unless Light is chosen: the first thing in the dark
-    // media query (System and no choice both land here).
+    // Dark from the OS unless Light is chosen: the first thing in its dark
+    // media query (System and no choice both land here). The only other
+    // dark media query is the fallback's, below.
     let dark_media: Vec<&str> = at_blocks(&css, "@media")
         .into_iter()
         .filter(|(prelude, _)| *prelude == "(prefers-color-scheme: dark)")
         .map(|(_, body)| body)
         .collect();
-    assert_eq!(dark_media.len(), 1, "one dark media query");
-    assert!(
-        dark_media[0]
-            .trim_start()
-            .starts_with(":root:not(:has(#theme-light:checked)) {"),
-        "{}",
-        dark_media[0]
-    );
+    assert_eq!(dark_media.len(), 2, "the OS's and the fallback's");
+    let os = dark_media
+        .iter()
+        .filter(|body| {
+            body.trim_start()
+                .starts_with(":root:not(:has(#theme-light:checked)) {")
+        })
+        .count();
+    assert_eq!(os, 1, "one OS rule that yields to Light");
 
     // Without `:has()`: the OS decides, from a block those browsers read.
     let fallback: Vec<&str> = at_blocks(&css, "@supports")
@@ -407,8 +409,10 @@ fn accessible() {
     }) {
         for (property, value) in &rule.declarations {
             assert!(
-                !(*property == "display" && *value == "none")
-                    && !(*property == "visibility" && *value == "hidden"),
+                !matches!(
+                    (*property, *value),
+                    ("display", "none") | ("visibility", "hidden")
+                ),
                 "`{}` removes a label or radio from assistive technology",
                 rule.selectors.join(", ")
             );

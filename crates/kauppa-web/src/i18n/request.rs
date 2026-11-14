@@ -22,6 +22,7 @@ use kauppa_core::{Conflict, Invalid};
 use super::messages::{self, Message, Text};
 use crate::error::{WebError, WebResult};
 use crate::state::AppState;
+use crate::theme::{self, Theme};
 
 /// The language cookie's name (RR-0023 sub-answer 4).
 pub const COOKIE: &str = "kauppa_lang";
@@ -35,6 +36,10 @@ pub const VARY: (HeaderName, &str) = (header::VARY, "Cookie, Accept-Language");
 /// The root-context key the layout reads for the language switcher's
 /// `return` field.
 const REQUEST_PATH: &str = "request_path";
+
+/// The root-context key the layout reads for the theme switch's checked
+/// choice and `theme-color` (MB-0055, RR-0035 sub-answer 2).
+const REQUEST_THEME: &str = "request_theme";
 
 /// The `kauppa_lang` cookie choosing `lang`.
 pub fn language_cookie(lang: Language, secure: bool) -> Cookie<'static> {
@@ -80,11 +85,12 @@ pub fn from_accept_language(value: &str) -> Option<Language> {
 }
 
 /// What a handler needs to answer in the request's language: the language,
-/// and the path the switcher returns to.
+/// the path the switchers return to, and the chosen theme.
 #[derive(Debug, Clone)]
 pub struct Ui {
     pub lang: Language,
     path: String,
+    theme: Theme,
     state: web::Data<AppState>,
 }
 
@@ -108,6 +114,10 @@ impl Ui {
             .map_err(|e| WebError::Internal(format!("view of {name}: {e}")))?;
         if let Value::Object(map) = &mut data {
             map.insert(REQUEST_PATH.to_owned(), Value::String(self.path.clone()));
+            map.insert(
+                REQUEST_THEME.to_owned(),
+                Value::String(self.theme.tag().to_owned()),
+            );
         }
         Ok(state.templates.get(self.lang).render(name, &data)?)
     }
@@ -173,6 +183,7 @@ impl FromRequest for Ui {
             .and_then(|raw| Uuid::parse_str(&raw).ok());
         let state = req.app_data::<web::Data<AppState>>().cloned();
         let cookie = req.cookie(COOKIE).and_then(|c| Language::parse(c.value()));
+        let theme = Theme::from_cookie(req.cookie(theme::COOKIE).as_ref().map(Cookie::value));
         let header = req
             .headers()
             .get(header::ACCEPT_LANGUAGE)
@@ -191,7 +202,12 @@ impl FromRequest for Ui {
                 None => None,
             };
             let lang = stored.or(cookie).or(header).unwrap_or(Language::DEFAULT);
-            Ok(Self { lang, path, state })
+            Ok(Self {
+                lang,
+                path,
+                theme,
+                state,
+            })
         })
     }
 }

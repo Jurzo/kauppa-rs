@@ -209,7 +209,7 @@ fn cookie_and_parse() {
     assert_eq!(
         cookie(Theme::System, false)
             .max_age()
-            .map(|d| d.whole_seconds()),
+            .map(actix_web::cookie::time::Duration::whole_seconds),
         Some(0)
     );
     for (raw, theme) in [

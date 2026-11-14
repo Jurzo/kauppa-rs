@@ -33,6 +33,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
     cfg.service(health::health)
         .service(pages::index)
         .service(language::switch)
+        .service(theme::switch)
         .service(
             web::scope("/auth")
                 .service(auth::login_form)
