@@ -238,3 +238,12 @@ git branch: 131; --merged origin/main: 115
 git worktree list: 51 (48 clean, 2 missing folders, 1 main)
 git stash list: 3
 ```
+
+## Owner's answer (2026-11-14)
+
+As recommended, except Q2: **A**, copy the baseline into the repository
+(the owner's file, "Agentic SE Implementation Baseline.md", identical to
+the copy `AGENTS.md` links today). Q6 includes dropping `stash@{1}` and
+`stash@{2}`.
+
+Recorded in RR-0042 (scaffold; the owner signs).
