@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "0df94b43393a27f6261fc94e24673fc793dc6e095dd4d045a1fbeea34c32f850"
+}

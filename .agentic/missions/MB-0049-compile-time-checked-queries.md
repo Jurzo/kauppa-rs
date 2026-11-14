@@ -14,10 +14,10 @@ acceptance:
     property: "An RR records the decision: migrate to `sqlx::query!`/`query_as!` with `.sqlx/` offline data, migrate partly (which modules), or keep runtime queries and delete the target-state paragraph."
     check: "manual: the RR linked in MB-0049's Continuity Pack"
   - id: P2
-    property: "Every query in `repo/sqlite/user.rs`, `category.rs`, `invitation.rs`, `recipe.rs` and `product.rs` (51) is compile-time checked, `.sqlx/` is committed, and CI builds with `SQLX_OFFLINE=true` and fails when the cache is stale (RR-0037 sub-answers 1 and 2)."
+    property: "Every query in `repo/sqlite/user.rs`, `category.rs`, `invitation.rs`, `recipe.rs` and `product.rs` but `recipe.rs`'s `fetch_ingredients` (50; RR-0040) is compile-time checked, `.sqlx/` is committed, and CI builds with `SQLX_OFFLINE=true` and fails when the cache is stale (RR-0037 sub-answers 1 and 2)."
     check: "scripts/sqlx-prepare.sh --check"
   - id: P3
-    property: "The list bypass guard and every repo test pass unchanged; each converted query keeps its SQL byte for byte apart from type-override aliases; `list.rs` and `mod.rs` are listed as runtime by decision (RR-0037), with the reason."
+    property: "The list bypass guard and every repo test pass unchanged; each converted query keeps its SQL byte for byte apart from type-override aliases; `list.rs`, `mod.rs` and `INGREDIENT_SELECT` (shared by `list.rs` and `recipe.rs`) are listed as runtime by decision (RR-0037, RR-0040), with the reason."
     check: "cargo test -p kauppa-core"
   - id: P4
     property: "`persistence.md` describes what the code does (RR roll-back)."
@@ -45,7 +45,7 @@ runbook: .agentic/runbooks/feature.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: [RR-0037]
+resolutions: [RR-0037, RR-0040]
 ---
 ```
 

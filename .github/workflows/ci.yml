@@ -16,6 +16,10 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
   RUST_BACKTRACE: 1
+  # The sqlx query macros read the committed .sqlx/ cache; no build needs a
+  # database, and a query missing from the cache fails at that query
+  # (MB-0049, RR-0037 sub-answer 2).
+  SQLX_OFFLINE: "true"
 
 jobs:
   fmt-clippy-test:
@@ -48,6 +52,12 @@ jobs:
 
       - name: cargo test
         run: cargo test --workspace --all-targets
+
+      # .sqlx/ must be what the queries and migrations give (RR-0037
+      # constraint 1): the script rebuilds kauppa-core against a database
+      # made from migrations/ and compares.
+      - name: sqlx offline cache is current
+        run: scripts/sqlx-prepare.sh --check
 
       # kauppa-core alone, without feature unification from kauppa-web (RR-0005).
       - name: cargo test -p kauppa-core

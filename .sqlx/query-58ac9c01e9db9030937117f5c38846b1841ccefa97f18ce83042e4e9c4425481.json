@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT name FROM products\n                WHERE owner_id = ?1\n                ORDER BY name_key, name",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "58ac9c01e9db9030937117f5c38846b1841ccefa97f18ce83042e4e9c4425481"
+}

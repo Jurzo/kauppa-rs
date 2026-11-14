@@ -2,9 +2,7 @@
 
 use crate::{Conflict, Entity, Invalid};
 use async_trait::async_trait;
-use chrono::Utc;
-use sqlx::Row;
-use sqlx::sqlite::SqliteRow;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::CoreResult;
@@ -20,18 +18,29 @@ use super::{
     row_to_ingredient, unknown_category,
 };
 
-fn row_to_recipe(row: &SqliteRow) -> CoreResult<Recipe> {
-    let id: String = row.try_get("id")?;
-    let owner_id: String = row.try_get("owner_id")?;
-    Ok(Recipe {
-        id: parse_uuid(&id)?,
-        owner_id: parse_uuid(&owner_id)?,
-        title: row.try_get("title")?,
-        instructions: row.try_get("instructions")?,
-        servings: row.try_get("servings")?,
-        created_at: row.try_get("created_at")?,
-        updated_at: row.try_get("updated_at")?,
-    })
+/// A `recipes` row as the query macros return it (`query_as!`).
+struct RecipeRow {
+    id: String,
+    owner_id: String,
+    title: String,
+    instructions: String,
+    servings: Option<i64>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl RecipeRow {
+    fn into_recipe(self) -> CoreResult<Recipe> {
+        Ok(Recipe {
+            id: parse_uuid(&self.id)?,
+            owner_id: parse_uuid(&self.owner_id)?,
+            title: self.title,
+            instructions: self.instructions,
+            servings: self.servings,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
 }
 
 /// Trim a recipe's fields and check them: a non-empty title, servings ≥ 1.
@@ -57,6 +66,10 @@ impl SqlitePool {
         recipe_id: Uuid,
         only: Option<Uuid>,
     ) -> CoreResult<Vec<Ingredient>> {
+        // Runtime by decision (RR-0040), like `list.rs`, which shares the
+        // constant: the macros would need aliases on it (LEFT JOIN
+        // nullability, COALESCE, timestamps), and `list.rs` reads its columns
+        // by name.
         let rows = sqlx::query(INGREDIENT_SELECT)
             .bind(recipe_id.to_string())
             .bind(owner_id.to_string())
@@ -77,12 +90,15 @@ async fn touch_owned_recipe(
     owner: &str,
     recipe_id: &str,
 ) -> CoreResult<()> {
-    let result = sqlx::query(r"UPDATE recipes SET updated_at = ?1 WHERE id = ?2 AND owner_id = ?3")
-        .bind(Utc::now())
-        .bind(recipe_id)
-        .bind(owner)
-        .execute(&mut **tx)
-        .await?;
+    let now = Utc::now();
+    let result = sqlx::query!(
+        r"UPDATE recipes SET updated_at = ?1 WHERE id = ?2 AND owner_id = ?3",
+        now,
+        recipe_id,
+        owner
+    )
+    .execute(&mut **tx)
+    .await?;
     if result.rows_affected() == 0 {
         return Err(CoreError::NotFound);
     }
@@ -93,76 +109,87 @@ async fn touch_owned_recipe(
 impl RecipeRepo for SqlitePool {
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<Recipe>> {
         let owner = owner_id.to_string();
-        let rows = sqlx::query(
-            r"SELECT id, owner_id, title, instructions, servings, created_at, updated_at
+        let rows = sqlx::query_as!(
+            RecipeRow,
+            r#"SELECT id, owner_id, title, instructions, servings, created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>"
                 FROM recipes
                 WHERE owner_id = ?1
-                ORDER BY updated_at DESC",
+                ORDER BY updated_at DESC"#,
+            owner
         )
-        .bind(&owner)
         .fetch_all(&self.inner)
         .await?;
 
-        rows.iter().map(row_to_recipe).collect()
+        rows.into_iter().map(RecipeRow::into_recipe).collect()
     }
 
     async fn create(&self, owner_id: Uuid, input: &RecipeInput) -> CoreResult<Recipe> {
         let input = clean_recipe(input)?;
-        let row = sqlx::query(
-            r"INSERT INTO recipes
+        let id = Uuid::new_v4().to_string();
+        let owner = owner_id.to_string();
+        let now = Utc::now();
+        let row = sqlx::query_as!(
+            RecipeRow,
+            r#"INSERT INTO recipes
                   (id, owner_id, title, instructions, servings, created_at, updated_at)
               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
-              RETURNING id, owner_id, title, instructions, servings, created_at, updated_at",
+              RETURNING id, owner_id, title, instructions, servings, created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            id,
+            owner,
+            input.title,
+            input.instructions,
+            input.servings,
+            now
         )
-        .bind(Uuid::new_v4().to_string())
-        .bind(owner_id.to_string())
-        .bind(&input.title)
-        .bind(&input.instructions)
-        .bind(input.servings)
-        .bind(Utc::now())
         .fetch_one(&self.inner)
         .await?;
 
-        row_to_recipe(&row)
+        row.into_recipe()
     }
 
     async fn get(&self, owner_id: Uuid, id: Uuid) -> CoreResult<RecipeDetail> {
-        let row = sqlx::query(
-            r"SELECT id, owner_id, title, instructions, servings, created_at, updated_at
+        let id_text = id.to_string();
+        let owner = owner_id.to_string();
+        let row = sqlx::query_as!(
+            RecipeRow,
+            r#"SELECT id, owner_id, title, instructions, servings, created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>"
                 FROM recipes
-                WHERE id = ?1 AND owner_id = ?2",
+                WHERE id = ?1 AND owner_id = ?2"#,
+            id_text,
+            owner
         )
-        .bind(id.to_string())
-        .bind(owner_id.to_string())
         .fetch_optional(&self.inner)
         .await?
         .ok_or(CoreError::NotFound)?;
 
         Ok(RecipeDetail {
-            recipe: row_to_recipe(&row)?,
+            recipe: row.into_recipe()?,
             ingredients: self.fetch_ingredients(owner_id, id, None).await?,
         })
     }
 
     async fn update(&self, owner_id: Uuid, id: Uuid, input: &RecipeInput) -> CoreResult<Recipe> {
         let input = clean_recipe(input)?;
-        let row = sqlx::query(
-            r"UPDATE recipes
+        let now = Utc::now();
+        let id_text = id.to_string();
+        let owner = owner_id.to_string();
+        let row = sqlx::query_as!(
+            RecipeRow,
+            r#"UPDATE recipes
                 SET title = ?1, instructions = ?2, servings = ?3, updated_at = ?4
                 WHERE id = ?5 AND owner_id = ?6
-              RETURNING id, owner_id, title, instructions, servings, created_at, updated_at",
+              RETURNING id, owner_id, title, instructions, servings, created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            input.title,
+            input.instructions,
+            input.servings,
+            now,
+            id_text,
+            owner
         )
-        .bind(&input.title)
-        .bind(&input.instructions)
-        .bind(input.servings)
-        .bind(Utc::now())
-        .bind(id.to_string())
-        .bind(owner_id.to_string())
         .fetch_optional(&self.inner)
         .await?;
 
-        row.as_ref()
-            .map(row_to_recipe)
+        row.map(RecipeRow::into_recipe)
             .transpose()?
             .ok_or(CoreError::NotFound)
     }
@@ -170,11 +197,15 @@ impl RecipeRepo for SqlitePool {
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
         // `ingredients.recipe_id` cascades (0001); `ingredients.product_id`
         // points the other way, so no product is touched.
-        let result = sqlx::query(r"DELETE FROM recipes WHERE id = ?1 AND owner_id = ?2")
-            .bind(id.to_string())
-            .bind(owner_id.to_string())
-            .execute(&self.inner)
-            .await?;
+        let id_text = id.to_string();
+        let owner = owner_id.to_string();
+        let result = sqlx::query!(
+            r"DELETE FROM recipes WHERE id = ?1 AND owner_id = ?2",
+            id_text,
+            owner
+        )
+        .execute(&self.inner)
+        .await?;
 
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
@@ -199,14 +230,16 @@ impl RecipeRepo for SqlitePool {
 
         // Reuse the owner's product of this name (MB-0003 P3, matched through
         // name_key per RR-0003 constraint 3); its category is kept as is.
-        let existing =
-            sqlx::query(r"SELECT id, name FROM products WHERE owner_id = ?1 AND name_key = ?2")
-                .bind(&owner)
-                .bind(name_key(name))
-                .fetch_optional(&mut *tx)
-                .await?;
+        let key = name_key(name);
+        let existing = sqlx::query!(
+            r"SELECT id, name FROM products WHERE owner_id = ?1 AND name_key = ?2",
+            owner,
+            key
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
         let (product_id, product_name): (String, String) = if let Some(row) = existing {
-            (row.try_get("id")?, row.try_get("name")?)
+            (row.id, row.name)
         } else {
             let category = ingredient.category_id.ok_or_else(|| {
                 CoreError::Invalid(Invalid::NewProductNeedsCategory {
@@ -215,7 +248,9 @@ impl RecipeRepo for SqlitePool {
             })?;
             // A new product, hidden from favorites, appended at the end of an
             // owned category; nothing is inserted for a foreign one.
-            let row = sqlx::query(
+            let new_id = Uuid::new_v4().to_string();
+            let category = category.to_string();
+            let created: Option<String> = sqlx::query_scalar!(
                 r"INSERT INTO products
                       (id, owner_id, name, name_key, category_id, position, is_favorite,
                        created_at, updated_at)
@@ -227,13 +262,13 @@ impl RecipeRepo for SqlitePool {
                     FROM categories c
                     WHERE c.id = ?6 AND c.owner_id = ?2
                   RETURNING id",
+                new_id,
+                owner,
+                name,
+                key,
+                now,
+                category
             )
-            .bind(Uuid::new_v4().to_string())
-            .bind(&owner)
-            .bind(name)
-            .bind(name_key(name))
-            .bind(now)
-            .bind(category.to_string())
             .fetch_optional(&mut *tx)
             .await
             .map_err(|e| {
@@ -241,23 +276,24 @@ impl RecipeRepo for SqlitePool {
                     entity: Entity::Product,
                     name: name.to_owned(),
                 })
-            })?
-            .ok_or_else(unknown_category)?;
-            (row.try_get("id")?, name.to_owned())
+            })?;
+            (created.ok_or_else(unknown_category)?, name.to_owned())
         };
 
         let id = Uuid::new_v4();
-        sqlx::query(
+        let id_text = id.to_string();
+        let quantity = clean_quantity(ingredient.quantity.as_deref());
+        sqlx::query!(
             r"INSERT INTO ingredients (id, recipe_id, product_id, text, quantity, position)
               VALUES (?1, ?2, ?3, ?4, ?5,
                       (SELECT COALESCE(MAX(position), -1) + 1
                          FROM ingredients WHERE recipe_id = ?2))",
+            id_text,
+            recipe,
+            product_id,
+            product_name,
+            quantity
         )
-        .bind(id.to_string())
-        .bind(&recipe)
-        .bind(&product_id)
-        .bind(&product_name)
-        .bind(clean_quantity(ingredient.quantity.as_deref()))
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
@@ -280,13 +316,16 @@ impl RecipeRepo for SqlitePool {
         let mut tx = self.inner.begin().await?;
         touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
 
-        let result =
-            sqlx::query(r"UPDATE ingredients SET quantity = ?1 WHERE id = ?2 AND recipe_id = ?3")
-                .bind(clean_quantity(quantity))
-                .bind(ingredient_id.to_string())
-                .bind(&recipe)
-                .execute(&mut *tx)
-                .await?;
+        let quantity = clean_quantity(quantity);
+        let id = ingredient_id.to_string();
+        let result = sqlx::query!(
+            r"UPDATE ingredients SET quantity = ?1 WHERE id = ?2 AND recipe_id = ?3",
+            quantity,
+            id,
+            recipe
+        )
+        .execute(&mut *tx)
+        .await?;
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
         }
@@ -307,16 +346,12 @@ impl RecipeRepo for SqlitePool {
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
         touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
 
-        let rows = sqlx::query(
+        let mut ids: Vec<String> = sqlx::query_scalar!(
             r"SELECT id FROM ingredients WHERE recipe_id = ?1 ORDER BY position ASC, id ASC",
+            recipe
         )
-        .bind(&recipe)
         .fetch_all(&mut *tx)
         .await?;
-        let mut ids = rows
-            .iter()
-            .map(|row| row.try_get::<String, _>("id"))
-            .collect::<Result<Vec<_>, _>>()?;
 
         let index = ids
             .iter()
@@ -330,12 +365,14 @@ impl RecipeRepo for SqlitePool {
         for (index, id) in ids.iter().enumerate() {
             let position = i64::try_from(index)
                 .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Ingredient)))?;
-            sqlx::query(r"UPDATE ingredients SET position = ?1 WHERE id = ?2 AND recipe_id = ?3")
-                .bind(position)
-                .bind(id)
-                .bind(&recipe)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query!(
+                r"UPDATE ingredients SET position = ?1 WHERE id = ?2 AND recipe_id = ?3",
+                position,
+                id,
+                recipe
+            )
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;
@@ -352,11 +389,14 @@ impl RecipeRepo for SqlitePool {
         let mut tx = self.inner.begin().await?;
         touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
 
-        let result = sqlx::query(r"DELETE FROM ingredients WHERE id = ?1 AND recipe_id = ?2")
-            .bind(ingredient_id.to_string())
-            .bind(&recipe)
-            .execute(&mut *tx)
-            .await?;
+        let id = ingredient_id.to_string();
+        let result = sqlx::query!(
+            r"DELETE FROM ingredients WHERE id = ?1 AND recipe_id = ?2",
+            id,
+            recipe
+        )
+        .execute(&mut *tx)
+        .await?;
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
         }

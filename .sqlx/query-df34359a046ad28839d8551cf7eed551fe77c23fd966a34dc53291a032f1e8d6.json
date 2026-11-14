@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO ingredients (id, recipe_id, product_id, text, quantity, position)\n              VALUES (?1, ?2, ?3, ?4, ?5,\n                      (SELECT COALESCE(MAX(position), -1) + 1\n                         FROM ingredients WHERE recipe_id = ?2))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "df34359a046ad28839d8551cf7eed551fe77c23fd966a34dc53291a032f1e8d6"
+}

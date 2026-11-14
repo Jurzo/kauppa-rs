@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT language FROM users WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "language",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "739d70ec6374ff0ca85cf567e5a7217e0aefe33bb3ccdc5c1f8a137dfb2c310c"
+}

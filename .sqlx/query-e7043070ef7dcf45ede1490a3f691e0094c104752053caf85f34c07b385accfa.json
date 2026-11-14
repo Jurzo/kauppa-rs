@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT 1 AS \"found!: i64\" FROM admins WHERE user_id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "found!: i64",
+        "ordinal": 0,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "e7043070ef7dcf45ede1490a3f691e0094c104752053caf85f34c07b385accfa"
+}
