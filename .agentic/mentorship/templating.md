@@ -29,11 +29,9 @@ Version: v1 · Scope: `templates/**`, `assets/**`, and any route rendering HTML.
   noun, or put the name after a colon or in quotes.
 - Messages built in Rust use `I18n::text`. Core errors are typed reasons
   mapped to keys in `kauppa-web`, never English text shown as is.
-- Exception (RR-0023 sub-answer 10, RR-0036): the plain error bodies from
-  `WebError::error_response` and the cross-site 403 are English in every
-  language. They are built without the request, so they can't know its
-  language, and the forms catch rejected input and show it translated in
-  the page. A translated error page is its own brief.
+- Error answers inside the RR-0010 scope are pages in the request's
+  language and theme (RR-0038); `error.rs`'s English bodies are only the
+  fallback when a page can't be rendered.
 - A change that adds or edits user-facing text updates every catalog in
   the same PR.
 

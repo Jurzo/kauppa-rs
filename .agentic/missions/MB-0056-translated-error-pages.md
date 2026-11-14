@@ -13,13 +13,13 @@ non_goals:
   - "Pages for errors the app doesn't produce today, or new error states."
 acceptance:
   - id: P1
-    property: "Every 4xx and 5xx answer to a page request, from the app's own errors (`WebError`), the cross-site check, the signed-out `Identity` extractor, an unknown URL and a malformed path or form, is an HTML page rendered with the layout (navigation, language selector, theme switch) in the request's language and theme. It names what happened in plain words and offers a way on (at least a link to the front page, or to the lists when signed in). The status code is the one the request gets today."
+    property: "Every 4xx and 5xx answer to a page request, from the app's own errors (`WebError`), the cross-site check, the signed-out `Identity` extractor, an unknown URL, a malformed path (404) or form (400) and a wrong method (405), is an HTML page rendered with the layout (navigation, language selector, theme switch) in the request's language and theme. It names what happened in plain words and offers a way on (at least a link to the front page, or to the lists when signed in). The status code is the one the request gets today. One `from_fn` middleware around the RR-0010 scope, outside `csrf::guard`, makes the pages, rewriting only a 4xx or 5xx that carries an error or has no `Content-Type` (RR-0038 sub-answer 1); handler pages and `/healthz` pass through."
     check: cargo test -p kauppa-web routes::errors::tests::error_pages
   - id: P2
-    property: "A signed-out request for a page that needs a sign-in lets the user sign in from where they land, by the mechanism the owner chooses (S1): the sign-in form in the 401 page, or a redirect to the sign-in page. A user whose sign-in ended (RR-0026's 30-day idle limit) no longer sees an empty page."
+    property: "A signed-out request for a page that needs a sign-in lets the user sign in from where they land: the 401 page (status kept) shows the sign-in form, shared with `/auth/login` as a partial. For a GET it carries a hidden `return` with the asked-for path and query, and a successful sign-in goes to `language::same_site_path(return)`, otherwise to `/lists`; `//host`, `/\\host`, `https://host`, `%2F%2Fhost` and a control character each land on `/` (RR-0038 sub-answer 4). A user whose sign-in ended (RR-0026's 30-day idle limit) no longer sees an empty page."
     check: cargo test -p kauppa-web routes::errors::tests::signed_out
   - id: P3
-    property: "Under htmx, a boosted link or form answered with an error page shows that page (it replaces `<body>`) instead of nothing happening, and MB-0029's error-page forms keep working. What a non-boosted fragment request (`hx-get`/`hx-post` into a part of the page) does with an error follows the owner's decision (S1); it never puts a whole page inside a fragment's target."
+    property: "Under htmx, a boosted link or form answered with an error page shows that page (it replaces `<body>`) instead of nothing happening, and MB-0029's error-page forms keep working. Every error page answered to an htmx request, boosted or a fragment request, sends `HX-Retarget: body` and `HX-Reswap: innerHTML`, so the page replaces `<body>` and never lands inside a fragment's target; only the middleware's pages carry these headers (RR-0038 sub-answer 5)."
     check: cargo test -p kauppa-web routes::errors::tests::under_htmx
   - id: P4
     property: "Error pages disclose nothing new: no error detail, type name, SQL, id or input value; the cross-site 403 and an authorization 403 are the same page, so a client still can't tell which check failed; a 404 for a list the user may not see is the same page as for one that doesn't exist (RR-0002 constraint 4)."
@@ -28,7 +28,7 @@ acceptance:
     property: "If rendering an error page itself fails, the answer is today's plain body with the original status, never a panic and never a second error page; all page text comes from the catalogs in both languages; the Content-Security-Policy and other headers are unchanged; templates stay free of literal text, inline scripts and styles."
     check: cargo test -p kauppa-web routes::errors::tests::render_failure_falls_back
   - id: P6
-    property: "Nothing else changes: the tests that pin today's plain bodies (`error::tests::responses_unchanged`, `csrf::tests::cross_site`, `admin::tests::access`) are rewritten to the pages with their status assertions kept, `templating.md`'s English-bodies exception (RR-0036 sub-answer 7) is replaced by the new rule, and the whole suite passes with no assertion about status or authorization weakened."
+    property: "Nothing else changes: `error::tests::responses_unchanged` stays as it is (`error.rs`'s bodies are now P5's fallback); the tests that pin today's plain bodies or the wiring (`csrf::tests::cross_site::{rejects_cross_site_writes, missing_proof_is_rejected}`, `routes::admin::tests::access::admin_only_non_admin_gets_404`, `routes::theme::tests::rejects_other_values`, whose no-echo check reads the page's main content rather than the layout, and `csrf::tests::coverage`'s expected `configure` text, one `.wrap` added) are rewritten with their status assertions kept, `templating.md`'s English-bodies exception (RR-0036 sub-answer 7) is replaced by the new rule, and the whole suite passes with no assertion about status or authorization weakened."
     check: cargo test --workspace --all-targets
   - id: P7
     property: "In a browser, in English and Finnish, light and dark, with and without JavaScript: a dead link, an unknown URL, a list whose share was revoked, an ended sign-in and a forged cross-site post each show the right page in the layout, and its way on works; a boosted link to a dead page shows the page; the console shows no Content-Security-Policy violation."
@@ -43,6 +43,8 @@ context:
   - crates/kauppa-web/src/i18n/request.rs
   - crates/kauppa-web/src/theme.rs
   - crates/kauppa-web/src/routes/auth/mod.rs
+  - crates/kauppa-web/src/routes/language.rs
+  - crates/kauppa-web/src/routes/theme/tests.rs
   - crates/kauppa-web/src/routes/admin/tests/access.rs
   - crates/kauppa-web/src/csrf/tests/cross_site.rs
   - templates/layout.hbs
@@ -53,6 +55,8 @@ context:
   - .agentic/resolutions/RR-0023-translations.md
   - .agentic/resolutions/RR-0025-response-targets-on-body.md
   - .agentic/resolutions/RR-0036-code-cleanup-after-audit.md
+  - .agentic/resolutions/RR-0038-translated-error-pages.md
+  - .agentic/consults/CRP-0038-translated-error-pages.md
   - .agentic/mentorship/templating.md
   - .agentic/mentorship/security.md
   - .agentic/mentorship/actix-web.md
@@ -63,12 +67,12 @@ autonomy:
     - "test names inside `routes::errors::tests` (record a rename here)"
     - "whether the pages share one template with a per-status message or use one per status"
   escalate:
-    - { when: "the mechanism that turns errors into pages: an `ErrorHandlers` (or similar) middleware around the RR-0010 scope, which reverses RR-0023 sub-answer 10's 'no middleware around the scope' and touches `main.rs` and the test app; or another way that has the request at hand", to: security }
-    - { when: "making the request's language and theme resolvable outside the `Ui` extractor (`i18n/request.rs` is a trigger path), or a signed-in check inside the error path", to: security }
-    - { when: "the cross-site 403: rendering a page from inside `csrf/` or after it, and keeping it indistinguishable from an authorization 403", to: security }
-    - { when: "signed out: the sign-in form in a 401 page, or a redirect (which changes the status from 401); and whether to return the user to the page they asked for after signing in (a `next` parameter, an open-redirect surface)", to: owner }
-    - { when: "htmx: letting boosted requests swap error pages (RR-0025 constraints 1 and 2 keep `hx-target-*` on three forms and forbid `responseHandling` in `htmx-config`), and what fragment requests do with errors", to: owner }
-    - { when: "which framework answers are in scope (the empty 401 and 404, the English path and form parse errors) if some can't be reached without a wider change", to: owner }
+    - { when: "any change to the mechanism beyond RR-0038 sub-answer 1: the middleware's place (constraint 3), the rewrite rule, or a change to `main.rs`, the test app, `error.rs` or `csrf/`", to: security }
+    - { when: "a change to `i18n/request.rs`, or caching `Ui` in the request (CRP-0038 Q2 B)", to: security }
+    - { when: "a page that would differ between the cross-site 403 and an authorization 403, or between a hidden and a missing list (RR-0038 constraint 1)", to: security }
+    - { when: "a `return` beyond RR-0038 sub-answer 4 (non-GET requests, or a target not checked by `same_site_path`)", to: security }
+    - { when: "`HX-Retarget` or `HX-Reswap` beyond the middleware's pages, or any change to templates' `hx-target-*`, the extension or `htmx-config` (RR-0038 sub-answer 5, RR-0025)", to: owner }
+    - { when: "an error answer inside the scope that the rewrite rule misses, or one outside it (`/assets/`, `/healthz`) that would need a page", to: owner }
     - { when: "any status code change, or any change to the Content-Security-Policy or the htmx config", to: security }
   forbidden:
     - "show error detail, a type name, SQL, an id or an input value on an error page"
@@ -84,7 +88,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions: [RR-0038]
 ---
 ```
 
@@ -104,7 +108,9 @@ now carries the theme switch as well as the language selector.
 | 404 | *empty* (`actix-web`) | An unknown URL |
 | 403 | `forbidden` (`error.rs`, and `csrf/mod.rs:211`) | Rare in normal use: a page left open while a share was lowered to view; any form post if `KAUPPA_PUBLIC_ORIGIN` is set wrong, or a proxy strips `Origin` and `Referer` |
 | 400, 409 | the reason's English text | Only where a handler doesn't catch `Invalid`/`Conflict`; the forms do |
-| 400 | `Path deserialize error: …`, `Parse error: …` (`actix-web`) | A malformed id in a URL, or a malformed form |
+| 404 | `text/plain` path error (`actix-web`) | A malformed id in a URL (CRP-0038: 404, not 400) |
+| 400 | `Parse error: …` (`actix-web`) | A malformed form or query |
+| 405 | *empty* (`actix-web`) | A wrong method on a route, such as `GET /auth/logout` (CRP-0038) |
 | 401 | `unauthorized` (`error.rs`) | Almost never: an identity that isn't a UUID |
 | 500 | `internal server error` | A server fault |
 
@@ -140,7 +146,7 @@ sub-answer 8 asked for it.
 
 ## Conceptual plan
 
-1. **Clarify (S1).** One CRP: the mechanism and where it sits (security);
+1. **Clarify (S1).** Done: CRP-0038 with a trial, decided in RR-0038 (2026-11-14), which settles the questions below. One CRP: the mechanism and where it sits (security);
    language, theme and signed-in state outside `Ui` (security); the
    cross-site 403 (security); signed out: form in the page or redirect, and
    whether to return to the asked-for page (owner, security); htmx

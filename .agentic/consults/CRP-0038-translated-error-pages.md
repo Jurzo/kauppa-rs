@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0056 autonomy.escalate (mechanism, request state, cross-site 403 → security; signed out, htmx, framework answers → owner); feature.md escalation triggers `crates/kauppa-web/src/routes/auth/`, the RR-0010 wiring (`routes/mod.rs`, `csrf::tests::coverage`) and `.agentic/resolutions/**` (RR-0023 and RR-0025 amended)"
 ---
 ```
