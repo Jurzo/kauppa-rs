@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite AS \"is_favorite: bool\",\n                     p.created_at AS \"created_at: DateTime<Utc>\", p.updated_at AS \"updated_at: DateTime<Utc>\", c.id AS \"owned_category?\"\n                FROM products p\n                LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id\n                WHERE p.id = ?1 AND p.owner_id = ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "position",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_favorite: bool",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "owned_category?",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "015d19cdc34371ebf9dff5ed08abb9327e4febc7ceb9dc1e42838d2382d28092"
+}

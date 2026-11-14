@@ -138,20 +138,31 @@ impl CategoryRow {
     }
 }
 
-fn row_to_product(row: &SqliteRow) -> CoreResult<Product> {
-    let id: String = row.try_get("id")?;
-    let owner_id: String = row.try_get("owner_id")?;
-    let category_id: Option<String> = row.try_get("category_id")?;
-    Ok(Product {
-        id: parse_uuid(&id)?,
-        owner_id: parse_uuid(&owner_id)?,
-        name: row.try_get("name")?,
-        category_id: category_id.as_deref().map(parse_uuid).transpose()?,
-        position: row.try_get("position")?,
-        is_favorite: row.try_get("is_favorite")?,
-        created_at: row.try_get("created_at")?,
-        updated_at: row.try_get("updated_at")?,
-    })
+/// A `products` row as the query macros return it (`query_as!`).
+struct ProductRow {
+    id: String,
+    owner_id: String,
+    name: String,
+    category_id: Option<String>,
+    position: i64,
+    is_favorite: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl ProductRow {
+    fn into_product(self) -> CoreResult<Product> {
+        Ok(Product {
+            id: parse_uuid(&self.id)?,
+            owner_id: parse_uuid(&self.owner_id)?,
+            name: self.name,
+            category_id: self.category_id.as_deref().map(parse_uuid).transpose()?,
+            position: self.position,
+            is_favorite: self.is_favorite,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
 }
 
 /// Trim a user-supplied name and reject it if empty. `what` names the entity

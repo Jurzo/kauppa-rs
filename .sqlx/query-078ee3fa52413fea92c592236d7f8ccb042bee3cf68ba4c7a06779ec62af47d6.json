@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE ingredients\n                SET text = (SELECT p.name FROM products p\n                              WHERE p.id = ?1 AND p.owner_id = ?2)\n                WHERE product_id = ?1\n                  AND recipe_id IN (SELECT r.id FROM recipes r WHERE r.owner_id = ?2)\n                  AND EXISTS (SELECT 1 FROM products p WHERE p.id = ?1 AND p.owner_id = ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "078ee3fa52413fea92c592236d7f8ccb042bee3cf68ba4c7a06779ec62af47d6"
+}

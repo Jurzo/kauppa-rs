@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, is_favorite AS \"is_favorite: bool\" FROM products\n                WHERE owner_id = ?1 AND category_id IS ?2\n                ORDER BY position ASC, name ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_favorite: bool",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f69eb42aecbb252151dc9e7d523821ef6e8cd13f20a7846818e85d5cf8617b72"
+}
