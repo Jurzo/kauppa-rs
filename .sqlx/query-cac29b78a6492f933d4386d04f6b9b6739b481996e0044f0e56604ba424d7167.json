@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO admins (user_id, granted_at, granted_by) VALUES (?1, ?2, ?3)\n              ON CONFLICT (user_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "cac29b78a6492f933d4386d04f6b9b6739b481996e0044f0e56604ba424d7167"
+}
