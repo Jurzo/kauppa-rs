@@ -5,11 +5,11 @@
 id: RR-0040
 closes: CRP-0040
 mission: MB-0049
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: platform
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-14T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-14T16:40:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0049-compile-time-checked-queries.md
@@ -18,13 +18,6 @@ rolls_back_into:
   - .agentic/mentorship/persistence.md
 ---
 ```
-
-> **Scaffold, not yet signed.** The owner answered CRP-0040 in the session
-> of 2026-11-14 ("Go with the recommendations", "Create an amendment for
-> the RR-0037"). Before signing, the resolver checks the sub-answers,
-> removes this note, and fills `decided_by`, `decided_at`, `status` and
-> the Approvals line. `validate_artifacts.py` fails on those placeholders
-> until then.
 
 ## Decision and outcome
 
@@ -64,7 +57,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as platform for sub-answers 1 and 2.">
+@Jurzo as platform for sub-answers 1 and 2.
 
 ## Linked artifacts and evidence
 
