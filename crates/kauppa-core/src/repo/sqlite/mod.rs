@@ -1,9 +1,12 @@
 //! SQLite-backed persistence.
 //!
-//! Uses runtime-checked `sqlx::query` so the scaffold builds without
-//! `DATABASE_URL`. Once the schema is stable, switch to the `query!` macros +
-//! `cargo sqlx prepare` offline cache for compile-time checking — tracked in
-//! `.agentic/mentorship/persistence.md`.
+//! Queries are checked against the schema at compile time (`sqlx::query!`,
+//! `query_as!`, `query_scalar!`), from the offline cache in `.sqlx/`; run
+//! `scripts/sqlx-prepare.sh` after changing a query or adding a migration
+//! (MB-0049, RR-0037). By decision, `list.rs` and its access helpers and the
+//! setup queries here stay runtime `sqlx::query`: the list queries are built
+//! from shared SQL constants, which the macros can't take
+//! (`.agentic/mentorship/persistence.md`).
 //!
 //! One file per repo trait implementation (RR-0009): `user`, `category`,
 //! `product`, `list` and `recipe`; `invitation` holds the invitation and
