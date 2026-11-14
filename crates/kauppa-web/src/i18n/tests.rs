@@ -109,6 +109,24 @@ fn catalogs_complete() {
     }
 }
 
+/// MB-0048 P4 (RR-0036 sub-answer 6): no catalog key is dead. Every key is
+/// passed to `t` by a template, or looked up by name in Rust (`rust_keys`:
+/// the date formats, the language names, and every text `every_text` lists,
+/// which covers every value the reason types allow).
+#[test]
+fn catalog_has_no_unused_keys() {
+    let i18n = I18n::load().expect("catalogs load");
+    let mut used: BTreeSet<String> = template_keys().into_iter().map(|(k, _)| k).collect();
+    used.extend(rust_keys());
+    let unused: Vec<&String> = i18n
+        .catalog(Language::En)
+        .entries()
+        .keys()
+        .filter(|key| !used.contains(*key))
+        .collect();
+    assert!(unused.is_empty(), "catalog keys nothing uses: {unused:?}");
+}
+
 /// The catalog's own rules: parsing, placeholders, plurals, escaping and
 /// strict errors (RR-0023 constraints 2 and 3).
 #[test]

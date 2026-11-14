@@ -25,7 +25,6 @@ pub fn invalid(reason: &Invalid) -> Text {
         Invalid::TitleEmpty => key("errors.title_empty"),
         Invalid::ChooseList => key("errors.choose_list"),
         Invalid::ChooseRecipe => key("errors.choose_recipe"),
-        Invalid::ChooseFavorite => key("errors.choose_favorite"),
         Invalid::ChooseCategory => key("errors.choose_category"),
         Invalid::NewProductNeedsCategory { name } => (
             "errors.new_product_needs_category".to_owned(),
@@ -124,7 +123,6 @@ pub fn every_text() -> Vec<Text> {
         Invalid::TitleEmpty,
         Invalid::ChooseList,
         Invalid::ChooseRecipe,
-        Invalid::ChooseFavorite,
         Invalid::ChooseCategory,
         Invalid::NewProductNeedsCategory { name: name() },
         Invalid::FavoriteNeedsCategory { name: name() },
@@ -197,25 +195,24 @@ mod tests {
             Invalid::TitleEmpty => 3,
             Invalid::ChooseList => 4,
             Invalid::ChooseRecipe => 5,
-            Invalid::ChooseFavorite => 6,
-            Invalid::ChooseCategory => 7,
-            Invalid::NewProductNeedsCategory { .. } => 8,
-            Invalid::FavoriteNeedsCategory { .. } => 9,
-            Invalid::ProductUncategorized { .. } => 10,
-            Invalid::MultiplierRange => 11,
-            Invalid::MultiplierNotNumber => 12,
-            Invalid::NoIngredients { .. } => 13,
-            Invalid::ServingsTooFew => 14,
-            Invalid::ServingsNotWhole => 15,
-            Invalid::EmailRequired => 16,
-            Invalid::ShareRole => 17,
-            Invalid::NoteTooLong { .. } => 18,
-            Invalid::FoundState => 19,
-            Invalid::Language => 20,
-            Invalid::Theme => 21,
+            Invalid::ChooseCategory => 6,
+            Invalid::NewProductNeedsCategory { .. } => 7,
+            Invalid::FavoriteNeedsCategory { .. } => 8,
+            Invalid::ProductUncategorized { .. } => 9,
+            Invalid::MultiplierRange => 10,
+            Invalid::MultiplierNotNumber => 11,
+            Invalid::NoIngredients { .. } => 12,
+            Invalid::ServingsTooFew => 13,
+            Invalid::ServingsNotWhole => 14,
+            Invalid::EmailRequired => 15,
+            Invalid::ShareRole => 16,
+            Invalid::NoteTooLong { .. } => 17,
+            Invalid::FoundState => 18,
+            Invalid::Language => 19,
+            Invalid::Theme => 20,
         };
         let keys: BTreeSet<String> = every_text().into_iter().map(|(k, _)| k).collect();
-        // 19 single reasons + 3 entity reasons × 7 entities.
+        // 18 single reasons + 3 entity reasons × 6 entities.
         let errors = keys
             .iter()
             .filter(|k| {
@@ -224,7 +221,7 @@ mod tests {
                     && *k != "errors.email_taken"
             })
             .count();
-        assert_eq!(errors, 19 + 3 * 7);
-        assert_eq!(variant(&Invalid::Theme), 21, "22 variants");
+        assert_eq!(errors, 18 + 3 * 6);
+        assert_eq!(variant(&Invalid::Theme), 20, "21 variants");
     }
 }

@@ -36,18 +36,6 @@ pub enum InvitationState {
     Expired,
 }
 
-impl InvitationState {
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::Used => "used",
-            Self::Revoked => "revoked",
-            Self::Expired => "expired",
-        }
-    }
-}
-
 /// The account an invitation created, for the admin portal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InvitationUser {

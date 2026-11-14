@@ -44,7 +44,6 @@ pub enum CoreError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Entity {
     Category,
-    Favorite,
     Ingredient,
     Item,
     List,
@@ -54,9 +53,8 @@ pub enum Entity {
 
 impl Entity {
     /// Every entity.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 6] = [
         Self::Category,
-        Self::Favorite,
         Self::Ingredient,
         Self::Item,
         Self::List,
@@ -69,7 +67,6 @@ impl Entity {
     pub const fn noun(self) -> &'static str {
         match self {
             Self::Category => "category",
-            Self::Favorite => "favorite",
             Self::Ingredient => "ingredient",
             Self::Item => "item",
             Self::List => "list",
@@ -83,7 +80,6 @@ impl Entity {
     pub const fn plural(self) -> &'static str {
         match self {
             Self::Category => "categories",
-            Self::Favorite => "favorites",
             Self::Ingredient => "ingredients",
             Self::Item => "items",
             Self::List => "lists",
@@ -119,8 +115,6 @@ pub enum Invalid {
     ChooseList,
     #[error("choose a recipe to add")]
     ChooseRecipe,
-    #[error("choose a favorite to add")]
-    ChooseFavorite,
     #[error("choose a category for the product")]
     ChooseCategory,
     #[error("choose a category for the new product {name}")]
