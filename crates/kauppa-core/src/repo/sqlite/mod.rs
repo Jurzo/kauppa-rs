@@ -27,6 +27,7 @@ use crate::error::CoreError;
 mod category;
 mod invitation;
 mod list;
+mod list_access;
 mod list_rows;
 mod product;
 mod recipe;
