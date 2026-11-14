@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE recipes\n                SET title = ?1, instructions = ?2, servings = ?3, updated_at = ?4\n                WHERE id = ?5 AND owner_id = ?6\n              RETURNING id, owner_id, title, instructions, servings, created_at AS \"created_at: DateTime<Utc>\", updated_at AS \"updated_at: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "instructions",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "servings",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: DateTime<Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "89031e86c3d827f699f1b37fe0fa79b3a095c3b6a89dfa7a094f46a85ff26368"
+}
