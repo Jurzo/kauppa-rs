@@ -26,10 +26,16 @@ Single tenant per user, trust boundary at the HTTP front door. Primary risks:
   (MB-0042, RR-0026); there is no server-side revocation. The app refuses
   to start with the development session secret unless it binds to a
   loopback address with `KAUPPA_COOKIE_SECURE=false`.
-  The one other cookie is `kauppa_lang` (MB-0035, RR-0023): unsigned, its
-  value only `en` or `fi` (anything else ignored, never echoed), `Path=/`,
-  `SameSite=Lax`, `HttpOnly`, `Secure` with `KAUPPA_COOKIE_SECURE=true`, one
-  year; set only by `POST /language`. The language is never a session field.
+  Two other cookies, both preferences, unsigned, `Path=/`, `SameSite=Lax`,
+  `HttpOnly`, `Secure` with `KAUPPA_COOKIE_SECURE=true`, one year; any
+  other value is ignored and never echoed, so a forged value can only pick
+  what the user could pick anyway:
+  - `kauppa_lang` (MB-0035, RR-0023): only `en` or `fi`; set only by
+    `POST /language`. The language is never a session field.
+  - `kauppa_theme` (MB-0055, RR-0035): only `light` or `dark`; System is
+    the cookie's absence (choosing it removes the cookie); set or removed
+    only by `POST /theme`, behind the cross-site check. Never stored on the
+    account or in the session.
 - **Authorization.** Every per-user resource query authorizes the acting user
   against the resource. For owner-only resources that means `owner_id =
   $current_user`. For shared shopping lists (RR-0002) the predicate is "owner
