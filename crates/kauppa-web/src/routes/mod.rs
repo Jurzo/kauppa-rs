@@ -57,7 +57,6 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(lists::rename)
                 .service(lists::delete)
                 .service(lists::add_item)
-                .service(lists::add_favorite)
                 .service(lists::add_recipe)
                 .service(lists::shop)
                 .service(lists::check_item)

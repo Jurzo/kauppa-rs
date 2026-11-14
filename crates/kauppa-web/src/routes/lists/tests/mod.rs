@@ -126,11 +126,6 @@ fn list_posts(s: &Shared) -> Vec<ListPost> {
             vec![("text", "Munat".to_owned())],
         ),
         (
-            "add_favorite",
-            format!("{base}/favorites"),
-            vec![("product_id", s.product.to_string())],
-        ),
-        (
             "add_recipe",
             format!("{base}/recipes"),
             vec![

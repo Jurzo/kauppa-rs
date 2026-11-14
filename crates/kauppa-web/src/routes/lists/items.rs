@@ -26,15 +26,6 @@ struct ItemForm {
 }
 
 #[derive(Debug, Deserialize)]
-struct FavoriteForm {
-    // Missing and empty both mean "nothing chosen", which becomes a message.
-    #[serde(default)]
-    product_id: String,
-    #[serde(default)]
-    quantity: String,
-}
-
-#[derive(Debug, Deserialize)]
 struct RecipeForm {
     // Missing and empty both mean "nothing chosen", which becomes a message.
     #[serde(default)]
@@ -63,15 +54,6 @@ fn parse_recipe(raw: &str) -> CoreResult<Uuid> {
     }
 }
 
-fn parse_product(raw: &str) -> CoreResult<Uuid> {
-    match raw.trim() {
-        "" => Err(CoreError::Invalid(Invalid::ChooseFavorite)),
-        raw => {
-            Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::Product)))
-        }
-    }
-}
-
 /// The owner's favorite that `text` names by `name_key` (RR-0003), if any
 /// (MB-0036). Only favorites match, not recipe-created products. Called
 /// only for the list's owner, so `user`'s catalog is the list owner's.
@@ -84,8 +66,8 @@ async fn owner_favorite(state: &AppState, user: Uuid, text: &str) -> CoreResult<
 }
 
 /// Add an item from the one add field (MB-0036): text naming one of the
-/// list owner's favorites adds that favorite as `add_favorite` does (its
-/// name and category copied now); any other text is a free-text item,
+/// list owner's favorites adds that favorite (its name and category copied
+/// now); any other text is a free-text item,
 /// uncategorized until a category is chosen. The owner's text resolves
 /// through their catalog and `add_product`; anyone else's goes to
 /// `add_owner_favorite_by_name`, which matches the owner's favorites
@@ -129,30 +111,6 @@ pub async fn add_item(
         }
     };
     respond_item(&ui, &req, user, list_id, outcome, draft).await
-}
-
-/// Add one of the user's favorites by id, copying its name and category now.
-/// The list page no longer has this form (MB-0036: the add field matches
-/// favorites by name); the route stays for pages loaded before that change.
-#[post("/{id}/favorites")]
-pub async fn add_favorite(
-    req: HttpRequest,
-    state: web::Data<AppState>,
-    ui: Ui,
-    id: Identity,
-    path: web::Path<Uuid>,
-    form: web::Form<FavoriteForm>,
-) -> WebResult<HttpResponse> {
-    let user = current_user(&id)?;
-    let list_id = path.into_inner();
-    let outcome = match parse_product(&form.product_id) {
-        Ok(product) => {
-            ShoppingListRepo::add_product(&state.pool, user, list_id, product, Some(&form.quantity))
-                .await
-        }
-        Err(e) => Err(e),
-    };
-    respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
 /// Add a recipe's ingredients, optionally multiplied (MB-0005).

@@ -57,12 +57,8 @@ async fn owner_isolation() {
     .await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
-    let writes: [(String, Vec<(&str, String)>); 5] = [
+    let writes: [(String, Vec<(&str, String)>); 4] = [
         (format!("{base}/items"), vec![("text", "Omena".to_owned())]),
-        (
-            format!("{base}/favorites"),
-            vec![("product_id", their_milk.id.to_string())],
-        ),
         (
             format!("{base}/items/{bread}"),
             vec![
@@ -96,7 +92,9 @@ async fn owner_isolation() {
         .expect("removed");
     assert_eq!(removed.len(), 1, "still removed");
 
-    // And the owner can't add another user's favorite to their own list.
+    // The add-by-id route is gone (MB-0048 P2, RR-0036 sub-answer 2): even
+    // the owner, posting another user's favorite, gets a 404 and nothing is
+    // added. The add field only matches the owner's own favorites by name.
     let session =
         session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
     let resp = call_service(
@@ -108,12 +106,12 @@ async fn owner_isolation() {
             .to_request(),
     )
     .await;
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     assert_eq!(item_shape(&state, user, list).await.len(), 1);
 }
 
-/// MB-0004 P6: add-item, add-favorite, assign-category, and remove (and
-/// restore) answer htmx with the `#list-{id}` fragment and plain requests with
+/// MB-0004 P6: add-item (free text, or a favorite by name since MB-0036),
+/// assign-category, and remove (and restore) answer htmx with the `#list-{id}` fragment and plain requests with
 /// a 303, or the full page with 400 when the input was rejected.
 #[actix_web::test]
 #[allow(clippy::expect_used)]
@@ -129,7 +127,7 @@ async fn htmx_fragments() {
     let user = make_user(&state, "u@example.com").await;
     let kylma = make_category(&state, user, "Kylmä").await;
     let koti = make_category(&state, user, "Koti").await;
-    let maito = ProductRepo::create(&state.pool, user, "Maito", kylma)
+    ProductRepo::create(&state.pool, user, "Maito", kylma)
         .await
         .expect("favorite");
     let list = ShoppingListRepo::create(&state.pool, user, "Viikko")
@@ -173,8 +171,8 @@ async fn htmx_fragments() {
         .id;
 
     let body = hx_call(post(
-        format!("{base}/favorites"),
-        vec![("product_id", maito.id.to_string())],
+        format!("{base}/items"),
+        vec![("text", "maito".to_owned())],
     ))
     .await;
     assert!(body.contains(&fragment_id) && body.contains("Maito"));
@@ -207,18 +205,13 @@ async fn htmx_fragments() {
     .await;
     assert!(body.contains(&fragment_id) && body.contains("must not be empty"));
     assert!(body.contains(r#"value="2""#));
-    let body = hx_call(post(format!("{base}/favorites"), vec![])).await;
-    assert!(body.contains("choose a favorite"));
 
     // Without htmx: a 303 back to the list on success.
     for (uri, form) in [
         (format!("{base}/items"), vec![("text", "Leipä".to_owned())]),
         (
-            format!("{base}/favorites"),
-            vec![
-                ("product_id", maito.id.to_string()),
-                ("quantity", "1 l".to_owned()),
-            ],
+            format!("{base}/items"),
+            vec![("text", "Maito".to_owned()), ("quantity", "1 l".to_owned())],
         ),
         (
             format!("{base}/items/{candles}"),
@@ -250,11 +243,6 @@ async fn htmx_fragments() {
             format!("{base}/items"),
             vec![("text", String::new())],
             "must not be empty",
-        ),
-        (
-            format!("{base}/favorites"),
-            vec![("product_id", "nope".to_owned())],
-            "unknown product",
         ),
         (
             // A blank category saves the quantity only (MB-0052,
