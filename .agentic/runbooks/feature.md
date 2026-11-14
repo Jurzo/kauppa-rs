@@ -90,7 +90,7 @@ first.
 | `crates/kauppa-web/src/routes/auth/` | @juuso-kalliomaki (security) |
 | Admin portal and bootstrap in `crates/kauppa-web/src/routes/admin/` and `crates/kauppa-web/src/admin/` | @juuso-kalliomaki (security) |
 | Session middleware in `crates/kauppa-web/src/main.rs` | @juuso-kalliomaki (security) |
-| Shared-list authorization in `crates/kauppa-web/src/routes/lists/` and `crates/kauppa-core/src/repo/sqlite/list.rs` | @juuso-kalliomaki (security) |
+| Shared-list authorization in `crates/kauppa-web/src/routes/lists/`, `crates/kauppa-core/src/repo/sqlite/list.rs` and `crates/kauppa-core/src/repo/sqlite/list_access.rs` | @juuso-kalliomaki (security) |
 | `Cargo.toml`, `crates/*/Cargo.toml` dependency changes | @juuso-kalliomaki (platform) |
 | `rust-toolchain.toml`, `rustfmt.toml`, `deny.toml` | @juuso-kalliomaki (platform) |
 | `.agentic/{mentorship,runbooks,resolutions}/**` | @juuso-kalliomaki |

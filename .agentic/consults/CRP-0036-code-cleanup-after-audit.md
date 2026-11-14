@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0048 autonomy.escalate (`Cargo.toml` → platform; removing a route → owner; the list-query guard → security; error bodies and `error.rs` → owner); feature.md escalation triggers `crates/*/Cargo.toml`, `crates/kauppa-web/src/routes/lists/`, `crates/kauppa-core/src/repo/sqlite/list.rs` and `.agentic/resolutions/**`; dependency-bump.md entry gate"
 ---
 ```

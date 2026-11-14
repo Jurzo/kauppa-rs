@@ -199,3 +199,8 @@ To be applied in MB-0036's follow-up PR:
 
 Status: active once signed. Amends RR-0002 (scope, constraint 2) and
 supersedes nothing.
+
+Amended by RR-0036 (2026-11-14): `POST /lists/{id}/favorites`
+(`add_favorite`) is removed, since no template posts to it (sub-answer 3).
+`ShoppingListRepo::add_product` stays owner-only; the rest of sub-answer 3
+stands.
