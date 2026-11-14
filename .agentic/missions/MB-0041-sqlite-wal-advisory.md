@@ -56,7 +56,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/persistence.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: [RR-0016]
+resolutions: [RR-0016, RR-0039]
 ---
 ```
 
@@ -72,7 +72,8 @@ needs the victim to open files an attacker wrote. `libsqlite3-sys`
 (3.54.1) are fixed. 0.39 needs Rust 1.88; the workspace's
 `rust-version` is 1.89.
 
-The dependency path (as of 2026-11-09, checked on crates.io and GitHub):
+The dependency path (as of 2026-11-09, checked on crates.io and GitHub;
+re-checked 2026-11-14 for CRP-0039, below):
 
 - `kauppa-core`/`kauppa-web` → sqlx 0.8.6 (`sqlite` feature, i.e.
   bundled) → sqlx-sqlite 0.8.6 → `libsqlite3-sys ^0.30.1`, locked 0.30.1.
@@ -86,8 +87,14 @@ The dependency path (as of 2026-11-09, checked on crates.io and GitHub):
   `cargo deny` reports the advisory from the lockfile either way, so
   that path also needs an ignore entry.
 
-Every PR fails `cargo deny` until this is resolved (`deny.toml` has
-`ignore = []`).
+Re-checked 2026-11-14 (CRP-0039): no sqlx release allows
+`libsqlite3-sys` ≥ 0.39 (sqlx `main` allows `<0.40`); `libsqlite3-sys`
+0.40.0 was released 2026-11-11. Debian trixie's `sqlite3`
+3.46.1-7+deb13u2 is vulnerable and marked `<no-dsa>`. Alpine 3.24 has
+sqlite 3.53.4 (vulnerable); edge has 3.54.1.
+
+Every PR failed `cargo deny` until RR-0016's interim ignore (#46,
+review date 2026-12-31).
 
 Exposure, for the security owner to confirm: the app opens only its own
 database on the droplet's data volume (`/data/db/`), written only by the
@@ -99,12 +106,15 @@ files.
 
 ## Conceptual plan
 
-1. **Clarify (S1).** CRP under the dependency-bump runbook: current state,
+1. **Done (2026-11-14): Clarify (S1).** CRP-0039, answered by RR-0039:
+   wait for an sqlx release, the backup image moves to Alpine 3.25 when
+   released, default at the 2026-12-31 review is a new RR extending the
+   ignore to 2027-03-31. CRP under the dependency-bump runbook: current state,
    the options above (including "do nothing" and an interim ignore),
    supply-chain checks for each, the exposure assessment, and the backup
    image. Platform-owner chooses the path; security approves any interim
    ignore.
-2. If the chosen path waits for upstream: one PR with the approved ignore
+2. **Done (#46, RR-0016).** If the chosen path waits for upstream: one PR with the approved ignore
    (review date) and P1's test marked to expect the current version, and
    this pack tracking the sqlx release; then the upgrade PR removes the
    ignore.

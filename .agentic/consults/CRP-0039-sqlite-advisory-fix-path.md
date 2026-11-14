@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "dependency-bump.md entry gate (any sqlx or libsqlite3-sys change); MB-0041 autonomy.escalate (the path → platform; the backup image's sqlite → platform; extending the interim ignore → security)"
 ---
 ```
