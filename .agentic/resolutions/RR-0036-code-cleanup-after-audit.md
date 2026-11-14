@@ -5,11 +5,11 @@
 id: RR-0036
 closes: CRP-0036
 mission: MB-0048
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: security
 risk_tier: medium
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-14T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-14T09:00:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0048-code-cleanup-after-audit.md
@@ -24,32 +24,24 @@ rolls_back_into:
 ---
 ```
 
-> **Scaffold, not a decision.** The owner hasn't answered CRP-0036 yet.
-> The sub-answers below are the consult's recommendations, each marked
-> *Proposed*. Before signing, the resolver edits any sub-answer answered
-> differently, fills the Q8 answer, removes this note and the *Proposed*
-> marks, and fills `decided_by`, `decided_at`, `status` and the Approvals
-> line.
-
 ## Decision and outcome
 
-Approve CRP-0036's questions 1–9 as answered by the owner
-(`<owner's answer and date, e.g. "all as recommended", 2026-11-14>`).
+Approve CRP-0036's questions 1–9 as answered by the owner (@Jurzo, 2026-11-14: "All as recommended").
 
 Sub-answers:
 
-1. **`sqlx` in `kauppa-web` (Q1 A, platform).** *Proposed.*
+1. **`sqlx` in `kauppa-web` (Q1 A, platform).**
    `sqlx = { workspace = true }` moves from `[dependencies]` to
    `[dev-dependencies]` in `crates/kauppa-web/Cargo.toml`. Same version and
    features, no other manifest change, `Cargo.lock` unchanged. Done under
    `dependency-bump.md`: this RR is approved before the PR opens, and
    `cargo deny check` passes. The compiler then enforces
    `persistence.md`'s "the web layer never imports `sqlx`".
-2. **`POST /lists/{id}/favorites` (Q2 A, owner).** *Proposed.* Removed: its
+2. **`POST /lists/{id}/favorites` (Q2 A, owner).** Removed: its
    handler, its form type, its registration in `routes/mod.rs` and the test
    cases that post to it. The old URL answers 404. This amends RR-0024
    sub-answer 3 (a note is added there).
-3. **Splitting `list.rs` (Q3 A, security).** *Proposed.* A second file,
+3. **Splitting `list.rs` (Q3 A, security).** A second file,
    `crates/kauppa-core/src/repo/sqlite/list_access.rs`, takes
    `ACCESS_SELECT`, `Accessible`, `accessible_lists`, `ListGrant`,
    `authorize`, `begin_read`, `begin_write`, `ITEM_SELECT`, `fetch_items`,
@@ -59,7 +51,7 @@ Sub-answers:
    - No SQL text, method body or signature changes. Moved items `list.rs`
      calls become `pub(super)`. `ListGrant`'s fields stay private and are
      read through accessors, so only `authorize` can make a grant.
-4. **The guard (Q4, security).** *Proposed.* In `repo/share.rs`'s bypass
+4. **The guard (Q4, security).** In `repo/share.rs`'s bypass
    guard, exactly:
    - one constant added, `LIST_ACCESS_RS = include_str!("sqlite/list_access.rs")`;
    - rules 1 and 2 untouched;
@@ -72,25 +64,25 @@ Sub-answers:
      800 lines, the implementation stops and asks.
    - RR-0009 constraint 3 and sub-answer 3 change from "one file" to these
      two named files (a note is added to RR-0009).
-5. **Trigger paths (Q5, security).** *Proposed.* `list_access.rs` joins
+5. **Trigger paths (Q5, security).** `list_access.rs` joins
    the "Shared-list authorization" row in `.agentic/runbooks/feature.md`,
    `scripts/agentic/check_triggers.py` and `.github/CODEOWNERS`
    (`test_check_triggers.sh` keeps the three in step), and
    `persistence.md`'s list-tables paragraph names both files.
-6. **Leftovers (Q6, Q4 A, owner).** *Proposed.* Removed:
+6. **Leftovers (Q6, Q4 A, owner).** Removed:
    `InvitationState::as_str`; `PasswordLengthError`'s `Display` and `Error`
    impls with the one unit test of their text (RR-0022 sub-answer 4 still
    holds); `Entity::Favorite` and its four keys in each catalog;
    `Invalid::ChooseFavorite` and `errors.choose_favorite` (follows from
    sub-answer 2). The other 11 unreachable entity keys stay, because the
    types allow those pairs (RR-0023 sub-answer 6).
-7. **Plain error bodies (Q7, Q5 A, owner).** *Proposed.* They stay English
+7. **Plain error bodies (Q7, Q5 A, owner).** They stay English
    in every language. No change to `error.rs` or `csrf/`. The reason goes
    into `templating.md` → Translations, after "Messages built in Rust", as
    CRP-0036 Q5 A words it, citing RR-0023 sub-answer 10 and this record.
-8. **An error-page brief (Q8, owner).** `<yes: a separate brief for a
+8. **An error-page brief (Q8, owner).** A separate brief for a
    translated HTML error page (layout, navigation, sign-in on 401), after
-   MB-0055 / no>`. *Not part of MB-0048 either way.*
+   MB-0055. *Not part of MB-0048 either way.*
 9. **Order and the brief (Q9, owner).** *Proposed.* MB-0048's
    implementation starts from `main` after MB-0055 (PR #88) merges. The
    brief takes CRP-0036 Q7's amendments (Roll-back, below).
@@ -133,8 +125,7 @@ Does not cover:
 
 ## Approvals and authority
 
-`<resolver>` as platform for sub-answer 1; owner for 2, 6, 7, 8 and 9;
-security for 3, 4 and 5.
+@Jurzo as platform for sub-answer 1; owner for 2, 6, 7, 8 and 9; security for 3, 4 and 5.
 
 ## Linked artifacts and evidence
 
