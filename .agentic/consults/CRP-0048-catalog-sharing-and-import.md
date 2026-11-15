@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0061 autonomy.escalate (sharing model, category mapping, repeat imports, ingredient products, split → owner; schema → data-owner; predicate and disclosure → security); feature.md escalation trigger `migrations/` (RR-0027); a new cross-user read path for products and recipes (RR-0002 constraint 1's pattern, RR-0036 constraint 3)"
 ---
 ```
