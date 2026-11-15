@@ -188,6 +188,21 @@ pub trait ProductRepo: Send + Sync {
         category_id: Uuid,
     ) -> CoreResult<Product>;
 
+    /// Save a product's name and category together, in one transaction
+    /// (MB-0058, RR-0043): `Some(category)` moves it there (appended at the
+    /// end, unless it is already there), `None` clears its category (RR-0046
+    /// amends RR-0001 constraint 3: its owner may). If either part is
+    /// rejected nothing changes: `Invalid` for an empty name or a foreign
+    /// category, `Conflict` for a name another of the owner's products uses
+    /// (ignoring case, RR-0003), `NotFound` if the product isn't theirs.
+    async fn update(
+        &self,
+        owner_id: Uuid,
+        id: Uuid,
+        name: &str,
+        category_id: Option<Uuid>,
+    ) -> CoreResult<Product>;
+
     /// Move a product one step within its category, atomically, past the
     /// next favorite (hidden products keep their place). Moving past either
     /// end is a no-op.

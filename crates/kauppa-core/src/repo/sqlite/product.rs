@@ -331,6 +331,86 @@ impl ProductRepo for SqlitePool {
         Ok(product)
     }
 
+    async fn update(
+        &self,
+        owner_id: Uuid,
+        id: Uuid,
+        name: &str,
+        category_id: Option<Uuid>,
+    ) -> CoreResult<Product> {
+        let name = clean_name(Entity::Product, name)?;
+        let owner = owner_id.to_string();
+        let id_str = id.to_string();
+        // IMMEDIATE takes the write lock up front, so the reads below can't be
+        // invalidated by another writer before the update.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+
+        let current = sqlx::query_scalar!(
+            r#"SELECT category_id FROM products WHERE id = ?1 AND owner_id = ?2"#,
+            id_str,
+            owner
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+
+        let category = category_id.map(|c| c.to_string());
+        if let Some(category) = &category {
+            let category_owned = sqlx::query_scalar!(
+                r#"SELECT 1 AS "found!: i64" FROM categories WHERE id = ?1 AND owner_id = ?2"#,
+                category,
+                owner
+            )
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some();
+            if !category_owned {
+                return Err(unknown_category());
+            }
+        }
+        // A product that changes group goes to the end of its new one; one that
+        // stays keeps its place.
+        let moves = current != category;
+
+        let now = Utc::now();
+        let key = name_key(name);
+        let product = sqlx::query_as!(
+            ProductRow,
+            r#"UPDATE products
+                SET name = ?1,
+                    name_key = ?2,
+                    category_id = ?3,
+                    position = CASE WHEN ?4
+                        THEN (SELECT COALESCE(MAX(p.position), -1) + 1
+                                FROM products p
+                                WHERE p.owner_id = ?5 AND p.category_id IS ?3)
+                        ELSE position END,
+                    updated_at = ?6
+                WHERE id = ?7 AND owner_id = ?5
+              RETURNING id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                        created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            name,
+            key,
+            category,
+            moves,
+            owner,
+            now,
+            id_str
+        )
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            conflict_on_unique(e, || Conflict::Exists {
+                entity: Entity::Product,
+                name: name.to_owned(),
+            })
+        })?
+        .into_product()?;
+
+        tx.commit().await?;
+        Ok(product)
+    }
+
     async fn move_within_category(
         &self,
         owner_id: Uuid,

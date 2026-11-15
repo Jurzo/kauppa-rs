@@ -1,6 +1,7 @@
 //! Tests for `routes::products`, by area (RR-0009). Fixtures shared by several areas live here.
 
 mod catalog;
+mod edit;
 mod hidden;
 
 use uuid::Uuid;

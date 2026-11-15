@@ -6,14 +6,16 @@
 //! (PRG), or the full page when the input was rejected. All endpoints require
 //! an authenticated user.
 //!
-//! RR-0001: a favorite must have a category. The column is nullable (deleting
-//! a category un-categorizes its products), so the rule lives here, in
-//! `parse_category`; the repo additionally refuses a category the user doesn't
-//! own.
+//! RR-0001 constraint 3, as amended by RR-0046: a favorite needs a category
+//! when it is created or made a favorite (`parse_category`); its owner may
+//! clear it later with the edit form's "No category" (RR-0043,
+//! `parse_category_choice`). The column is nullable (deleting a category
+//! un-categorizes its products), so the rule lives here; the repo additionally
+//! refuses a category the user doesn't own.
 //!
-//! The rename, category, and delete handlers work on any product the user
-//! owns, favorite or recipe-created; `make_favorite` promotes a recipe-created
-//! one in place.
+//! The save (name and category together, MB-0058) and delete handlers work on
+//! any product the user owns, favorite or recipe-created; `make_favorite`
+//! promotes a recipe-created one in place.
 //!
 //! Tests are in `tests/<area>.rs` (MB-0019, RR-0009).
 
@@ -46,15 +48,13 @@ struct CreateForm {
     category_id: String,
 }
 
+/// The edit form (MB-0058): the name and the category choice, saved together.
+/// A missing `category_id` is rejected by `parse_category_choice`, so a form
+/// without the picker can't clear a category (RR-0043 constraint 2).
 #[derive(Debug, Deserialize)]
-struct NameForm {
+struct SaveForm {
     name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CategoryForm {
-    #[serde(default)]
-    category_id: String,
+    category_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,6 +70,21 @@ pub fn parse_category(raw: &str) -> CoreResult<Uuid> {
         return Err(CoreError::Invalid(Invalid::ChooseCategory));
     }
     Uuid::parse_str(raw).map_err(|_| CoreError::Invalid(Invalid::Unknown(Entity::Category)))
+}
+
+/// The edit picker's "No category" value (RR-0043): a fixed token, never an
+/// empty or missing field.
+pub const NO_CATEGORY: &str = "none";
+
+/// The edit form's category choice (RR-0043): a category id, or
+/// [`NO_CATEGORY`] to clear it. Missing or empty is rejected, so only an
+/// explicit choice clears a category (constraint 2).
+fn parse_category_choice(raw: Option<&str>) -> CoreResult<Option<Uuid>> {
+    match raw.map(str::trim) {
+        None | Some("") => Err(CoreError::Invalid(Invalid::ChooseCategory)),
+        Some(NO_CATEGORY) => Ok(None),
+        Some(id) => parse_category(id).map(Some),
+    }
 }
 
 /// What the "add" form shows after a response: the category is kept after an
@@ -117,10 +132,11 @@ struct ProductView {
 
 impl ProductView {
     /// `recipe_count` is how many of the user's recipes use the product; the
-    /// delete confirmation names it (MB-0014 P5).
+    /// delete confirmation names it (MB-0014 P5). The picker offers "No
+    /// category" and opens on the current choice (RR-0043).
     fn new(categories: &[Category], product: Product, recipe_count: i64) -> Self {
         Self {
-            picker: Picker::new(categories, product.category_id),
+            picker: Picker::with_no_category(categories, product.category_id),
             id: product.id,
             name: product.name,
             recipe_count,
@@ -154,6 +170,9 @@ pub struct Picker {
     options: Vec<PickerOption>,
     has_selection: bool,
     required: bool,
+    /// Offer "No category" ([`NO_CATEGORY`]) instead of the placeholder; only
+    /// a favorite's edit form does (RR-0043).
+    no_category: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,6 +198,17 @@ impl Picker {
             options,
             has_selection,
             required: true,
+            no_category: false,
+        }
+    }
+
+    /// A favorite's edit picker (RR-0043): the categories and "No category",
+    /// selected when `selected` is `None` (or not one of `categories`), so a
+    /// choice is always sent.
+    pub fn with_no_category(categories: &[Category], selected: Option<Uuid>) -> Self {
+        Self {
+            no_category: true,
+            ..Self::new(categories, selected)
         }
     }
 
@@ -348,33 +378,21 @@ pub async fn create(
     respond(&state, &ui, &req, user, outcome, draft).await
 }
 
-#[post("/{id}/rename")]
-pub async fn rename(
+/// Save a product's name and category together (MB-0058, RR-0043): one
+/// transaction, so a rejected part changes neither.
+#[post("/{id}")]
+pub async fn save(
     req: HttpRequest,
     state: web::Data<AppState>,
     ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
-    form: web::Form<NameForm>,
+    form: web::Form<SaveForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let outcome = ProductRepo::rename(&state.pool, user, path.into_inner(), &form.name).await;
-    respond(&state, &ui, &req, user, outcome, Draft::default()).await
-}
-
-#[post("/{id}/category")]
-pub async fn recategorize(
-    req: HttpRequest,
-    state: web::Data<AppState>,
-    ui: Ui,
-    id: Identity,
-    path: web::Path<Uuid>,
-    form: web::Form<CategoryForm>,
-) -> WebResult<HttpResponse> {
-    let user = current_user(&id)?;
-    let outcome = match parse_category(&form.category_id) {
+    let outcome = match parse_category_choice(form.category_id.as_deref()) {
         Ok(category) => {
-            ProductRepo::recategorize(&state.pool, user, path.into_inner(), category).await
+            ProductRepo::update(&state.pool, user, path.into_inner(), &form.name, category).await
         }
         Err(e) => Err(e),
     };
