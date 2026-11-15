@@ -1,0 +1,30 @@
+{{#> layout page_title=(t "import.title" name=owner_name) page_signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>{{t "import.title" name=owner_name}}</h1>
+    <a href="/sharing">{{t "catalog_sharing.title"}}</a>
+  </header>
+  <p class="muted">{{t "import.browse_intro"}}</p>
+  {{#if none_chosen}}<p class="error" role="alert">{{t "import.choose_some"}}</p>{{/if}}
+
+  {{!-- MB-0061 (RR-0048): nothing ticked by default; the import goes through MB-0060's review. --}}
+  {{#if groups}}
+    <form class="export-review" method="post" action="/sharing/from/{{owner_id}}/favorites/import">
+      {{#each groups}}
+        <fieldset class="export-row import-group">
+          <legend>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</legend>
+          {{#each this.products}}
+            <label class="export-choice"><input type="checkbox" name="pick" value="{{this.id}}" /> {{this.name}}</label>
+          {{/each}}
+        </fieldset>
+      {{/each}}
+      <div class="import-actions">
+        <button type="submit" class="button primary">{{t "import.selected"}}</button>
+        <button type="submit" class="button" name="all" value="1">{{t "import.all"}}</button>
+      </div>
+    </form>
+  {{else}}
+    <p class="empty">{{t "import.empty" name=owner_name}}</p>
+  {{/if}}
+</section>
+{{/layout}}

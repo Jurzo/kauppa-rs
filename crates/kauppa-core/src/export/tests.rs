@@ -5,7 +5,9 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use super::{Action, ReviewAnswers, ReviewKind, ReviewReason, SKIP, Write, decide, plan, writes};
+use super::{
+    Action, Candidate, ReviewAnswers, ReviewKind, ReviewReason, SKIP, Write, decide, plan, writes,
+};
 use crate::CoreError;
 use crate::domain::{Category, ListItem, Product};
 
@@ -19,8 +21,8 @@ fn category(owner: Uuid, name: &str) -> Category {
     }
 }
 
-fn item(text: &str, category: Option<&Category>) -> ListItem {
-    ListItem {
+fn item(text: &str, category: Option<&Category>) -> Candidate {
+    Candidate::from(&ListItem {
         id: Uuid::new_v4(),
         list_id: Uuid::nil(),
         product_id: None,
@@ -30,7 +32,7 @@ fn item(text: &str, category: Option<&Category>) -> ListItem {
         position: 0,
         category: category.cloned(),
         removed_at: None,
-    }
+    })
 }
 
 fn product(owner: Uuid, name: &str, category: Option<&Category>, favorite: bool) -> Product {

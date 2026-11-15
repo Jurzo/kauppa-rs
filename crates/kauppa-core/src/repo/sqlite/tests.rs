@@ -6,6 +6,8 @@
 
 // MB-0062 (P6): archived lists, through the central access predicate.
 mod archive;
+// MB-0061 (P7, P2): catalog shares, their cascades and predicate.
+mod catalog_share;
 
 use std::path::PathBuf;
 use std::str::FromStr;

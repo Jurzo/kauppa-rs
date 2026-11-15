@@ -17,8 +17,7 @@ use super::{
     CategoryRow, ProductRow, SqlitePool, clean_name, conflict_on_unique, parse_uuid,
     unknown_category,
 };
-use crate::domain::ListItem;
-use crate::export::{self, ExportOutcome, ReviewAnswers, ReviewReason, Write};
+use crate::export::{self, Candidate, ExportOutcome, ReviewAnswers, ReviewReason, Write};
 
 /// A row's category columns, `group_id`, `group_name`, `group_position` and
 /// `group_created_at` (all NULL when uncategorized), from a join that
@@ -653,7 +652,7 @@ impl ProductRepo for SqlitePool {
     async fn apply_export(
         &self,
         owner_id: Uuid,
-        items: &[ListItem],
+        items: &[Candidate],
         review: Option<&ReviewAnswers>,
     ) -> CoreResult<ExportOutcome> {
         let owner = owner_id.to_string();

@@ -1,10 +1,10 @@
-{{#> layout page_title=(t "export.done_title") page_signed_in=true page_nav="lists"}}
+{{#> layout page_title=(t "export.done_title") page_signed_in=true}}
 <section>
   <header class="section-header">
     <h1>{{t "export.done_title"}}</h1>
   </header>
 
-  {{!-- MB-0060 P5: what the export did. --}}
+  {{!-- MB-0060 P5, MB-0061 P3: what the export or import did. --}}
   {{#if nothing}}
     <p role="status">{{t "export.nothing"}}</p>
   {{else}}
@@ -18,7 +18,7 @@
   {{/if}}
   <p class="export-links">
     <a class="button primary" href="/favorites">{{t "export.to_favorites"}}</a>
-    <a href="/lists/{{list_id}}">{{t "export.back"}}</a>
+    <a href="{{back}}">{{#if source.from_list}}{{t "export.back"}}{{else}}{{t "import.back" name=source.name}}{{/if}}</a>
   </p>
 </section>
 {{/layout}}

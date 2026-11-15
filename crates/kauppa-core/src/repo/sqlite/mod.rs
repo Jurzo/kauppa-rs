@@ -28,6 +28,8 @@ use crate::CoreResult;
 use crate::domain::{Category, Ingredient, Product};
 use crate::error::CoreError;
 
+mod catalog_access;
+mod catalog_share;
 mod category;
 mod invitation;
 mod list;

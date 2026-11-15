@@ -13,6 +13,8 @@ pub mod pages;
 pub mod products;
 pub mod recipes;
 pub mod request;
+pub mod review;
+pub mod sharing;
 pub mod theme;
 
 #[cfg(test)]
@@ -98,6 +100,17 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(categories::rename)
                 .service(categories::move_category)
                 .service(categories::delete),
+        )
+        .service(
+            web::scope("/sharing")
+                .service(sharing::index)
+                .service(sharing::share)
+                .service(sharing::update)
+                .service(sharing::revoke)
+                .service(sharing::browse)
+                .service(sharing::import)
+                .service(sharing::import_confirm)
+                .service(sharing::import_done),
         )
         .service(
             web::scope("/favorites")

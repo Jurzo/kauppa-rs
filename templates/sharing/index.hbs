@@ -1,0 +1,57 @@
+{{#> layout page_title=(t "catalog_sharing.title") page_signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>{{t "catalog_sharing.title"}}</h1>
+    <a href="/favorites">{{t "nav.favorites"}}</a>
+  </header>
+  <p class="muted">{{t "catalog_sharing.intro"}}</p>
+
+  {{!-- MB-0061 (RR-0048): the same notice whether or not the email matched an account. --}}
+  {{#if notice}}<p class="notice" role="status">{{t "catalog_sharing.notice"}}</p>{{/if}}
+  {{#if error}}<p class="error" role="alert">{{error}}</p>{{/if}}
+  <form class="add-product share-catalog" method="post" action="/sharing">
+    <label>{{t "auth.email"}}
+      <input name="email" type="email" required autocomplete="off"
+             placeholder="{{t "sharing.email_placeholder"}}" value="{{email}}" />
+    </label>
+    <fieldset class="share-kinds">
+      <legend>{{t "catalog_sharing.what"}}</legend>
+      <label><input type="checkbox" name="favorites" value="1" checked /> {{t "nav.favorites"}}</label>
+      <label><input type="checkbox" name="recipes" value="1" checked /> {{t "nav.recipes"}}</label>
+    </fieldset>
+    <button type="submit" class="button primary">{{t "sharing.share"}}</button>
+  </form>
+
+  <h2>{{t "catalog_sharing.yours" count=shares_count}}</h2>
+  <ul class="product-list">
+    {{#each shares}}
+      <li class="product-row catalog-share">
+        <span class="product-name">{{this.name}} <span class="muted">{{this.email}}</span></span>
+        <form class="share-switches" method="post" action="/sharing/{{this.id}}/update">
+          <label><input type="checkbox" name="favorites" value="1"{{#if this.favorites}} checked{{/if}} /> {{t "nav.favorites"}}</label>
+          <label><input type="checkbox" name="recipes" value="1"{{#if this.recipes}} checked{{/if}} /> {{t "nav.recipes"}}</label>
+          <button type="submit" class="button">{{t "common.save"}}<span class="visually-hidden"> {{this.name}}</span></button>
+        </form>
+        <form class="row-actions" method="post" action="/sharing/{{this.id}}/revoke"
+              hx-confirm="{{t "catalog_sharing.revoke_confirm" name=this.name}}">
+          <button type="submit" class="link danger">{{t "sharing.revoke"}}<span class="visually-hidden"> {{this.name}}</span></button>
+        </form>
+      </li>
+    {{else}}
+      <li class="product-row empty">{{t "catalog_sharing.none"}}</li>
+    {{/each}}
+  </ul>
+
+  <h2>{{t "catalog_sharing.with_you"}}</h2>
+  <ul class="product-list">
+    {{#each shared}}
+      <li class="product-row">
+        <span class="product-name">{{this.owner_name}}</span>
+        {{#if this.favorites}}<a href="/sharing/from/{{this.owner_id}}/favorites">{{t "catalog_sharing.their_favorites"}}<span class="visually-hidden"> {{this.owner_name}}</span></a>{{/if}}
+      </li>
+    {{else}}
+      <li class="product-row empty">{{t "catalog_sharing.none_with_you"}}</li>
+    {{/each}}
+  </ul>
+</section>
+{{/layout}}

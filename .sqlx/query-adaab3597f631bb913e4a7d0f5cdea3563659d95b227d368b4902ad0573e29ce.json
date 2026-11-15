@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id FROM catalog_shares WHERE owner_id = ?1 AND grantee_id = ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "adaab3597f631bb913e4a7d0f5cdea3563659d95b227d368b4902ad0573e29ce"
+}
