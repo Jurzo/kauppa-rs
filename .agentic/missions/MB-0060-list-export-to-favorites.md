@@ -12,22 +12,22 @@ non_goals:
   - "JavaScript."
 acceptance:
   - id: P1
-    property: "A list page offers 'Add to favorites' (export) to the users the RR allows. It covers the list's current items as the RR decides (all, or a chosen subset), and items removed from the list are never exported."
+    property: "A list page offers 'Add to favorites' (export) to everyone who can open the list (the owner, and `edit` and `view` grantees), archived lists included; it covers every active item, checked or not, and items removed from the list are never exported; the same name more than once makes one favorite (RR-0047)."
     check: cargo test -p kauppa-web routes::lists::tests::export::offered_to_allowed_roles
   - id: P2
     property: "An item whose name matches none of the user's products (case-insensitively, RR-0003) becomes a favorite in the item's category; an item matching a favorite with the same category changes nothing; an item matching a product from recipes (not a favorite) with the same category makes it a favorite."
     check: cargo test -p kauppa-web routes::lists::tests::export::adds_new_and_skips_identical
   - id: P3
-    property: "When any item matches one of the user's products by name but with a different category, nothing is saved yet: a review step lists each conflict (item name, the list's category, the favorite's category) and asks, per conflict, which category to keep, or to skip it; confirming applies every decision and every non-conflicting item together, in one transaction."
+    property: "When any item matches one of the user's products by name but with a different category, nothing is saved yet: a review step lists each conflict (item name, the list's category, the product's category) with explicit choices, none preselected — a favorite: 'Keep ‹its category›' or 'Use ‹the list's category›'; a product from recipes: make it a favorite in its category or the list's, or 'Skip'; copies of one name with different categories: which to use, or skip — and every row must be answered (a missing or unknown answer saves nothing); confirming applies every decision and every non-conflicting item together, in one transaction (RR-0047)."
     check: cargo test -p kauppa-web routes::lists::tests::export::conflicts_need_review
   - id: P4
-    property: "If the user's favorites or the list change between the review and the confirmation so that a decision no longer applies, the confirmation saves nothing and shows the review again with the current conflicts (no stale decision is applied)."
+    property: "The review is a stateless form carrying the answers and a SHA-256 fingerprint of the plan it was computed from; the confirmation recomputes the plan inside the write transaction, and if the user's catalog or the list changed (the fingerprint differs) it saves nothing and shows the review again with the current rows; answers are accepted only for rows in the plan and only with category ids the user owns (RR-0047)."
     check: cargo test -p kauppa-web routes::lists::tests::export::stale_review_is_redone
   - id: P5
-    property: "Items without a category are handled as the RR decides (skipped and reported, or a category chosen on the review step); after export the user sees a summary: how many added, already present, recategorized, skipped."
+    property: "Items without a category (for a grantee, also items whose category name the grantee doesn't have) are listed on the review step with a picker of the user's categories and 'Skip', and each needs a choice; after export the user sees a summary: how many added, already present, made favorite, recategorized, skipped (RR-0047)."
     check: cargo test -p kauppa-web routes::lists::tests::export::uncategorized_and_summary
   - id: P6
-    property: "Export writes only the exporting user's own catalog; it is refused (as the list's other actions are) to anyone the RR doesn't allow; categories that belong to the list's owner are never linked into another user's catalog (a grantee's export maps them as the RR decides); every list query goes through the central access predicate."
+    property: "Export writes only the exporting user's own catalog, through a new `ProductRepo::apply_export` (one `BEGIN IMMEDIATE` transaction on `products` only); a stranger gets 404 as for the list's other actions; the list owner's categories are never linked into another user's catalog: a grantee's export maps them by name (`name_key`) to the grantee's own categories, else the item is uncategorized for them, and no category is created; the list is read only through `ShoppingListRepo::items` (the central access predicate, at `view`), and `repo/sqlite/list.rs` doesn't change (RR-0047)."
     check: cargo test -p kauppa-web routes::lists::tests::export::writes_only_own_catalog
   - id: P7
     property: "Works without htmx (full pages, 303 after the final save) and with htmx; the cross-site check covers the new routes; every string in both catalogs; existing tests unchanged."
@@ -58,13 +58,13 @@ autonomy:
     - "the review page's layout and wording, through catalog keys in both languages"
     - "test names inside `routes::lists::tests::export` (record renames here)"
   escalate:
-    - { when: "who may export: the owner only, or also `edit` and `view` grantees into their own favorites (routes/lists/ is a trigger path, RR-0002, RR-0027)", to: security }
-    - { when: "a grantee's export: the list's categories are the owner's; map them to the grantee's categories by name, create missing ones, or leave items uncategorized", to: owner }
-    - { when: "which items: all current items, only unchecked/checked ones, or a chosen subset (checkboxes on a step before the review)", to: owner }
-    - { when: "items without a category: skip and report, or require a choice on the review step (favorites need a category today)", to: owner }
-    - { when: "conflict choices: 'keep my favorite's category' / 'use the list's category' / 'skip', and the default selection", to: owner }
-    - { when: "how the review is carried between steps (a stateless form with item ids and a fingerprint of the state it was computed from, recommended; or server-side state) and its cross-site and tampering checks", to: security }
-    - { when: "a new repo method for the transaction in `repo/sqlite/list.rs` or `product.rs` (list.rs is a trigger path)", to: security }
+    - { when: "who may export: the owner only, or also `edit` and `view` grantees into their own favorites (routes/lists/ is a trigger path, RR-0002, RR-0027) (decided: RR-0047, any reader into their own favorites)", to: security }
+    - { when: "a grantee's export: the list's categories are the owner's; map them to the grantee's categories by name, create missing ones, or leave items uncategorized (decided: RR-0047, by name, else uncategorized)", to: owner }
+    - { when: "which items: all current items, only unchecked/checked ones, or a chosen subset (checkboxes on a step before the review) (decided: RR-0047, every active item)", to: owner }
+    - { when: "items without a category: skip and report, or require a choice on the review step (favorites need a category today) (decided: RR-0047, a choice on the review step)", to: owner }
+    - { when: "conflict choices: 'keep my favorite's category' / 'use the list's category' / 'skip', and the default selection (decided: RR-0047, explicit choices, none preselected)", to: owner }
+    - { when: "how the review is carried between steps (a stateless form with item ids and a fingerprint of the state it was computed from, recommended; or server-side state) and its cross-site and tampering checks (decided: RR-0047, stateless with a SHA-256 fingerprint)", to: security }
+    - { when: "a new repo method for the transaction in `repo/sqlite/list.rs` or `product.rs` (list.rs is a trigger path) (decided: RR-0047, `ProductRepo::apply_export`)", to: security }
   forbidden:
     - "write to another user's catalog or categories"
     - "a query on the list tables outside the central access predicate"
@@ -76,7 +76,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0047]
 ---
 ```
 
@@ -112,7 +112,8 @@ the route and any list-side repo change need a security RR.
 
 1. **Clarify (S1).** One CRP: roles and review-state handling (security);
    grantee categories, which items, uncategorized items and conflict
-   choices (owner).
+   choices (owner). Done: CRP-0047 answered, RR-0047 approved (all as
+   recommended).
 2. The core function: classify a list's items against a catalog (new,
    identical, promote, conflict, uncategorized), with unit tests.
 3. The routes: start export, review, confirm; one transaction; route tests

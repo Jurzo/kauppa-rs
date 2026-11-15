@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0060 autonomy.escalate (who may export, the review's state, where the write lives → security; grantee categories, which items, uncategorized items, conflict choices → owner); feature.md escalation trigger `crates/kauppa-web/src/routes/lists/` (RR-0027)"
 ---
 ```
