@@ -1,0 +1,27 @@
+{{!-- MB-0059 (RR-0044): "From recipes" is one collapsible section, closed unless an action touched it; its groups are headings inside. --}}
+<details id="{{dom_id}}" class="recipe-products catalog-unit"{{#if open}} open{{/if}}>
+  <summary><span class="group-name">{{t "products.from_recipes"}}</span> <span class="group-count">{{t "products.group_count" count=count}}</span></summary>
+  <p class="muted">{{t "products.from_recipes_intro"}}</p>
+  {{#each groups}}
+    <section class="product-group">
+      <h3>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</h3>
+      <ul class="product-list">
+        {{#each this.products}}
+          <li id="recipe-product-{{this.id}}" class="product-row">
+            <span class="product-name">{{this.name}}</span>
+            <span class="product-usage muted">{{#if this.recipe_count}}{{t "products.usage" count=this.recipe_count}}{{else}}{{t "products.unused"}}{{/if}}</span>
+            {{#if this.can_favorite}}
+              <form class="row-actions" method="post" action="/favorites/{{this.id}}/favorite"
+                    hx-post="/favorites/{{this.id}}/favorite" hx-target="closest .catalog-unit" hx-swap="outerHTML">
+                <button type="submit" class="link make-favorite">{{t "products.make_favorite"}}<span class="visually-hidden"> {{this.name}}</span></button>
+              </form>
+            {{else}}
+              <span class="product-usage error">{{t "products.no_category"}}</span>
+            {{/if}}
+            {{> products/_product_edit this }}
+          </li>
+        {{/each}}
+      </ul>
+    </section>
+  {{/each}}
+</details>

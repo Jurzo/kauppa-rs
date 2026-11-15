@@ -182,6 +182,10 @@
   "products.empty": "No favorites yet. Add your first above.",
   "products.from_recipes": "From recipes",
   "products.from_recipes_intro": "Products added as recipe ingredients. They aren't favorites until you make them one.",
+  "products.group_count": {
+    "one": "1 product",
+    "other": "{count} products"
+  },
   "products.intro": "Your saved products, grouped by category.",
   "products.make_favorite": "Make favorite",
   "products.needs_category": "Favorites are grouped by category —",

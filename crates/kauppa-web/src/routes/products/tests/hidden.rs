@@ -219,7 +219,8 @@ async fn hidden_products_section() {
         "listed with the favorites"
     );
     assert!(!recipe_section(&body).contains("Kurkut"));
-    // And without htmx: 303 back to the page.
+    // And without htmx: 303 back to the page, with the section and the
+    // target group open (MB-0059).
     let resp = call_service(
         &app,
         post(&format!("/favorites/{maito}/favorite"), &[]).to_request(),
@@ -230,7 +231,7 @@ async fn hidden_products_section() {
         resp.headers()
             .get(header::LOCATION)
             .and_then(|v| v.to_str().ok()),
-        Some("/favorites")
+        Some(format!("/favorites?open=recipe-products,group-{hevi}").as_str())
     );
     assert_eq!(
         catalog_shape(&state, user).await,
@@ -529,4 +530,147 @@ async fn delete_used_product_warns() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     assert!(body_string(resp).await.contains("Kurkut"));
+}
+
+/// MB-0059 P3 (RR-0044 item 2): "From recipes" is one `<details>`, closed on
+/// a full page load, its category groups headings inside. An action that
+/// stays inside it swaps only the section, open; "Make favorite" swaps the
+/// whole catalog with the section and the target group open; removing the
+/// section's last product swaps the catalog.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn collapsible() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_user, session_cookie, test_app, test_state,
+    };
+
+    use super::{open_units, retarget, units};
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    let kylma = make_category(&state, user, "Kylmä").await;
+    ProductRepo::create(&state.pool, user, "Omena", hevi)
+        .await
+        .expect("create favorite");
+    make_recipe_with(
+        &state,
+        user,
+        "Salaatti",
+        hevi,
+        &[("Kurkku", None), ("Tomaatti", None)],
+    )
+    .await;
+    make_recipe_with(&state, user, "Pannukakku", kylma, &[("Kerma", None)]).await;
+    let kurkku = any_product_id(&state, user, "Kurkku").await;
+    let tomaatti = any_product_id(&state, user, "Tomaatti").await;
+    let kerma = any_product_id(&state, user, "Kerma").await;
+    let session =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let post = |uri: &str, form: &[(&str, &str)]| {
+        TestRequest::post()
+            .uri(uri)
+            .cookie(session.clone())
+            .set_form(form)
+    };
+    let hx = |req: TestRequest| req.insert_header(("HX-Request", "true")).to_request();
+    let (hevi_s, kylma_s) = (hevi.to_string(), kylma.to_string());
+    let g_hevi = format!("group-{hevi}");
+
+    // The full page: the section is one closed <details> after the groups,
+    // with its count; its category groups are headings, not collapsible.
+    let page = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri("/favorites")
+                .cookie(session.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(
+        units(&page),
+        [
+            (g_hevi.clone(), false),
+            ("recipe-products".to_owned(), false)
+        ]
+    );
+    let section = recipe_section(&page);
+    assert!(section.contains(
+        r#"<summary><span class="group-name">From recipes</span> <span class="group-count">3 products</span></summary>"#
+    ));
+    assert!(section.contains("<h3>Hevi</h3>") && section.contains("<h3>Kylmä</h3>"));
+    assert_eq!(
+        section.matches("<details").count(),
+        3,
+        "the section and one edit section per product, nothing else"
+    );
+    assert!(section.contains(r#"hx-target="closest .catalog-unit""#));
+
+    // Inside the section: a rename, a category change (it stays a recipe
+    // product), a delete that leaves products. Each answers the section
+    // alone, open.
+    let within = [
+        post(
+            &format!("/favorites/{tomaatti}"),
+            &[("name", "Kirsikkatomaatti"), ("category_id", &hevi_s)],
+        ),
+        post(
+            &format!("/favorites/{tomaatti}"),
+            &[("name", "Kirsikkatomaatti"), ("category_id", &kylma_s)],
+        ),
+        post(&format!("/favorites/{kerma}/delete"), &[]),
+    ];
+    for req in within {
+        let resp = call_service(&app, hx(req)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(retarget(&resp), None);
+        let body = body_string(resp).await;
+        assert!(
+            body.trim_start().starts_with(
+                r#"<details id="recipe-products" class="recipe-products catalog-unit" open>"#
+            ),
+            "{body}"
+        );
+        assert!(!body.contains(r#"id="favorites""#) && !body.contains("Omena"));
+    }
+    assert_eq!(
+        hidden_shape(&state, user).await,
+        [
+            (Some("Hevi".to_owned()), vec!["Kurkku".to_owned()]),
+            (
+                Some("Kylmä".to_owned()),
+                vec!["Kirsikkatomaatti".to_owned()]
+            ),
+        ]
+    );
+
+    // "Make favorite": the catalog, with the section and the target group
+    // open.
+    let resp = call_service(
+        &app,
+        hx(post(&format!("/favorites/{kurkku}/favorite"), &[])),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(retarget(&resp).as_deref(), Some("#favorites"));
+    let body = body_string(resp).await;
+    assert_eq!(open_units(&body), [g_hevi, "recipe-products".to_owned()]);
+
+    // Making the last one a favorite removes the section: the catalog, with
+    // the new group open.
+    let resp = call_service(
+        &app,
+        hx(post(&format!("/favorites/{tomaatti}/favorite"), &[])),
+    )
+    .await;
+    assert_eq!(retarget(&resp).as_deref(), Some("#favorites"));
+    let body = body_string(resp).await;
+    assert!(!body.contains(r#"id="recipe-products""#));
+    assert_eq!(open_units(&body), [format!("group-{kylma}")]);
 }
