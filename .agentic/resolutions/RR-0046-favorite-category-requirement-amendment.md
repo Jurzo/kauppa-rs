@@ -5,11 +5,11 @@
 id: RR-0046
 closes: CRP-0046
 mission: MB-0058
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: data-owner
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-15T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-15T09:22:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/resolutions/RR-0001-product-category-data-model.md
@@ -49,7 +49,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as data-owner.">
+@Jurzo as data-owner.
 
 ## Linked artifacts and evidence
 
