@@ -1,0 +1,92 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite AS \"is_favorite: bool\",\n                     p.created_at AS \"created_at: DateTime<Utc>\", p.updated_at AS \"updated_at: DateTime<Utc>\",\n                     c.id AS \"group_id?\", c.name AS \"group_name?\",\n                     c.position AS \"group_position?\", c.created_at AS \"group_created_at?: DateTime<Utc>\",\n                     (SELECT COUNT(DISTINCT r.id)\n                        FROM ingredients i\n                        JOIN recipes r ON r.id = i.recipe_id AND r.owner_id = p.owner_id\n                        WHERE i.product_id = p.id) AS \"recipe_count!: i64\"\n                FROM products p\n                LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id\n                WHERE p.owner_id = ?1 AND p.is_favorite = 0\n                ORDER BY c.id IS NULL, c.position, c.name, p.name_key, p.name",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "owner_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "position",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_favorite: bool",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: DateTime<Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "group_id?",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "group_name?",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "group_position?",
+        "ordinal": 10,
+        "type_info": "Integer"
+      },
+      {
+        "name": "group_created_at?: DateTime<Utc>",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "recipe_count!: i64",
+        "ordinal": 12,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "2f84adbd845a2b814a7f323fe31c8ee0a218647edef807520f4d3775be21ef2a"
+}

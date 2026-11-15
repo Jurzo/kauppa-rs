@@ -1,9 +1,13 @@
 //! SQLite-backed persistence.
 //!
-//! Uses runtime-checked `sqlx::query` so the scaffold builds without
-//! `DATABASE_URL`. Once the schema is stable, switch to the `query!` macros +
-//! `cargo sqlx prepare` offline cache for compile-time checking — tracked in
-//! `.agentic/mentorship/persistence.md`.
+//! Queries are checked against the schema at compile time (`sqlx::query!`,
+//! `query_as!`, `query_scalar!`), from the offline cache in `.sqlx/`; run
+//! `scripts/sqlx-prepare.sh` after changing a query or adding a migration
+//! (MB-0049, RR-0037). By decision, `list.rs` and its access helpers, the
+//! setup queries here and `INGREDIENT_SELECT` (shared by `list.rs` and
+//! `recipe.rs`) stay runtime `sqlx::query`: they are shared SQL constants,
+//! which the macros can't take (RR-0037, RR-0040;
+//! `.agentic/mentorship/persistence.md`).
 //!
 //! One file per repo trait implementation (RR-0009): `user`, `category`,
 //! `product`, `list` and `recipe`; `invitation` holds the invitation and
@@ -117,32 +121,52 @@ fn parse_uuid(s: &str) -> CoreResult<Uuid> {
     Uuid::parse_str(s).map_err(|e| CoreError::Storage(format!("invalid uuid: {e}")))
 }
 
-fn row_to_category(row: &SqliteRow) -> CoreResult<Category> {
-    let id: String = row.try_get("id")?;
-    let owner_id: String = row.try_get("owner_id")?;
-    Ok(Category {
-        id: parse_uuid(&id)?,
-        owner_id: parse_uuid(&owner_id)?,
-        name: row.try_get("name")?,
-        position: row.try_get("position")?,
-        created_at: row.try_get("created_at")?,
-    })
+/// A `categories` row as the query macros return it (`query_as!`).
+struct CategoryRow {
+    id: String,
+    owner_id: String,
+    name: String,
+    position: i64,
+    created_at: DateTime<Utc>,
 }
 
-fn row_to_product(row: &SqliteRow) -> CoreResult<Product> {
-    let id: String = row.try_get("id")?;
-    let owner_id: String = row.try_get("owner_id")?;
-    let category_id: Option<String> = row.try_get("category_id")?;
-    Ok(Product {
-        id: parse_uuid(&id)?,
-        owner_id: parse_uuid(&owner_id)?,
-        name: row.try_get("name")?,
-        category_id: category_id.as_deref().map(parse_uuid).transpose()?,
-        position: row.try_get("position")?,
-        is_favorite: row.try_get("is_favorite")?,
-        created_at: row.try_get("created_at")?,
-        updated_at: row.try_get("updated_at")?,
-    })
+impl CategoryRow {
+    fn into_category(self) -> CoreResult<Category> {
+        Ok(Category {
+            id: parse_uuid(&self.id)?,
+            owner_id: parse_uuid(&self.owner_id)?,
+            name: self.name,
+            position: self.position,
+            created_at: self.created_at,
+        })
+    }
+}
+
+/// A `products` row as the query macros return it (`query_as!`).
+struct ProductRow {
+    id: String,
+    owner_id: String,
+    name: String,
+    category_id: Option<String>,
+    position: i64,
+    is_favorite: bool,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+impl ProductRow {
+    fn into_product(self) -> CoreResult<Product> {
+        Ok(Product {
+            id: parse_uuid(&self.id)?,
+            owner_id: parse_uuid(&self.owner_id)?,
+            name: self.name,
+            category_id: self.category_id.as_deref().map(parse_uuid).transpose()?,
+            position: self.position,
+            is_favorite: self.is_favorite,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        })
+    }
 }
 
 /// Trim a user-supplied name and reject it if empty. `what` names the entity

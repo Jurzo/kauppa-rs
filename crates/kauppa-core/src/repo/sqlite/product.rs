@@ -2,9 +2,7 @@
 
 use crate::{Conflict, Entity, Invalid};
 use async_trait::async_trait;
-use chrono::Utc;
-use sqlx::Row;
-use sqlx::sqlite::SqliteRow;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::CoreResult;
@@ -15,43 +13,52 @@ use crate::error::CoreError;
 use crate::repo::ProductRepo;
 use crate::repo::name_key::name_key;
 
-use super::{
-    SqlitePool, clean_name, conflict_on_unique, parse_uuid, row_to_product, unknown_category,
-};
+use super::{ProductRow, SqlitePool, clean_name, conflict_on_unique, parse_uuid, unknown_category};
+
+/// A row's category columns, `group_id`, `group_name`, `group_position` and
+/// `group_created_at` (all NULL when uncategorized), from a join that
+/// checked the category's owner.
+struct Group {
+    id: Option<String>,
+    name: Option<String>,
+    position: Option<i64>,
+    created_at: Option<DateTime<Utc>>,
+}
+
+impl Group {
+    fn into_category(self, owner_id: Uuid) -> CoreResult<Option<Category>> {
+        let Some(id) = self.id else { return Ok(None) };
+        match (self.name, self.position, self.created_at) {
+            (Some(name), Some(position), Some(created_at)) => Ok(Some(Category {
+                id: parse_uuid(&id)?,
+                owner_id,
+                name,
+                position,
+                created_at,
+            })),
+            _ => Err(CoreError::Storage(
+                "category group without its columns".to_owned(),
+            )),
+        }
+    }
+}
 
 /// Group rows that are already sorted by category (uncategorized last) into
-/// `(category, items)` runs. Each row carries the category as `group_id`,
-/// `group_name`, `group_position`, and `group_created_at` (all NULL when
-/// uncategorized), from a join that checked the category's owner.
+/// `(category, items)` runs.
 fn group_by_category<T>(
-    rows: &[SqliteRow],
+    rows: impl IntoIterator<Item = (Group, CoreResult<T>)>,
     owner_id: Uuid,
-    item: impl Fn(&SqliteRow) -> CoreResult<T>,
 ) -> CoreResult<Vec<(Option<Category>, Vec<T>)>> {
     let mut groups: Vec<(Option<Category>, Vec<T>)> = Vec::new();
-    for row in rows {
-        let value = item(row)?;
-        let group_id: Option<String> = row.try_get("group_id")?;
-        let group_id = group_id.as_deref().map(parse_uuid).transpose()?;
+    for (group, item) in rows {
+        let value = item?;
+        let group_id = group.id.as_deref().map(parse_uuid).transpose()?;
 
         match groups.last_mut() {
             Some((category, items)) if category.as_ref().map(|c| c.id) == group_id => {
                 items.push(value);
             }
-            _ => {
-                let category = group_id
-                    .map(|id| -> CoreResult<Category> {
-                        Ok(Category {
-                            id,
-                            owner_id,
-                            name: row.try_get("group_name")?,
-                            position: row.try_get("group_position")?,
-                            created_at: row.try_get("group_created_at")?,
-                        })
-                    })
-                    .transpose()?;
-                groups.push((category, vec![value]));
-            }
+            _ => groups.push((group.into_category(owner_id)?, vec![value])),
         }
     }
     Ok(groups)
@@ -68,21 +75,24 @@ impl ProductRepo for SqlitePool {
         // writer creating the same name.
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
 
-        let category_owned =
-            sqlx::query(r"SELECT 1 FROM categories WHERE id = ?1 AND owner_id = ?2")
-                .bind(&category)
-                .bind(&owner)
-                .fetch_optional(&mut *tx)
-                .await?
-                .is_some();
+        let category_owned = sqlx::query_scalar!(
+            r#"SELECT 1 AS "found!: i64" FROM categories WHERE id = ?1 AND owner_id = ?2"#,
+            category,
+            owner
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .is_some();
         if !category_owned {
             return Err(unknown_category());
         }
 
         // A hidden product (created from a recipe ingredient) of this name is
         // promoted rather than duplicated: one product, one row (RR-0001).
-        let promoted = sqlx::query(
-            r"UPDATE products
+        let key = name_key(name);
+        let promoted = sqlx::query_as!(
+            ProductRow,
+            r#"UPDATE products
                 SET is_favorite = 1,
                     category_id = ?1,
                     position = (SELECT COALESCE(MAX(p.position), -1) + 1
@@ -90,25 +100,27 @@ impl ProductRepo for SqlitePool {
                                   WHERE p.owner_id = ?2 AND p.category_id = ?1),
                     updated_at = ?3
                 WHERE owner_id = ?2 AND name_key = ?4 AND is_favorite = 0
-              RETURNING id, owner_id, name, category_id, position, is_favorite,
-                        created_at, updated_at",
+              RETURNING id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                        created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            category,
+            owner,
+            now,
+            key
         )
-        .bind(&category)
-        .bind(&owner)
-        .bind(now)
-        .bind(name_key(name))
         .fetch_optional(&mut *tx)
         .await?;
         if let Some(row) = promoted {
-            let product = row_to_product(&row)?;
+            let product = row.into_product()?;
             tx.commit().await?;
             return Ok(product);
         }
 
         // Nothing is inserted unless the category is the owner's, and the
         // product is appended at the end of that category.
-        let row = sqlx::query(
-            r"INSERT INTO products
+        let new_id = Uuid::new_v4().to_string();
+        let row = sqlx::query_as!(
+            ProductRow,
+            r#"INSERT INTO products
                   (id, owner_id, name, name_key, category_id, position, is_favorite,
                    created_at, updated_at)
               SELECT ?1, ?2, ?3, ?6, c.id,
@@ -118,15 +130,15 @@ impl ProductRepo for SqlitePool {
                      1, ?4, ?4
                 FROM categories c
                 WHERE c.id = ?5 AND c.owner_id = ?2
-              RETURNING id, owner_id, name, category_id, position, is_favorite,
-                        created_at, updated_at",
+              RETURNING id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                        created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            new_id,
+            owner,
+            name,
+            now,
+            category,
+            key
         )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&owner)
-        .bind(name)
-        .bind(now)
-        .bind(&category)
-        .bind(name_key(name))
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
@@ -137,8 +149,7 @@ impl ProductRepo for SqlitePool {
         })?;
 
         let product = row
-            .as_ref()
-            .map(row_to_product)
+            .map(ProductRow::into_product)
             .transpose()?
             .ok_or_else(unknown_category)?;
         tx.commit().await?;
@@ -148,21 +159,41 @@ impl ProductRepo for SqlitePool {
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<ProductGroup>> {
         // The join also checks the category's owner, so a product can never be
         // shown under someone else's category; it would fall to uncategorized.
-        let rows = sqlx::query(
-            r"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite,
-                     p.created_at, p.updated_at,
-                     c.id AS group_id, c.name AS group_name,
-                     c.position AS group_position, c.created_at AS group_created_at
+        let owner = owner_id.to_string();
+        let rows = sqlx::query!(
+            r#"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite AS "is_favorite: bool",
+                     p.created_at AS "created_at: DateTime<Utc>", p.updated_at AS "updated_at: DateTime<Utc>",
+                     c.id AS "group_id?", c.name AS "group_name?",
+                     c.position AS "group_position?", c.created_at AS "group_created_at?: DateTime<Utc>"
                 FROM products p
                 LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
                 WHERE p.owner_id = ?1 AND p.is_favorite = 1
-                ORDER BY c.id IS NULL, c.position, c.name, p.position, p.name",
+                ORDER BY c.id IS NULL, c.position, c.name, p.position, p.name"#,
+            owner
         )
-        .bind(owner_id.to_string())
         .fetch_all(&self.inner)
         .await?;
+        let rows = rows.into_iter().map(|r| {
+            let group = Group {
+                id: r.group_id,
+                name: r.group_name,
+                position: r.group_position,
+                created_at: r.group_created_at,
+            };
+            let product = ProductRow {
+                id: r.id,
+                owner_id: r.owner_id,
+                name: r.name,
+                category_id: r.category_id,
+                position: r.position,
+                is_favorite: r.is_favorite,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+            };
+            (group, product.into_product())
+        });
 
-        Ok(group_by_category(&rows, owner_id, row_to_product)?
+        Ok(group_by_category(rows, owner_id)?
             .into_iter()
             .map(|(category, products)| ProductGroup { category, products })
             .collect())
@@ -170,49 +201,54 @@ impl ProductRepo for SqlitePool {
 
     async fn find_by_name(&self, owner_id: Uuid, name: &str) -> CoreResult<Option<Product>> {
         let name = clean_name(Entity::Product, name)?;
-        let row = sqlx::query(
-            r"SELECT id, owner_id, name, category_id, position, is_favorite,
-                     created_at, updated_at
+        let owner = owner_id.to_string();
+        let key = name_key(name);
+        let row = sqlx::query_as!(
+            ProductRow,
+            r#"SELECT id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                     created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>"
                 FROM products
-                WHERE owner_id = ?1 AND name_key = ?2",
+                WHERE owner_id = ?1 AND name_key = ?2"#,
+            owner,
+            key
         )
-        .bind(owner_id.to_string())
-        .bind(name_key(name))
         .fetch_optional(&self.inner)
         .await?;
 
-        row.as_ref().map(row_to_product).transpose()
+        row.map(ProductRow::into_product).transpose()
     }
 
     async fn suggestion_names(&self, owner_id: Uuid) -> CoreResult<Vec<String>> {
-        let rows = sqlx::query(
+        let owner = owner_id.to_string();
+        Ok(sqlx::query_scalar!(
             r"SELECT name FROM products
                 WHERE owner_id = ?1
                 ORDER BY name_key, name",
+            owner
         )
-        .bind(owner_id.to_string())
         .fetch_all(&self.inner)
-        .await?;
-
-        rows.iter()
-            .map(|row| row.try_get("name").map_err(CoreError::from))
-            .collect()
+        .await?)
     }
 
     async fn rename(&self, owner_id: Uuid, id: Uuid, name: &str) -> CoreResult<Product> {
         let name = clean_name(Entity::Product, name)?;
 
-        let row = sqlx::query(
-            r"UPDATE products SET name = ?1, name_key = ?5, updated_at = ?2
+        let now = Utc::now();
+        let id_text = id.to_string();
+        let owner = owner_id.to_string();
+        let key = name_key(name);
+        let row = sqlx::query_as!(
+            ProductRow,
+            r#"UPDATE products SET name = ?1, name_key = ?5, updated_at = ?2
                 WHERE id = ?3 AND owner_id = ?4
-              RETURNING id, owner_id, name, category_id, position, is_favorite,
-                        created_at, updated_at",
+              RETURNING id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                        created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            name,
+            now,
+            id_text,
+            owner,
+            key
         )
-        .bind(name)
-        .bind(Utc::now())
-        .bind(id.to_string())
-        .bind(owner_id.to_string())
-        .bind(name_key(name))
         .fetch_optional(&self.inner)
         .await
         .map_err(|e| {
@@ -222,8 +258,7 @@ impl ProductRepo for SqlitePool {
             })
         })?;
 
-        row.as_ref()
-            .map(row_to_product)
+        row.map(ProductRow::into_product)
             .transpose()?
             .ok_or(CoreError::NotFound)
     }
@@ -241,52 +276,56 @@ impl ProductRepo for SqlitePool {
         // invalidated by another writer before the update.
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
 
-        let row = sqlx::query(
-            r"SELECT id, owner_id, name, category_id, position, is_favorite,
-                     created_at, updated_at
+        let product = sqlx::query_as!(
+            ProductRow,
+            r#"SELECT id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                     created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>"
                 FROM products
-                WHERE id = ?1 AND owner_id = ?2",
+                WHERE id = ?1 AND owner_id = ?2"#,
+            id_str,
+            owner
         )
-        .bind(&id_str)
-        .bind(&owner)
         .fetch_optional(&mut *tx)
         .await?
-        .ok_or(CoreError::NotFound)?;
-        let product = row_to_product(&row)?;
+        .ok_or(CoreError::NotFound)?
+        .into_product()?;
         if product.category_id == Some(category_id) {
             // Already there: keep its position rather than moving it to the end.
             return Ok(product);
         }
 
-        let category_owned =
-            sqlx::query(r"SELECT 1 FROM categories WHERE id = ?1 AND owner_id = ?2")
-                .bind(&category)
-                .bind(&owner)
-                .fetch_optional(&mut *tx)
-                .await?
-                .is_some();
+        let category_owned = sqlx::query_scalar!(
+            r#"SELECT 1 AS "found!: i64" FROM categories WHERE id = ?1 AND owner_id = ?2"#,
+            category,
+            owner
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .is_some();
         if !category_owned {
             return Err(unknown_category());
         }
 
-        let row = sqlx::query(
-            r"UPDATE products
+        let now = Utc::now();
+        let product = sqlx::query_as!(
+            ProductRow,
+            r#"UPDATE products
                 SET category_id = ?1,
                     position = (SELECT COALESCE(MAX(p.position), -1) + 1
                                   FROM products p
                                   WHERE p.owner_id = ?2 AND p.category_id = ?1),
                     updated_at = ?3
                 WHERE id = ?4 AND owner_id = ?2
-              RETURNING id, owner_id, name, category_id, position, is_favorite,
-                        created_at, updated_at",
+              RETURNING id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                        created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            category,
+            owner,
+            now,
+            id_str
         )
-        .bind(&category)
-        .bind(&owner)
-        .bind(Utc::now())
-        .bind(&id_str)
         .fetch_one(&mut *tx)
-        .await?;
-        let product = row_to_product(&row)?;
+        .await?
+        .into_product()?;
 
         tx.commit().await?;
         Ok(product)
@@ -302,30 +341,30 @@ impl ProductRepo for SqlitePool {
         let id_str = id.to_string();
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
 
-        let category_id: Option<String> =
-            sqlx::query(r"SELECT category_id FROM products WHERE id = ?1 AND owner_id = ?2")
-                .bind(&id_str)
-                .bind(&owner)
-                .fetch_optional(&mut *tx)
-                .await?
-                .ok_or(CoreError::NotFound)?
-                .try_get("category_id")?;
+        let category_id: Option<String> = sqlx::query_scalar!(
+            r"SELECT category_id FROM products WHERE id = ?1 AND owner_id = ?2",
+            id_str,
+            owner
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CoreError::NotFound)?;
 
         // `IS` so the uncategorized (NULL) group can be ordered too.
-        let siblings = sqlx::query(
-            r"SELECT id, is_favorite FROM products
+        let siblings = sqlx::query!(
+            r#"SELECT id, is_favorite AS "is_favorite: bool" FROM products
                 WHERE owner_id = ?1 AND category_id IS ?2
-                ORDER BY position ASC, name ASC",
+                ORDER BY position ASC, name ASC"#,
+            owner,
+            category_id
         )
-        .bind(&owner)
-        .bind(category_id.as_deref())
         .fetch_all(&mut *tx)
         .await?;
         let mut ids = Vec::with_capacity(siblings.len());
         let mut favorite = Vec::with_capacity(siblings.len());
-        for row in &siblings {
-            ids.push(row.try_get::<String, _>("id")?);
-            favorite.push(row.try_get::<bool, _>("is_favorite")?);
+        for row in siblings {
+            ids.push(row.id);
+            favorite.push(row.is_favorite);
         }
 
         // Step among the products the user sees: a favorite swaps places with
@@ -357,12 +396,14 @@ impl ProductRepo for SqlitePool {
         for (index, product_id) in ids.iter().enumerate() {
             let position = i64::try_from(index)
                 .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Product)))?;
-            sqlx::query(r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3")
-                .bind(position)
-                .bind(product_id)
-                .bind(&owner)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query!(
+                r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
+                position,
+                product_id,
+                owner
+            )
+            .execute(&mut *tx)
+            .await?;
         }
 
         tx.commit().await?;
@@ -378,25 +419,27 @@ impl ProductRepo for SqlitePool {
         // own `text` once unlinked, so save the current name there first: the
         // ingredients of a renamed product keep the new name (RR-0001
         // constraint 4). Only the owner's recipes, and only their product.
-        sqlx::query(
+        sqlx::query!(
             r"UPDATE ingredients
                 SET text = (SELECT p.name FROM products p
                               WHERE p.id = ?1 AND p.owner_id = ?2)
                 WHERE product_id = ?1
                   AND recipe_id IN (SELECT r.id FROM recipes r WHERE r.owner_id = ?2)
                   AND EXISTS (SELECT 1 FROM products p WHERE p.id = ?1 AND p.owner_id = ?2)",
+            id_str,
+            owner
         )
-        .bind(&id_str)
-        .bind(&owner)
         .execute(&mut *tx)
         .await?;
 
         // `ON DELETE SET NULL` unlinks the ingredients; nothing else goes.
-        let result = sqlx::query(r"DELETE FROM products WHERE id = ?1 AND owner_id = ?2")
-            .bind(&id_str)
-            .bind(&owner)
-            .execute(&mut *tx)
-            .await?;
+        let result = sqlx::query!(
+            r"DELETE FROM products WHERE id = ?1 AND owner_id = ?2",
+            id_str,
+            owner
+        )
+        .execute(&mut *tx)
+        .await?;
 
         if result.rows_affected() == 0 {
             return Err(CoreError::NotFound);
@@ -408,33 +451,52 @@ impl ProductRepo for SqlitePool {
     async fn list_hidden_with_usage(&self, owner_id: Uuid) -> CoreResult<Vec<HiddenProductGroup>> {
         // Every join checks the owner (RR-0001 constraint 9): another user's
         // category never names a group, and only the owner's recipes count.
-        let rows = sqlx::query(
-            r"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite,
-                     p.created_at, p.updated_at,
-                     c.id AS group_id, c.name AS group_name,
-                     c.position AS group_position, c.created_at AS group_created_at,
+        let owner = owner_id.to_string();
+        let rows = sqlx::query!(
+            r#"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite AS "is_favorite: bool",
+                     p.created_at AS "created_at: DateTime<Utc>", p.updated_at AS "updated_at: DateTime<Utc>",
+                     c.id AS "group_id?", c.name AS "group_name?",
+                     c.position AS "group_position?", c.created_at AS "group_created_at?: DateTime<Utc>",
                      (SELECT COUNT(DISTINCT r.id)
                         FROM ingredients i
                         JOIN recipes r ON r.id = i.recipe_id AND r.owner_id = p.owner_id
-                        WHERE i.product_id = p.id) AS recipe_count
+                        WHERE i.product_id = p.id) AS "recipe_count!: i64"
                 FROM products p
                 LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
                 WHERE p.owner_id = ?1 AND p.is_favorite = 0
-                ORDER BY c.id IS NULL, c.position, c.name, p.name_key, p.name",
+                ORDER BY c.id IS NULL, c.position, c.name, p.name_key, p.name"#,
+            owner
         )
-        .bind(owner_id.to_string())
         .fetch_all(&self.inner)
         .await?;
+        let rows = rows.into_iter().map(|r| {
+            let group = Group {
+                id: r.group_id,
+                name: r.group_name,
+                position: r.group_position,
+                created_at: r.group_created_at,
+            };
+            let product = ProductRow {
+                id: r.id,
+                owner_id: r.owner_id,
+                name: r.name,
+                category_id: r.category_id,
+                position: r.position,
+                is_favorite: r.is_favorite,
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+            };
+            let usage = product.into_product().map(|product| ProductUsage {
+                product,
+                recipe_count: r.recipe_count,
+            });
+            (group, usage)
+        });
 
-        Ok(group_by_category(&rows, owner_id, |row| {
-            Ok(ProductUsage {
-                product: row_to_product(row)?,
-                recipe_count: row.try_get("recipe_count")?,
-            })
-        })?
-        .into_iter()
-        .map(|(category, products)| HiddenProductGroup { category, products })
-        .collect())
+        Ok(group_by_category(rows, owner_id)?
+            .into_iter()
+            .map(|(category, products)| HiddenProductGroup { category, products })
+            .collect())
     }
 
     async fn make_favorite(&self, owner_id: Uuid, id: Uuid) -> CoreResult<Product> {
@@ -445,47 +507,59 @@ impl ProductRepo for SqlitePool {
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
 
         // The category counts only if it is the owner's (RR-0001 constraint 9).
-        let row = sqlx::query(
-            r"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite,
-                     p.created_at, p.updated_at, c.id AS owned_category
+        let row = sqlx::query!(
+            r#"SELECT p.id, p.owner_id, p.name, p.category_id, p.position, p.is_favorite AS "is_favorite: bool",
+                     p.created_at AS "created_at: DateTime<Utc>", p.updated_at AS "updated_at: DateTime<Utc>", c.id AS "owned_category?"
                 FROM products p
                 LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id
-                WHERE p.id = ?1 AND p.owner_id = ?2",
+                WHERE p.id = ?1 AND p.owner_id = ?2"#,
+            id_str,
+            owner
         )
-        .bind(&id_str)
-        .bind(&owner)
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(CoreError::NotFound)?;
-        let product = row_to_product(&row)?;
+        let owned_category = row.owned_category;
+        let product = ProductRow {
+            id: row.id,
+            owner_id: row.owner_id,
+            name: row.name,
+            category_id: row.category_id,
+            position: row.position,
+            is_favorite: row.is_favorite,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+        .into_product()?;
         if product.is_favorite {
             return Ok(product);
         }
-        let owned_category: Option<String> = row.try_get("owned_category")?;
         let Some(category) = owned_category else {
             return Err(CoreError::Invalid(Invalid::FavoriteNeedsCategory {
                 name: product.name.clone(),
             }));
         };
 
-        let row = sqlx::query(
-            r"UPDATE products
+        let now = Utc::now();
+        let product = sqlx::query_as!(
+            ProductRow,
+            r#"UPDATE products
                 SET is_favorite = 1,
                     position = (SELECT COALESCE(MAX(p.position), -1) + 1
                                   FROM products p
                                   WHERE p.owner_id = ?2 AND p.category_id = ?1),
                     updated_at = ?3
                 WHERE id = ?4 AND owner_id = ?2 AND category_id = ?1
-              RETURNING id, owner_id, name, category_id, position, is_favorite,
-                        created_at, updated_at",
+              RETURNING id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                        created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>""#,
+            category,
+            owner,
+            now,
+            id_str
         )
-        .bind(&category)
-        .bind(&owner)
-        .bind(Utc::now())
-        .bind(&id_str)
         .fetch_one(&mut *tx)
-        .await?;
-        let product = row_to_product(&row)?;
+        .await?
+        .into_product()?;
 
         tx.commit().await?;
         Ok(product)

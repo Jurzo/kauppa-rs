@@ -2,8 +2,6 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::Row;
-use sqlx::sqlite::SqliteRow;
 use uuid::Uuid;
 
 use crate::CoreResult;
@@ -17,49 +15,75 @@ use super::user::insert_user;
 use super::{SqlitePool, parse_uuid, whole_seconds};
 
 /// Invitations with the account each created, if that still exists, newest
-/// first. Binds: `?1` one invitation id, or NULL for all.
-const INVITATION_SELECT: &str = r"
-    SELECT i.id, i.note, i.created_by, i.created_at, i.expires_at, i.revoked_at, i.used_at,
-           u.id AS used_by_id, u.display_name AS used_by_name, u.email AS used_by_email
+/// first. Binds: `?1` one invitation id, or NULL for all. A macro, not a
+/// constant, so both uses are checked at compile time (the query macros
+/// take only a literal; MB-0049).
+macro_rules! invitation_select {
+    ($one:expr) => {
+        sqlx::query_as!(
+            InvitationRow,
+            r#"
+    SELECT i.id, i.note, i.created_by, i.created_at AS "created_at: DateTime<Utc>", i.expires_at AS "expires_at: DateTime<Utc>", i.revoked_at AS "revoked_at: DateTime<Utc>", i.used_at AS "used_at: DateTime<Utc>",
+           u.id AS "used_by_id?", u.display_name AS "used_by_name?", u.email AS "used_by_email?"
       FROM invitations i
       LEFT JOIN users u ON u.id = i.used_by
      WHERE ?1 IS NULL OR i.id = ?1
-     ORDER BY i.created_at DESC, i.id ASC";
+     ORDER BY i.created_at DESC, i.id ASC"#,
+            $one
+        )
+    };
+}
 
-fn row_to_invitation(row: &SqliteRow) -> CoreResult<Invitation> {
-    let id: String = row.try_get("id")?;
-    let created_by: Option<String> = row.try_get("created_by")?;
-    let used_by_id: Option<String> = row.try_get("used_by_id")?;
-    let used_by = used_by_id
-        .as_deref()
-        .map(|id| -> CoreResult<InvitationUser> {
-            Ok(InvitationUser {
-                id: parse_uuid(id)?,
-                display_name: row.try_get("used_by_name")?,
-                email: row.try_get("used_by_email")?,
-            })
+/// A row of `invitation_select!`.
+struct InvitationRow {
+    id: String,
+    note: Option<String>,
+    created_by: Option<String>,
+    created_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    revoked_at: Option<DateTime<Utc>>,
+    used_at: Option<DateTime<Utc>>,
+    used_by_id: Option<String>,
+    used_by_name: Option<String>,
+    used_by_email: Option<String>,
+}
+
+impl InvitationRow {
+    fn into_invitation(self) -> CoreResult<Invitation> {
+        let used_by = match (self.used_by_id, self.used_by_name, self.used_by_email) {
+            (Some(id), Some(display_name), Some(email)) => Some(InvitationUser {
+                id: parse_uuid(&id)?,
+                display_name,
+                email,
+            }),
+            (None, _, _) => None,
+            (Some(_), _, _) => {
+                return Err(CoreError::Storage(
+                    "invitation user without name or email".to_owned(),
+                ));
+            }
+        };
+        Ok(Invitation {
+            id: parse_uuid(&self.id)?,
+            note: self.note,
+            created_by: self.created_by.as_deref().map(parse_uuid).transpose()?,
+            created_at: self.created_at,
+            expires_at: self.expires_at,
+            revoked_at: self.revoked_at,
+            used_at: self.used_at,
+            used_by,
         })
-        .transpose()?;
-    Ok(Invitation {
-        id: parse_uuid(&id)?,
-        note: row.try_get("note")?,
-        created_by: created_by.as_deref().map(parse_uuid).transpose()?,
-        created_at: row.try_get("created_at")?,
-        expires_at: row.try_get("expires_at")?,
-        revoked_at: row.try_get("revoked_at")?,
-        used_at: row.try_get("used_at")?,
-        used_by,
-    })
+    }
 }
 
 impl SqlitePool {
     async fn invitation(&self, id: Uuid) -> CoreResult<Invitation> {
-        let row = sqlx::query(INVITATION_SELECT)
-            .bind(Some(id.to_string()))
+        let id = Some(id.to_string());
+        invitation_select!(id)
             .fetch_optional(&self.inner)
             .await?
-            .ok_or(CoreError::NotFound)?;
-        row_to_invitation(&row)
+            .ok_or(CoreError::NotFound)?
+            .into_invitation()
     }
 }
 
@@ -76,16 +100,20 @@ impl InvitationRepo for SqlitePool {
         let id = Uuid::new_v4();
         let created_at = whole_seconds(now);
         let expires_at = created_at + invitation_ttl();
-        sqlx::query(
+        let id_text = id.to_string();
+        let token_hash = token.hash();
+        let note_text = note.as_deref();
+        let creator = created_by.map(|u| u.to_string());
+        sqlx::query!(
             r"INSERT INTO invitations (id, token_hash, note, created_by, created_at, expires_at)
               VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            id_text,
+            token_hash,
+            note_text,
+            creator,
+            created_at,
+            expires_at
         )
-        .bind(id.to_string())
-        .bind(token.hash())
-        .bind(note.as_deref())
-        .bind(created_by.map(|u| u.to_string()))
-        .bind(created_at)
-        .bind(expires_at)
         .execute(&self.inner)
         .await?;
         Ok(CreatedInvitation {
@@ -104,20 +132,22 @@ impl InvitationRepo for SqlitePool {
     }
 
     async fn list(&self) -> CoreResult<Vec<Invitation>> {
-        let rows = sqlx::query(INVITATION_SELECT)
-            .bind(None::<String>)
-            .fetch_all(&self.inner)
-            .await?;
-        rows.iter().map(row_to_invitation).collect()
+        let all: Option<String> = None;
+        let rows = invitation_select!(all).fetch_all(&self.inner).await?;
+        rows.into_iter()
+            .map(InvitationRow::into_invitation)
+            .collect()
     }
 
     async fn revoke(&self, id: Uuid, now: DateTime<Utc>) -> CoreResult<Invitation> {
-        let done = sqlx::query(
+        let id_text = id.to_string();
+        let now = whole_seconds(now);
+        let done = sqlx::query!(
             r"UPDATE invitations SET revoked_at = ?2
                WHERE id = ?1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?2",
+            id_text,
+            now
         )
-        .bind(id.to_string())
-        .bind(whole_seconds(now))
         .execute(&self.inner)
         .await?;
         if done.rows_affected() != 1 {
@@ -142,13 +172,13 @@ impl InvitationRepo for SqlitePool {
         // 0. Only the holder of a pending invitation may learn that an email
         //    is taken: without this check, a duplicate email would fail
         //    step 1 before any invitation is looked at, for any token.
-        let pending: Option<i64> = sqlx::query_scalar(
-            r"SELECT 1 FROM invitations
+        let pending = sqlx::query_scalar!(
+            r#"SELECT 1 AS "found!: i64" FROM invitations
                WHERE token_hash = ?1 AND used_at IS NULL AND revoked_at IS NULL
-                 AND expires_at > ?2",
+                 AND expires_at > ?2"#,
+            token_hash,
+            now
         )
-        .bind(token_hash)
-        .bind(now)
         .fetch_optional(&mut *tx)
         .await?;
         if pending.is_none() {
@@ -160,15 +190,16 @@ impl InvitationRepo for SqlitePool {
         let user = insert_user(&mut *tx, email, display_name, password_hash, now).await?;
         // 2. Use the invitation only if it is still pending. A concurrent
         //    registration waits for the write lock, then matches no row.
-        let used_id: Option<String> = sqlx::query_scalar(
+        let new_user = user.id.to_string();
+        let used_id: Option<String> = sqlx::query_scalar!(
             r"UPDATE invitations SET used_at = ?1, used_by = ?2
                WHERE token_hash = ?3 AND used_at IS NULL AND revoked_at IS NULL
                  AND expires_at > ?1
            RETURNING id",
+            now,
+            new_user,
+            token_hash
         )
-        .bind(now)
-        .bind(user.id.to_string())
-        .bind(token_hash)
         .fetch_optional(&mut *tx)
         .await?;
         // 3. No pending invitation: undo the user, one answer for every reason.
@@ -188,10 +219,13 @@ impl InvitationRepo for SqlitePool {
 #[async_trait]
 impl AdminRepo for SqlitePool {
     async fn is_admin(&self, user_id: Uuid) -> CoreResult<bool> {
-        let found: Option<i64> = sqlx::query_scalar(r"SELECT 1 FROM admins WHERE user_id = ?1")
-            .bind(user_id.to_string())
-            .fetch_optional(&self.inner)
-            .await?;
+        let id = user_id.to_string();
+        let found = sqlx::query_scalar!(
+            r#"SELECT 1 AS "found!: i64" FROM admins WHERE user_id = ?1"#,
+            id
+        )
+        .fetch_optional(&self.inner)
+        .await?;
         Ok(found.is_some())
     }
 
@@ -201,13 +235,16 @@ impl AdminRepo for SqlitePool {
         granted_by: Option<Uuid>,
         now: DateTime<Utc>,
     ) -> CoreResult<bool> {
-        let done = sqlx::query(
+        let id = user_id.to_string();
+        let now = whole_seconds(now);
+        let by = granted_by.map(|u| u.to_string());
+        let done = sqlx::query!(
             r"INSERT INTO admins (user_id, granted_at, granted_by) VALUES (?1, ?2, ?3)
               ON CONFLICT (user_id) DO NOTHING",
+            id,
+            now,
+            by
         )
-        .bind(user_id.to_string())
-        .bind(whole_seconds(now))
-        .bind(granted_by.map(|u| u.to_string()))
         .execute(&self.inner)
         .await?;
         Ok(done.rows_affected() == 1)

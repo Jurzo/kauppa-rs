@@ -43,7 +43,9 @@ Version: v1 · Scope: `crates/kauppa-core/src/repo/**` and `migrations/**`.
   `repo/sqlite/mod.rs`'s setup queries use runtime `sqlx::query(...)` by
   decision (RR-0037): the list queries are built from shared SQL constants
   around the central predicate, which the macros can't reference (they take
-  only string literals).
+  only string literals). So does `INGREDIENT_SELECT` (`repo/sqlite/mod.rs`),
+  used by `list.rs` and `recipe.rs`'s `fetch_ingredients` (RR-0040): one
+  copy of the shared SQL, which `list.rs` reads by column name.
 - Prefer named columns in SELECT, never `*`.
 - Email addresses are unique and compared ignoring ASCII case: the
   `users_email_nocase` index, and `COLLATE NOCASE` in every comparison on
