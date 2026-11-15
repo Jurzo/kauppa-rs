@@ -5,11 +5,11 @@
 id: RR-0042
 closes: CRP-0042
 mission: MB-0050
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: platform
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-14T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-15T07:05:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - AGENTS.md
@@ -74,7 +74,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as owner for sub-answers 1, 2, 3 and 6; as platform for sub-answers 4 and 5.">
+@Jurzo as owner for sub-answers 1, 2, 3 and 6; as platform for sub-answers 4 and 5.
 
 ## Linked artifacts and evidence
 
