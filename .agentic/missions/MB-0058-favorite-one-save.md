@@ -12,14 +12,14 @@ non_goals:
   - "JavaScript, or saving on change without a button."
 acceptance:
   - id: P1
-    property: "A product's edit section on `/favorites` (favorites and the 'From recipes' section, which share `products/_product_edit.hbs`) has one form with the name, the category picker and one Save button; the only other control in the section is Delete."
+    property: "A product's edit section on `/favorites` (favorites and the 'From recipes' section, which share `products/_product_edit.hbs`) has one form with the name, the category picker and one Save button; the picker lists the user's categories and a 'No category' choice and opens with the product's current choice selected (its category, or 'No category'); the only other control in the section is Delete (RR-0043)."
     check: cargo test -p kauppa-web routes::products::tests::edit::one_save_button
   - id: P2
     property: "One Save stores the name and the category in one request and one transaction. If either is rejected (a name another of the user's products already uses, case-insensitively; an empty name; an unknown or foreign category), neither changes and the catalog shows the error as rejections do today."
     check: cargo test -p kauppa-web routes::products::tests::edit::saves_name_and_category_together
   - id: P3
-    property: "Saving with an unchanged name or an unchanged category works and changes only what differs; a product's list items and recipe ingredients keep their link to it (as rename and recategorize do today)."
-    check: cargo test -p kauppa-web routes::products::tests::edit::unchanged_fields
+    property: "Save with 'No category' clears the category: a favorite then shows under Uncategorized, a recipe product stays uncategorized; Save with the current choice changes only the name; a request without the category field is rejected and changes nothing (RR-0043 constraint 2); a product's list items and recipe ingredients keep their link to it (as rename and recategorize do today)."
+    check: cargo test -p kauppa-web routes::products::tests::edit::no_category_and_unchanged_fields
   - id: P4
     property: "Works without htmx (303 back to `/favorites`, or the full page with the error) and with htmx (`#favorites` swaps); only the owner can edit their products; the cross-site check covers the new or changed route; existing tests change only where they posted to a route this mission changes."
     check: cargo test -p kauppa-web --all-targets
@@ -44,7 +44,7 @@ autonomy:
     - "test names inside `routes::products::tests::edit` (record a rename here)"
     - "the form's layout and labels, through catalog keys in both languages"
   escalate:
-    - { when: "a product from recipes that has no category: today Rename works without one and Change requires a pick (`parse_category` rejects an empty value); with one Save, may a rename leave it uncategorized, or must Save require a category", to: owner }
+    - { when: "a product from recipes that has no category: today Rename works without one and Change requires a pick (`parse_category` rejects an empty value); with one Save, may a rename leave it uncategorized, or must Save require a category (decided: RR-0043, an explicit 'No category' choice)", to: owner }
   forbidden:
     - "let a user change another user's product"
     - "JavaScript or inline scripts"
@@ -53,7 +53,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0043, RR-0046]
 ---
 ```
 
@@ -80,12 +80,17 @@ role: only the owner edits their catalog. So the route and transaction are
 within this brief's autonomy, and only the owner's product question needs a
 consult.
 
+RR-0043's "No category" amends RR-0001 constraint 3 through RR-0046: a
+favorite needs a category when created or made a favorite; its owner may
+clear it later.
+
 Related: MB-0059 (collapsible categories) edits the same catalog template;
 whichever lands second rebases.
 
 ## Conceptual plan
 
-1. **Clarify (S1).** The owner question on uncategorized products.
+1. **Clarify (S1).** The owner question on uncategorized products. Done:
+   CRP-0043 answered, RR-0043 approved (an explicit "No category" choice).
 2. Tests first (P1–P3); the repo method; the route; the template.
 3. Remove the old routes and update their tests.
 4. Browser check (P5).

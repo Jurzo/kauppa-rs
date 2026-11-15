@@ -1,5 +1,12 @@
+{{!-- MB-0058 (RR-0043): a favorite's edit picker offers "No category"
+instead of the placeholder, selected when the product has none, so Save
+always sends a choice. --}}
 <select name="category_id"{{#if required}} required{{/if}}>
-  <option value="" disabled{{#unless has_selection}} selected{{/unless}}>{{t "common.choose_category"}}</option>
+  {{#if no_category}}
+    <option value="none"{{#unless has_selection}} selected{{/unless}}>{{t "common.no_category"}}</option>
+  {{else}}
+    <option value="" disabled{{#unless has_selection}} selected{{/unless}}>{{t "common.choose_category"}}</option>
+  {{/if}}
   {{#each options}}
     <option value="{{this.id}}"{{#if this.selected}} selected{{/if}}>{{this.name}}</option>
   {{/each}}

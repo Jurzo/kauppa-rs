@@ -139,3 +139,10 @@ Status: active
 - 2026-10-29: amended by RR-0003 (closes CRP-0003). `0004_name_keys.sql` added
   for MB-0010; the planned MB-0003 and MB-0004 migrations renumbered to `0005`
   and `0006` (PR #7).
+- 2026-11-15: constraint 3 amended by RR-0046 (closes CRP-0046), for RR-0043
+  (MB-0058). It now reads: "`category_id` stays nullable in the schema on
+  every table that has one. A favorite needs a category when it is created or
+  made a favorite (the add form, 'Make favorite'); its owner may later clear
+  it explicitly ('No category', RR-0043), and it then shows under
+  Uncategorized. These rules are enforced at the handler layer. Do not add
+  `NOT NULL`."
