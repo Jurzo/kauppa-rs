@@ -17,6 +17,8 @@
 /data
 
 # Editor / OS
+# Agent harness local state: worktrees, settings (MB-0050 P7, RR-0042).
+/.claude/
 .vscode/
 .idea/
 *.swp
