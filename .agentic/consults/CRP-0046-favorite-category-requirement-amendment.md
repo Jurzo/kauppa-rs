@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: data-owner
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "conflict between approved RRs found at MB-0058's implementation start: RR-0001 constraint 3 ('A favorite or recipe ingredient must have a category', handler rule) vs RR-0043 (Save with 'No category' clears a favorite's category); feature.md escalation trigger `.agentic/resolutions/**`"
 ---
 ```

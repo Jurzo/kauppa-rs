@@ -53,7 +53,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: [RR-0043]
+resolutions: [RR-0043, RR-0046]
 ---
 ```
 
@@ -79,6 +79,10 @@ trigger path (`scripts/agentic/check_triggers.py`), and there is no second
 role: only the owner edits their catalog. So the route and transaction are
 within this brief's autonomy, and only the owner's product question needs a
 consult.
+
+RR-0043's "No category" amends RR-0001 constraint 3 through RR-0046: a
+favorite needs a category when created or made a favorite; its owner may
+clear it later.
 
 Related: MB-0059 (collapsible categories) edits the same catalog template;
 whichever lands second rebases.
