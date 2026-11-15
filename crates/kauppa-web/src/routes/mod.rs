@@ -60,6 +60,8 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(lists::show)
                 .service(lists::rename)
                 .service(lists::delete)
+                .service(lists::archive)
+                .service(lists::unarchive)
                 .service(lists::add_item)
                 .service(lists::add_recipe)
                 .service(lists::shop)

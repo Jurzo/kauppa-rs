@@ -50,6 +50,7 @@ The swap of `on-brand` mirrors the icon: the light icon has a black tick, the da
 ## Colour usage
 
 - **Primary button, checked checkbox, links, active tab:** `brand`, hover `brand-hover`, text `on-brand`.
+- **Disabled checkbox:** `border` edge on `surface-sunken` when open; `ink-subtle` fill with a `surface` tick when checked. Never `brand`, which marks what can be acted on (see `components/ListItem.md`).
 - **Selected row, active nav item, info banner:** `brand-subtle` background with `ink` text. Don't put `brand` text on `brand-subtle` for long runs.
 - **Errors and delete:** `danger` text or fill, `danger-subtle` behind banners. Delete always asks or offers undo.
 - **Success** (`success`) is for system confirmations like "List shared". Checked items are brand orange, not green.

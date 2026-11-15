@@ -88,3 +88,13 @@ pub struct SharedList {
     /// The owner's display name.
     pub owner_name: String,
 }
+
+/// An archived list the user can reach (MB-0062, RR-0045): their own, or one
+/// shared with them, with what they may do with it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchivedList {
+    pub list: ShoppingList,
+    pub access: ListAccess,
+    /// The owner's display name.
+    pub owner_name: String,
+}

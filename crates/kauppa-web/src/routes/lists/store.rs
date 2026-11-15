@@ -30,8 +30,11 @@ struct ShopView {
     groups: Vec<ShopGroup>,
     found: usize,
     total: usize,
-    /// The owner or an `edit` grantee: check-off and removal.
+    /// The owner or an `edit` grantee, on an active list: check-off and
+    /// removal.
     can_edit: bool,
+    /// Set when the list is archived (MB-0062): read-only, with a notice.
+    archived: Option<super::ArchivedNotice>,
     error: Option<String>,
 }
 
@@ -80,13 +83,15 @@ async fn render_shop(
         })
         .collect();
     let items = || groups.iter().flat_map(|g| &g.items);
+    let archived = super::ArchivedNotice::new(&list, access, state, ui)?;
     let view = ShopView {
         id: list.id,
         name: list.name,
         found: items().filter(|i| i.checked).count(),
         total: items().count(),
         groups,
-        can_edit: access >= ListAccess::Edit,
+        can_edit: access >= ListAccess::Edit && archived.is_none(),
+        archived,
         error,
     };
     let template = if fragment {

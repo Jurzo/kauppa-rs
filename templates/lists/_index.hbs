@@ -31,6 +31,11 @@
                 hx-confirm="{{t "lists.delete_confirm" name=this.name}}">
             <button type="submit" class="link danger">{{t "common.delete"}}</button>
           </form>
+          {{!-- MB-0062: archiving moves the list to the Archived section. --}}
+          <form method="post" action="/lists/{{this.id}}/archive"
+                hx-post="/lists/{{this.id}}/archive" hx-target="#lists" hx-swap="outerHTML">
+            <button type="submit" class="link">{{t "lists.archive"}}<span class="visually-hidden"> {{this.name}}</span></button>
+          </form>
         </details>
       </li>
     {{else}}
@@ -48,5 +53,41 @@
         </li>
       {{/each}}
     </ul>
+  {{/if}}
+
+  {{#if archived}}
+    {{!-- MB-0062 (RR-0045): archived lists, own and shared, most recently archived first; closed unless an action happened inside. --}}
+    <details id="archived-lists" class="archived-lists"{{#if archived_open}} open{{/if}}>
+      <summary><span class="group-name">{{t "lists.archived"}}</span> <span class="group-count">{{t "lists.archived_count" count=archived_count}}</span></summary>
+      <ul class="product-list">
+        {{#each archived}}
+          <li class="product-row">
+            <a class="product-name" href="/lists/{{this.id}}">{{this.name}}</a>
+            <span class="muted">{{#unless this.is_owner}}{{this.owner_name}} · {{/unless}}{{t "lists.archived_on" date=this.archived}}</span>
+            {{#if this.is_owner}}
+            <form class="row-actions" method="post" action="/lists/{{this.id}}/unarchive"
+                  hx-post="/lists/{{this.id}}/unarchive" hx-target="#lists" hx-swap="outerHTML">
+              <button type="submit" class="link">{{t "lists.restore"}}<span class="visually-hidden"> {{this.name}}</span></button>
+            </form>
+            <details class="product-edit">
+              <summary>{{t "common.edit"}}<span class="visually-hidden"> {{this.name}}</span></summary>
+              <form method="post" action="/lists/{{this.id}}/rename"
+                    hx-post="/lists/{{this.id}}/rename" hx-target="#lists" hx-swap="outerHTML">
+                <label>{{t "common.name"}}
+                  <input name="name" type="text" required value="{{this.name}}" />
+                </label>
+                <button type="submit" class="button">{{t "common.rename"}}</button>
+              </form>
+              <form method="post" action="/lists/{{this.id}}/delete"
+                    hx-post="/lists/{{this.id}}/delete" hx-target="#lists" hx-swap="outerHTML"
+                    hx-confirm="{{t "lists.delete_confirm" name=this.name}}">
+                <button type="submit" class="link danger">{{t "common.delete"}}</button>
+              </form>
+            </details>
+            {{/if}}
+          </li>
+        {{/each}}
+      </ul>
+    </details>
   {{/if}}
 </div>

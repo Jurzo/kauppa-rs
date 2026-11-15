@@ -3,6 +3,19 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
 
+  {{#if archived}}
+  {{!-- MB-0062 (RR-0045): an archived list is read-only; its owner can restore it here. --}}
+  <div class="archived-notice">
+    <p>{{t "lists.archived_on" date=archived.date}}</p>
+    {{#if archived.can_restore}}
+    <form method="post" action="/lists/{{id}}/unarchive">
+      <input type="hidden" name="back" value="shop" />
+      <button type="submit" class="button primary">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
+    </form>
+    {{/if}}
+  </div>
+  {{/if}}
+
   <p class="muted" role="status">{{t "shop.progress" found=found total=total}}</p>
 
   {{#each groups}}
@@ -26,7 +39,7 @@
               <button type="submit" class="link" aria-label="{{t "shop.remove" item=this.text}}">✕</button>
             </form>
             {{else}}
-            <span class="shop-toggle">
+            <span class="shop-toggle{{#if ../../archived}} is-disabled{{/if}}">
               <span class="shop-box" aria-hidden="true"></span>
               <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               {{#if this.checked}}<span class="visually-hidden">{{t "shop.found_hidden"}}</span>{{/if}}

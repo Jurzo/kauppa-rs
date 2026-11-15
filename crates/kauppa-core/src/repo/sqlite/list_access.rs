@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{ListAccess, ListItem, ShoppingList};
-use crate::error::CoreError;
+use crate::error::{Conflict, CoreError};
 
 use super::SqlitePool;
 use super::list_rows::{parse_access, row_to_item, row_to_list};
@@ -19,13 +19,15 @@ use super::list_rows::{parse_access, row_to_item, row_to_list};
 /// Authorization): the lists `?1` (the acting user) owns, or holds a
 /// `list_shares` grant on, each with the user's access — `owner`, or the
 /// grant's role. `?2` narrows it to one list id; NULL means every list.
+/// Archived lists are included, with `archived_at` (MB-0062, RR-0045
+/// sub-answer 4); callers split them out.
 ///
 /// This is the only list query that decides access. Every
 /// `ShoppingListRepo` method reaches list and item rows through it
 /// (`accessible_lists` → `authorize` → `ListGrant`); `repo::share`'s tests
 /// fail if a method or query goes around it.
 const ACCESS_SELECT: &str = r"
-    SELECT l.id, l.owner_id, l.name, l.created_at, l.updated_at,
+    SELECT l.id, l.owner_id, l.name, l.created_at, l.updated_at, l.archived_at,
            u.display_name AS owner_name,
            CASE WHEN l.owner_id = ?1 THEN 'owner' ELSE s.role END AS access
       FROM shopping_lists l
@@ -201,6 +203,17 @@ pub(super) async fn touch_list(
 
 type Tx = sqlx::Transaction<'static, sqlx::Sqlite>;
 
+/// Whether a write may change an archived list (MB-0062, RR-0045). Every
+/// `begin_write` caller states it (constraint 1); item and recipe writes
+/// refuse, the owner's lifecycle and sharing actions are allowed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum WhenArchived {
+    /// `Conflict::Archived`: the list is read-only while archived.
+    Refuse,
+    /// Allowed on an archived list too.
+    Allow,
+}
+
 impl SqlitePool {
     /// Open a read transaction and authorize `user` on `list_id` inside it,
     /// so the check and the reads that follow see one state.
@@ -218,15 +231,22 @@ impl SqlitePool {
     /// Open a write transaction and authorize `user` on `list_id` inside it.
     /// `BEGIN IMMEDIATE` takes SQLite's write lock first, so a revoke can't
     /// commit between the check and the write (RR-0002 constraint 4), and a
-    /// failure leaves nothing half-written.
+    /// failure leaves nothing half-written. On an archived list, `archived`
+    /// decides: [`WhenArchived::Refuse`] answers `Conflict::Archived`, after
+    /// the access check, so a user without access still gets `NotFound` or
+    /// `Forbidden` (RR-0045 sub-answer 4).
     pub(super) async fn begin_write(
         &self,
         user: Uuid,
         list_id: Uuid,
         required: ListAccess,
+        archived: WhenArchived,
     ) -> CoreResult<(Tx, ListGrant)> {
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
         let grant = authorize(&mut *tx, user, list_id, required).await?;
+        if archived == WhenArchived::Refuse && grant.list.archived_at.is_some() {
+            return Err(CoreError::Conflict(Conflict::Archived));
+        }
         Ok((tx, grant))
     }
 }

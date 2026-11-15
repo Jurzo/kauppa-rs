@@ -36,10 +36,18 @@
 //! constraint 3), and grants and revokes are logged without the grantee's
 //! email (constraint 5).
 //!
+//! Lists can be archived by their owner (MB-0062, RR-0045). An archived list
+//! leaves the index's main list and "Shared with you" for a collapsed
+//! "Archived" section (a `<details>`, open only after an action inside it),
+//! most recently archived first. Its page and store view are read-only, with
+//! a notice and, for the owner, Restore: the repo refuses item and recipe
+//! changes (`Conflict::Archived`, the 409 page), and their controls aren't
+//! rendered. Rename, delete and sharing stay the owner's as before.
+//!
 //! Split by area (MB-0019, RR-0009): this file has the shared views and
 //! rendering, and the list index and lifecycle handlers; `items` (MB-0004,
-//! MB-0005), `store` (MB-0006) and `shares` (MB-0008) have the rest. Tests are
-//! in `tests/<area>.rs`.
+//! MB-0005), `store` (MB-0006), `shares` (MB-0008) and `archiving` (MB-0062)
+//! have the rest. Tests are in `tests/<area>.rs`.
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -49,7 +57,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use kauppa_core::domain::{
-    Category, ListAccess, ListItem, ProductGroup, ShareRole, SharedList, ShoppingList,
+    ArchivedList, Category, ListAccess, ListItem, ProductGroup, ShareRole, SharedList, ShoppingList,
 };
 use kauppa_core::repo::{CategoryRepo, ProductRepo, RecipeRepo, ShoppingListRepo};
 use kauppa_core::{CoreError, CoreResult};
@@ -60,12 +68,14 @@ use crate::routes::products::Picker;
 use crate::routes::request::{current_user, is_hx, wants_fragment};
 use crate::state::AppState;
 
+mod archiving;
 mod items;
 mod shares;
 mod store;
 #[cfg(test)]
 mod tests;
 
+pub use archiving::{archive, unarchive};
 pub use items::{add_item, add_recipe, remove_item, restore_item, update_item};
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};
@@ -80,8 +90,78 @@ struct IndexView {
     lists: Vec<ListCard>,
     /// Lists other users shared with this one (MB-0008).
     shared: Vec<SharedCard>,
+    /// Archived lists, own and shared, most recently archived first
+    /// (MB-0062).
+    archived: Vec<ArchivedCard>,
+    archived_count: usize,
+    /// Render the Archived section open: the action happened inside it.
+    archived_open: bool,
     draft_name: String,
     error: Option<String>,
+}
+
+/// `GET /lists?open=archived`: the Archived section open, as the redirect
+/// after a plain action inside it names it (MB-0062 P5).
+#[derive(Debug, Deserialize)]
+struct IndexQuery {
+    open: Option<String>,
+}
+
+/// The `?open=` value that opens the Archived section.
+const OPEN_ARCHIVED: &str = "archived";
+
+/// An archived list on the index (MB-0062): the owner's controls (Restore,
+/// rename, delete) or, for a grantee, whose list it is.
+#[derive(Debug, Serialize)]
+struct ArchivedCard {
+    id: Uuid,
+    name: String,
+    /// When it was archived, as a day.
+    archived: String,
+    is_owner: bool,
+    owner_name: String,
+}
+
+impl ArchivedCard {
+    fn new(archived: ArchivedList, state: &AppState, ui: &Ui) -> WebResult<Self> {
+        let at = archived
+            .list
+            .archived_at
+            .unwrap_or(archived.list.updated_at);
+        Ok(Self {
+            id: archived.list.id,
+            name: archived.list.name,
+            archived: ui.date(state, at)?,
+            is_owner: archived.access == ListAccess::Owner,
+            owner_name: archived.owner_name,
+        })
+    }
+}
+
+/// The notice on an archived list's page and store view (RR-0045): when it
+/// was archived, and Restore for the owner.
+#[derive(Debug, Serialize)]
+struct ArchivedNotice {
+    date: String,
+    can_restore: bool,
+}
+
+impl ArchivedNotice {
+    fn new(
+        list: &ShoppingList,
+        access: ListAccess,
+        state: &AppState,
+        ui: &Ui,
+    ) -> WebResult<Option<Self>> {
+        list.archived_at
+            .map(|at| {
+                Ok(Self {
+                    date: ui.date(state, at)?,
+                    can_restore: access == ListAccess::Owner,
+                })
+            })
+            .transpose()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -137,10 +217,13 @@ struct ListView {
     favorite_count: usize,
     recipes: Vec<RecipeOption>,
     has_categories: bool,
-    /// The owner: catalog controls and the sharing link.
+    /// The owner: the sharing link and, on an active list, the catalog
+    /// controls (favorites hint, add a recipe).
     is_owner: bool,
-    /// The owner or an `edit` grantee: item controls.
+    /// The owner or an `edit` grantee, on an active list: item controls.
     can_edit: bool,
+    /// Set when the list is archived (MB-0062): read-only, with a notice.
+    archived: Option<ArchivedNotice>,
     draft: ItemDraft,
     error: Option<String>,
 }
@@ -217,6 +300,8 @@ async fn render_list(
     } else {
         (Vec::new(), Vec::new(), Vec::new())
     };
+    let archived = ArchivedNotice::new(&list, access, state, ui)?;
+    let active = archived.is_none();
     let card = ListCard::new(list, state, ui)?;
     let removed_count = removed.len();
     let suggestions = favorite_names(favorites);
@@ -243,7 +328,8 @@ async fn render_list(
             .collect(),
         has_categories: !categories.is_empty(),
         is_owner,
-        can_edit: access >= ListAccess::Edit,
+        can_edit: access >= ListAccess::Edit && active,
+        archived,
         draft,
         error,
     };
@@ -323,17 +409,20 @@ impl ListCard {
 }
 
 /// Render the index as the full page or, for htmx, the `#lists` fragment.
+#[allow(clippy::too_many_arguments)]
 async fn render_index(
     state: &AppState,
     ui: &Ui,
     user: Uuid,
     fragment: bool,
     status: StatusCode,
+    archived_open: bool,
     draft_name: String,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
     let lists = ShoppingListRepo::list_for_owner(&state.pool, user).await?;
     let shared = ShoppingListRepo::shared_with(&state.pool, user).await?;
+    let archived = ShoppingListRepo::archived(&state.pool, user).await?;
     let view = IndexView {
         lists: lists
             .into_iter()
@@ -343,6 +432,12 @@ async fn render_index(
             .into_iter()
             .map(|s| SharedCard::new(s, state, ui))
             .collect::<WebResult<_>>()?,
+        archived_count: archived.len(),
+        archived: archived
+            .into_iter()
+            .map(|a| ArchivedCard::new(a, state, ui))
+            .collect::<WebResult<_>>()?,
+        archived_open,
         draft_name,
         error,
     };
@@ -362,6 +457,9 @@ async fn render_index(
 /// in the fragment for htmx — with 200, since htmx doesn't swap 4xx responses
 /// by default — or on the full page with 400. Success is the fragment for
 /// htmx, else a 303 to `location`. `NotFound` (another user's list) is a 404.
+/// `in_archive`: the action happened inside the Archived section, which is
+/// then rendered open (MB-0062 P5).
+#[allow(clippy::too_many_arguments)]
 async fn respond<T>(
     state: &AppState,
     ui: &Ui,
@@ -369,6 +467,7 @@ async fn respond<T>(
     user: Uuid,
     outcome: CoreResult<T>,
     location: impl FnOnce(&T) -> String,
+    in_archive: bool,
     draft_name: String,
 ) -> WebResult<HttpResponse> {
     let outcome = match outcome {
@@ -383,31 +482,60 @@ async fn respond<T>(
     match outcome {
         _ if is_hx(req) => {
             let error = outcome.err();
-            render_index(state, ui, user, true, StatusCode::OK, draft_name, error).await
+            let status = StatusCode::OK;
+            render_index(state, ui, user, true, status, in_archive, draft_name, error).await
         }
         Ok(value) => Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, location(&value)))
             .finish()),
         Err(error) => {
             let status = StatusCode::BAD_REQUEST;
-            render_index(state, ui, user, false, status, draft_name, Some(error)).await
+            let error = Some(error);
+            render_index(
+                state, ui, user, false, status, in_archive, draft_name, error,
+            )
+            .await
         }
     }
 }
 
 #[get("")]
-pub async fn index(state: web::Data<AppState>, ui: Ui, id: Identity) -> WebResult<HttpResponse> {
+pub async fn index(
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    query: web::Query<IndexQuery>,
+) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
+    let archived_open = query.open.as_deref() == Some(OPEN_ARCHIVED);
     render_index(
         &state,
         &ui,
         user,
         false,
         StatusCode::OK,
+        archived_open,
         String::new(),
         None,
     )
     .await
+}
+
+/// Whether `list` is archived, for answering an action on it inside the
+/// Archived section (MB-0062 P5). Any error is the action's to report.
+async fn is_archived(state: &AppState, user: Uuid, list: Uuid) -> bool {
+    ShoppingListRepo::get(&state.pool, user, list)
+        .await
+        .is_ok_and(|l| l.archived_at.is_some())
+}
+
+/// The index, with the Archived section open when `in_archive`.
+fn index_location(in_archive: bool) -> String {
+    if in_archive {
+        format!("/lists?open={OPEN_ARCHIVED}")
+    } else {
+        "/lists".to_owned()
+    }
 }
 
 /// Create a list. Without htmx the user lands in the new list.
@@ -433,6 +561,7 @@ pub async fn create(
         user,
         outcome,
         |list| format!("/lists/{}", list.id),
+        false,
         draft,
     )
     .await
@@ -471,14 +600,17 @@ pub async fn rename(
     form: web::Form<NameForm>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let outcome = ShoppingListRepo::rename(&state.pool, user, path.into_inner(), &form.name).await;
+    let list = path.into_inner();
+    let in_archive = is_archived(&state, user, list).await;
+    let outcome = ShoppingListRepo::rename(&state.pool, user, list, &form.name).await;
     respond(
         &state,
         &ui,
         &req,
         user,
         outcome,
-        |_| "/lists".to_owned(),
+        |_| index_location(in_archive),
+        in_archive,
         String::new(),
     )
     .await
@@ -493,14 +625,17 @@ pub async fn delete(
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let outcome = ShoppingListRepo::delete(&state.pool, user, path.into_inner()).await;
+    let list = path.into_inner();
+    let in_archive = is_archived(&state, user, list).await;
+    let outcome = ShoppingListRepo::delete(&state.pool, user, list).await;
     respond(
         &state,
         &ui,
         &req,
         user,
         outcome,
-        |()| "/lists".to_owned(),
+        |()| index_location(in_archive),
+        in_archive,
         String::new(),
     )
     .await

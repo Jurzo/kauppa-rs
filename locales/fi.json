@@ -74,6 +74,7 @@
   "errors.favorite_needs_category": "valitse tuotteelle kategoria ennen kuin teet siitä suosikin: {name}",
   "errors.found_state": "tuntematon löytötila",
   "errors.language": "kieltä ei tueta",
+  "errors.list_archived": "lista on arkistoitu; palauta se muuttaaksesi sitä",
   "errors.multiplier_not_number": "kertoimen on oltava luku, esim. 2 tai 1,5",
   "errors.multiplier_range": "kertoimen on oltava yli 0 ja enintään 100",
   "errors.name_empty.category": "kategorian nimi ei voi olla tyhjä",
@@ -141,6 +142,13 @@
   "language.short.en": "EN",
   "language.short.fi": "FI",
   "lists.all": "Kaikki listat",
+  "lists.archive": "Arkistoi",
+  "lists.archived": "Arkistoidut",
+  "lists.archived_count": {
+    "one": "1 lista",
+    "other": "{count} listaa"
+  },
+  "lists.archived_on": "Arkistoitu {date}",
   "lists.choose_category": "Valitse kategoria",
   "lists.choose_recipe": "Valitse resepti",
   "lists.create_category_after": ", niin voit ryhmitellä tuotteet.",

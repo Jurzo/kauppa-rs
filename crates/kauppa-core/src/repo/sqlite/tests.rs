@@ -4,6 +4,9 @@
 //! `:memory:`, which the per-repo suites use.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+// MB-0062 (P6): archived lists, through the central access predicate.
+mod archive;
+
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, Instant};

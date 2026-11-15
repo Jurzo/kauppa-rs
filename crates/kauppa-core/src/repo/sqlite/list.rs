@@ -11,13 +11,13 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Ingredient, ListAccess, ListGroup, ListItem, ListShare, ShareRole, SharedList, ShoppingList,
-    quantity,
+    ArchivedList, Ingredient, ListAccess, ListGroup, ListItem, ListShare, ShareRole, SharedList,
+    ShoppingList, quantity,
 };
 use crate::error::CoreError;
 use crate::repo::{ShoppingListRepo, name_key::name_key};
 
-use super::list_access::{accessible_lists, fetch_item, fetch_items, touch_list};
+use super::list_access::{WhenArchived, accessible_lists, fetch_item, fetch_items, touch_list};
 use super::list_rows::{group_for_store, row_to_item, row_to_list, row_to_share};
 use super::{
     INGREDIENT_SELECT, SqlitePool, clean_name, clean_quantity, row_to_ingredient, unknown_category,
@@ -56,7 +56,7 @@ impl ShoppingListRepo for SqlitePool {
         Ok(accessible_lists(&self.inner, user_id, None)
             .await?
             .into_iter()
-            .filter(|a| a.access == ListAccess::Owner)
+            .filter(|a| a.access == ListAccess::Owner && a.list.archived_at.is_none())
             .map(|a| a.list)
             .collect())
     }
@@ -65,6 +65,7 @@ impl ShoppingListRepo for SqlitePool {
         Ok(accessible_lists(&self.inner, user_id, None)
             .await?
             .into_iter()
+            .filter(|a| a.list.archived_at.is_none())
             .filter_map(|a| {
                 let role = match a.access {
                     ListAccess::Owner => return None,
@@ -86,7 +87,7 @@ impl ShoppingListRepo for SqlitePool {
         let row = sqlx::query(
             r"INSERT INTO shopping_lists (id, owner_id, name, created_at, updated_at)
               VALUES (?1, ?2, ?3, ?4, ?4)
-              RETURNING id, owner_id, name, created_at, updated_at",
+              RETURNING id, owner_id, name, created_at, updated_at, archived_at",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(user_id.to_string())
@@ -112,11 +113,13 @@ impl ShoppingListRepo for SqlitePool {
 
     async fn rename(&self, user_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList> {
         let name = clean_name(Entity::List, name)?;
-        let (mut tx, grant) = self.begin_write(user_id, id, ListAccess::Owner).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, id, ListAccess::Owner, WhenArchived::Allow)
+            .await?;
         let row = sqlx::query(
             r"UPDATE shopping_lists SET name = ?1, updated_at = ?2
                 WHERE id = ?3
-              RETURNING id, owner_id, name, created_at, updated_at",
+              RETURNING id, owner_id, name, created_at, updated_at, archived_at",
         )
         .bind(name)
         .bind(Utc::now())
@@ -129,13 +132,69 @@ impl ShoppingListRepo for SqlitePool {
     }
 
     async fn delete(&self, user_id: Uuid, id: Uuid) -> CoreResult<()> {
-        let (mut tx, grant) = self.begin_write(user_id, id, ListAccess::Owner).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, id, ListAccess::Owner, WhenArchived::Allow)
+            .await?;
         sqlx::query(r"DELETE FROM shopping_lists WHERE id = ?1")
             .bind(grant.list_id())
             .execute(&mut *tx)
             .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn archived(&self, user_id: Uuid) -> CoreResult<Vec<ArchivedList>> {
+        let mut lists: Vec<ArchivedList> = accessible_lists(&self.inner, user_id, None)
+            .await?
+            .into_iter()
+            .filter(|a| a.list.archived_at.is_some())
+            .map(|a| ArchivedList {
+                list: a.list,
+                access: a.access,
+                owner_name: a.owner_name,
+            })
+            .collect();
+        // Most recently archived first (RR-0045 sub-answer 5); the predicate's
+        // order (`updated_at`, then id) breaks ties, as the sort is stable.
+        lists.sort_by_key(|a| std::cmp::Reverse(a.list.archived_at));
+        Ok(lists)
+    }
+
+    async fn archive(&self, user_id: Uuid, id: Uuid) -> CoreResult<ShoppingList> {
+        // Owner only, and allowed when already archived: it keeps the first
+        // time. `updated_at` is unchanged (RR-0045 sub-answer 1).
+        let (mut tx, grant) = self
+            .begin_write(user_id, id, ListAccess::Owner, WhenArchived::Allow)
+            .await?;
+        let row = sqlx::query(
+            r"UPDATE shopping_lists SET archived_at = COALESCE(archived_at, ?1)
+                WHERE id = ?2
+              RETURNING id, owner_id, name, created_at, updated_at, archived_at",
+        )
+        .bind(Utc::now())
+        .bind(grant.list_id())
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        row_to_list(&row)
+    }
+
+    async fn unarchive(&self, user_id: Uuid, id: Uuid) -> CoreResult<ShoppingList> {
+        // Owner only; a no-op on an active list. `updated_at` is unchanged, so
+        // the list returns to its usual place (MB-0062 P2).
+        let (mut tx, grant) = self
+            .begin_write(user_id, id, ListAccess::Owner, WhenArchived::Allow)
+            .await?;
+        let row = sqlx::query(
+            r"UPDATE shopping_lists SET archived_at = NULL
+                WHERE id = ?1
+              RETURNING id, owner_id, name, created_at, updated_at, archived_at",
+        )
+        .bind(grant.list_id())
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        row_to_list(&row)
     }
 
     async fn items(
@@ -160,7 +219,9 @@ impl ShoppingListRepo for SqlitePool {
     ) -> CoreResult<ListItem> {
         let text = clean_name(Entity::Item, text)?;
         let id = Uuid::new_v4();
-        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, ListAccess::Edit, WhenArchived::Refuse)
+            .await?;
         touch_list(&mut tx, &grant).await?;
 
         // Appended at the end; removed items keep their positions, so a
@@ -192,7 +253,7 @@ impl ShoppingListRepo for SqlitePool {
         let id = Uuid::new_v4();
         // Owner only: the product comes from the owner's catalog.
         let (mut tx, grant) = self
-            .begin_write(user_id, list_id, ListAccess::Owner)
+            .begin_write(user_id, list_id, ListAccess::Owner, WhenArchived::Refuse)
             .await?;
         touch_list(&mut tx, &grant).await?;
 
@@ -232,7 +293,9 @@ impl ShoppingListRepo for SqlitePool {
         let text = clean_name(Entity::Item, text)?;
         let id = Uuid::new_v4();
         // `edit` is enough (RR-0024): only the list owner's favorites are read.
-        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, ListAccess::Edit, WhenArchived::Refuse)
+            .await?;
         touch_list(&mut tx, &grant).await?;
         // The owner's (never the caller's) favorite with this `name_key`
         // (unique per owner) gives product, name and category as `add_product`
@@ -274,7 +337,7 @@ impl ShoppingListRepo for SqlitePool {
         // transaction is IMMEDIATE, so the ingredients read and the inserts
         // see one state, and a failure leaves no half-added recipe.
         let (mut tx, grant) = self
-            .begin_write(user_id, list_id, ListAccess::Owner)
+            .begin_write(user_id, list_id, ListAccess::Owner, WhenArchived::Refuse)
             .await?;
         let owner = grant.owner_id();
         let list = grant.list_id();
@@ -360,7 +423,7 @@ impl ShoppingListRepo for SqlitePool {
     ) -> CoreResult<ListItem> {
         // Owner only: the category comes from the owner's catalog.
         let (mut tx, grant) = self
-            .begin_write(user_id, list_id, ListAccess::Owner)
+            .begin_write(user_id, list_id, ListAccess::Owner, WhenArchived::Refuse)
             .await?;
         let list = grant.list_id();
         touch_list(&mut tx, &grant).await?;
@@ -401,7 +464,9 @@ impl ShoppingListRepo for SqlitePool {
         item_id: Uuid,
         quantity: Option<&str>,
     ) -> CoreResult<ListItem> {
-        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, ListAccess::Edit, WhenArchived::Refuse)
+            .await?;
         touch_list(&mut tx, &grant).await?;
 
         let result = sqlx::query(
@@ -436,7 +501,9 @@ impl ShoppingListRepo for SqlitePool {
         } else {
             ListAccess::Edit
         };
-        let (mut tx, grant) = self.begin_write(user_id, list_id, required).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, required, WhenArchived::Refuse)
+            .await?;
         let list = grant.list_id();
         touch_list(&mut tx, &grant).await?;
 
@@ -503,7 +570,9 @@ impl ShoppingListRepo for SqlitePool {
         item_id: Uuid,
         checked: bool,
     ) -> CoreResult<ListItem> {
-        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, ListAccess::Edit, WhenArchived::Refuse)
+            .await?;
         touch_list(&mut tx, &grant).await?;
 
         let result = sqlx::query(
@@ -524,7 +593,9 @@ impl ShoppingListRepo for SqlitePool {
     }
 
     async fn remove_item(&self, user_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()> {
-        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, ListAccess::Edit, WhenArchived::Refuse)
+            .await?;
         touch_list(&mut tx, &grant).await?;
 
         let result = sqlx::query(
@@ -545,7 +616,9 @@ impl ShoppingListRepo for SqlitePool {
     }
 
     async fn restore_item(&self, user_id: Uuid, list_id: Uuid, item_id: Uuid) -> CoreResult<()> {
-        let (mut tx, grant) = self.begin_write(user_id, list_id, ListAccess::Edit).await?;
+        let (mut tx, grant) = self
+            .begin_write(user_id, list_id, ListAccess::Edit, WhenArchived::Refuse)
+            .await?;
         touch_list(&mut tx, &grant).await?;
 
         let result = sqlx::query(
@@ -587,7 +660,7 @@ impl ShoppingListRepo for SqlitePool {
             return Err(CoreError::Invalid(Invalid::EmailRequired));
         }
         let (mut tx, grant) = self
-            .begin_write(user_id, list_id, ListAccess::Owner)
+            .begin_write(user_id, list_id, ListAccess::Owner, WhenArchived::Allow)
             .await?;
 
         // Emails are matched ignoring ASCII case (RR-0028; the owner's
@@ -636,7 +709,7 @@ impl ShoppingListRepo for SqlitePool {
 
     async fn revoke(&self, user_id: Uuid, list_id: Uuid, share_id: Uuid) -> CoreResult<ListShare> {
         let (mut tx, grant) = self
-            .begin_write(user_id, list_id, ListAccess::Owner)
+            .begin_write(user_id, list_id, ListAccess::Owner, WhenArchived::Allow)
             .await?;
         let share = sqlx::query(SHARE_SELECT)
             .bind(grant.list_id())
