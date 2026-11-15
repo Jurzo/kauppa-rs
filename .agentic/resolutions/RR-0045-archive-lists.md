@@ -5,11 +5,11 @@
 id: RR-0045
 closes: CRP-0045
 mission: MB-0062
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: data-owner
 risk_tier: medium
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-15T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-15T09:12:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0062-archive-lists.md
@@ -68,7 +68,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as data-owner for sub-answer 1; as owner for sub-answers 2, 3 and 5; as security for sub-answer 4.">
+@Jurzo as data-owner for sub-answer 1; as owner for sub-answers 2, 3 and 5; as security for sub-answer 4.
 
 ## Linked artifacts and evidence
 

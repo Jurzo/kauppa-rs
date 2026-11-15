@@ -5,11 +5,11 @@
 id: RR-0044
 closes: CRP-0044
 mission: MB-0059
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: product
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-15T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-15T09:12:00Z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0059-favorite-categories-collapsible.md
@@ -62,7 +62,7 @@ Does not cover: remembering open groups across page loads or devices
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as owner (product).">
+@Jurzo as owner (product).
 
 ## Linked artifacts and evidence
 
