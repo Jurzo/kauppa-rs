@@ -144,3 +144,12 @@ migrated database (archived lists would show as active again).
 - `crates/kauppa-core/src/repo/sqlite/list.rs` (`begin_write` callers:
   every item, recipe, rename, delete and share method).
 - `migrations/` ends at `0010_email_nocase.sql`.
+
+## Owner's answer (2026-11-15)
+
+As recommended: Q1 A (`archived_at TEXT NULL`, `updated_at` untouched);
+Q2 A (read-only with Restore; rename, delete and sharing still allowed);
+Q3 A (grantees see it in their own Archived section); Q4 A (enforced in
+`begin_write` with a new `Conflict` kind); Q5 most recently archived first.
+
+Recorded in RR-0045 (scaffold; the owner signs).

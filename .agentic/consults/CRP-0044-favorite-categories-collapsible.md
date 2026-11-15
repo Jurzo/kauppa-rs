@@ -113,3 +113,14 @@ Rollback plan: revert the implementation PR.
   uncategorized favorites form one group.
 - Every form in `_catalog.hbs` and `_product_edit.hbs` targets
   `#favorites` with `hx-swap="outerHTML"`.
+
+## Owner's answer (2026-11-15)
+
+1. B: swap only the touched group, so groups the user opened stay open;
+   actions that cross groups swap the whole catalog with the touched groups
+   open.
+2. As recommended (A): "From recipes" is one collapsed section.
+3. As recommended: the add form opens its group; empty categories stay
+   hidden.
+
+Recorded in RR-0044 (scaffold; the owner signs).

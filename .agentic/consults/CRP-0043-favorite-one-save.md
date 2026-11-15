@@ -86,3 +86,8 @@ Rollback plan: revert the implementation PR.
   `parse_category`.
 - `templates/products/_category_picker.hbs`: the empty option is
   `disabled`, selected only when there is no current category.
+
+## Owner's answer (2026-11-15)
+
+C: the category picker gains an explicit "No category" choice, which
+clears the category. Recorded in RR-0043 (scaffold; the owner signs).
