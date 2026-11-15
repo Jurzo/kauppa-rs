@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0047 autonomy.escalate (the tool and its CI toolchain → platform-owner; where its dependencies are declared and pinned → platform-owner; whether the check is required for merge → owner; the Mentorship Pack edit → owner); feature.md escalation trigger `.agentic/{mentorship,resolutions}/**`"
 ---
 ```
