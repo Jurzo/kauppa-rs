@@ -67,6 +67,7 @@ pub fn conflict(reason: &Conflict) -> Text {
             vec![("name", name.clone())],
         ),
         Conflict::EmailTaken => key("errors.email_taken"),
+        Conflict::Archived => key("errors.list_archived"),
     }
 }
 
@@ -200,7 +201,7 @@ pub fn every_text() -> Vec<Text> {
         Invalid::Language,
         Invalid::Theme,
     ];
-    let mut conflicts = vec![Conflict::EmailTaken];
+    let mut conflicts = vec![Conflict::EmailTaken, Conflict::Archived];
     for entity in Entity::ALL {
         invalids.extend([
             Invalid::NameEmpty(entity),
@@ -284,6 +285,7 @@ mod tests {
                 k.starts_with("errors.")
                     && !k.starts_with("errors.exists.")
                     && *k != "errors.email_taken"
+                    && *k != "errors.list_archived"
             })
             .count();
         assert_eq!(errors, 18 + 3 * 6);

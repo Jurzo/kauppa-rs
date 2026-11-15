@@ -157,6 +157,9 @@ pub enum Conflict {
     /// Never names the email (RR-0012 sub-answer 4).
     #[error("email already registered")]
     EmailTaken,
+    /// An item or recipe change on an archived list (MB-0062, RR-0045).
+    #[error("the list is archived")]
+    Archived,
 }
 
 impl From<Invalid> for CoreError {

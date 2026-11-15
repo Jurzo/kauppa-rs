@@ -3,6 +3,19 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
 
+  {{#if archived}}
+  {{!-- MB-0062 (RR-0045): an archived list is read-only; its owner can restore it here. --}}
+  <div class="archived-notice">
+    <p>{{t "lists.archived_on" date=archived.date}}</p>
+    {{#if archived.can_restore}}
+    <form method="post" action="/lists/{{id}}/unarchive">
+      <input type="hidden" name="back" value="list" />
+      <button type="submit" class="button">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
+    </form>
+    {{/if}}
+  </div>
+  {{/if}}
+
   {{#if can_edit}}
   <form class="add-product" method="post" action="/lists/{{id}}/items"
         hx-post="/lists/{{id}}/items" hx-target="#list-{{id}}" hx-swap="outerHTML">
@@ -18,10 +31,10 @@
     <button type="submit" class="button primary">{{t "common.add"}}</button>
   </form>
   {{else}}
-    <p class="muted">{{t "lists.view_shared"}}</p>
+    {{#unless archived}}<p class="muted">{{t "lists.view_shared"}}</p>{{/unless}}
   {{/if}}
 
-  {{#if is_owner}}
+  {{#if is_owner}}{{#unless archived}}
   {{#unless favorite_count}}
     <p class="muted">{{t "lists.favorites_hint_before"}} <a href="/favorites">{{t "lists.favorites_hint_link"}}</a>{{t "lists.favorites_hint_after"}}</p>
   {{/unless}}
@@ -44,7 +57,7 @@
       <button type="submit" class="button">{{t "common.add_ingredients"}}</button>
     </form>
   {{/if}}
-  {{/if}}
+  {{/unless}}{{/if}}
 
   <ul class="product-list">
     {{#each items}}

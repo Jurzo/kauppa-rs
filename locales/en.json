@@ -74,6 +74,7 @@
   "errors.favorite_needs_category": "choose a category for {name} before making it a favorite",
   "errors.found_state": "unknown found state",
   "errors.language": "unsupported language",
+  "errors.list_archived": "the list is archived; restore it to change it",
   "errors.multiplier_not_number": "the multiplier must be a number, e.g. 2 or 1,5",
   "errors.multiplier_range": "the multiplier must be more than 0 and at most 100",
   "errors.name_empty.category": "category name must not be empty",
@@ -141,6 +142,13 @@
   "language.short.en": "EN",
   "language.short.fi": "FI",
   "lists.all": "All lists",
+  "lists.archive": "Archive",
+  "lists.archived": "Archived",
+  "lists.archived_count": {
+    "one": "1 list",
+    "other": "{count} lists"
+  },
+  "lists.archived_on": "Archived on {date}",
   "lists.choose_category": "Choose category",
   "lists.choose_recipe": "Choose a recipe",
   "lists.create_category_after": " to group items.",

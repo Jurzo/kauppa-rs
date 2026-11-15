@@ -19,6 +19,6 @@ pub use password_rule::{
 };
 pub use product::{HiddenProductGroup, Product, ProductGroup, ProductUsage};
 pub use recipe::{Ingredient, NewIngredient, Recipe, RecipeDetail, RecipeInput};
-pub use share::{ListAccess, ListShare, ShareRole, SharedList};
+pub use share::{ArchivedList, ListAccess, ListShare, ShareRole, SharedList};
 pub use shopping_list::{ListGroup, ListItem, ShoppingList};
 pub use user::User;

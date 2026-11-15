@@ -1,6 +1,7 @@
 //! Tests for `routes::lists`, by area (RR-0009). Fixtures shared by several areas live here.
 
 mod add_field;
+mod archive;
 mod editor_match;
 mod item_edit;
 mod items;

@@ -11,6 +11,10 @@ pub struct ShoppingList {
     pub name: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// When the owner archived the list (MB-0062, RR-0045); `None` while it
+    /// is active. An archived list is read-only: `ShoppingListRepo` refuses
+    /// item and recipe changes with `Conflict::Archived`.
+    pub archived_at: Option<DateTime<Utc>>,
 }
 
 /// One item on a shopping list (MB-0004).

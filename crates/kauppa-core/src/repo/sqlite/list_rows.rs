@@ -22,6 +22,7 @@ pub(super) fn row_to_list(row: &SqliteRow) -> CoreResult<ShoppingList> {
         name: row.try_get("name")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
+        archived_at: row.try_get("archived_at")?,
     })
 }
 

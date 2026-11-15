@@ -32,9 +32,10 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Category, CreatedInvitation, Direction, HiddenProductGroup, Ingredient, Invitation, Language,
-    ListAccess, ListGroup, ListItem, ListShare, NewIngredient, Product, ProductGroup, Recipe,
-    RecipeDetail, RecipeInput, Registered, ShareRole, SharedList, ShoppingList, User,
+    ArchivedList, Category, CreatedInvitation, Direction, HiddenProductGroup, Ingredient,
+    Invitation, Language, ListAccess, ListGroup, ListItem, ListShare, NewIngredient, Product,
+    ProductGroup, Recipe, RecipeDetail, RecipeInput, Registered, ShareRole, SharedList,
+    ShoppingList, User,
 };
 
 #[async_trait]
@@ -253,12 +254,27 @@ pub trait ProductRepo: Send + Sync {
 /// against the owner's favorites (RR-0024).
 #[async_trait]
 pub trait ShoppingListRepo: Send + Sync {
-    /// The user's own lists, most recently updated first. Lists shared with
-    /// them are in [`ShoppingListRepo::shared_with`].
+    /// The user's own active lists, most recently updated first. Lists
+    /// shared with them are in [`ShoppingListRepo::shared_with`]; archived
+    /// ones in [`ShoppingListRepo::archived`].
     async fn list_for_owner(&self, user_id: Uuid) -> CoreResult<Vec<ShoppingList>>;
 
-    /// Lists other users shared with `user_id`, most recently updated first.
+    /// Active lists other users shared with `user_id`, most recently updated
+    /// first.
     async fn shared_with(&self, user_id: Uuid) -> CoreResult<Vec<SharedList>>;
+
+    /// The archived lists `user_id` can reach, their own and shared ones,
+    /// most recently archived first (MB-0062, RR-0045).
+    async fn archived(&self, user_id: Uuid) -> CoreResult<Vec<ArchivedList>>;
+
+    /// Archive a list (owner only, RR-0045): it becomes read-only. Keeps the
+    /// first archive time if it is already archived; `updated_at` is
+    /// unchanged.
+    async fn archive(&self, user_id: Uuid, id: Uuid) -> CoreResult<ShoppingList>;
+
+    /// Restore an archived list (owner only); a no-op on an active one.
+    /// `updated_at` is unchanged, so it returns to its usual place.
+    async fn unarchive(&self, user_id: Uuid, id: Uuid) -> CoreResult<ShoppingList>;
 
     /// Create an empty list owned by `user_id`. Rejects an empty name
     /// (`Invalid`); names need not be unique.
@@ -270,8 +286,9 @@ pub trait ShoppingListRepo: Send + Sync {
     /// What the user may do with a list (`NotFound` if nothing).
     async fn access(&self, user_id: Uuid, id: Uuid) -> CoreResult<ListAccess>;
 
-    /// Rename a list (owner only); it counts as an update, so it moves to the
-    /// top of the index. Rejects an empty name (`Invalid`).
+    /// Rename a list (owner only, archived or not); it counts as an update,
+    /// so it moves to the top of the index. Rejects an empty name
+    /// (`Invalid`).
     async fn rename(&self, user_id: Uuid, id: Uuid, name: &str) -> CoreResult<ShoppingList>;
 
     /// Delete a list (owner only); its items and shares go with it

@@ -541,6 +541,7 @@ async fn migrate_to_0007(dir: &TempDir, raw: &sqlx::SqlitePool) {
 /// 0008 changes none of them: everyone can still sign in and keeps their
 /// data, and nobody becomes an admin.
 #[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn existing_users_unaffected() {
     let dir = TempDir::new();
     let url = format!("sqlite://{}", dir.path().join("old.db").display());
@@ -569,21 +570,40 @@ async fn existing_users_unaffected() {
     let friend = UserRepo::create(&pool, "friend@example.com", "Friend", &hash)
         .await
         .unwrap();
-    let list = ShoppingListRepo::create(&pool, owner.id, "Kauppa")
-        .await
-        .unwrap();
-    ShoppingListRepo::add_item(&pool, owner.id, list.id, "Maito", Some("1 l"))
-        .await
-        .unwrap();
-    ShoppingListRepo::share(
-        &pool,
-        owner.id,
-        list.id,
-        "friend@example.com",
-        ShareRole::Edit,
+    // The list, its item and the share are written at the 0007 schema: the
+    // list repo reads columns later migrations add (0011, MB-0062).
+    let list_id = uuid::Uuid::new_v4();
+    let now = chrono::Utc::now();
+    sqlx::query(
+        "INSERT INTO shopping_lists (id, owner_id, name, created_at, updated_at)
+         VALUES (?1, ?2, 'Kauppa', ?3, ?3)",
     )
+    .bind(list_id.to_string())
+    .bind(owner.id.to_string())
+    .bind(now)
+    .execute(&raw)
     .await
-    .unwrap()
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO list_items (id, list_id, text, quantity, position)
+         VALUES (?1, ?2, 'Maito', '1 l', 0)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(list_id.to_string())
+    .execute(&raw)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO list_shares (id, list_id, grantee_id, role, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(list_id.to_string())
+    .bind(friend.id.to_string())
+    .bind(ShareRole::Edit.as_str())
+    .bind(now)
+    .execute(&raw)
+    .await
     .unwrap();
     let dump = |raw: sqlx::SqlitePool| async move {
         let users: Vec<(String, String, String, String, String)> = sqlx::query_as(
@@ -631,7 +651,7 @@ async fn existing_users_unaffected() {
         assert!(password::verify("correct horse battery staple", &stored).unwrap());
         assert!(!AdminRepo::is_admin(&pool, user.id).await.unwrap());
     }
-    let items = ShoppingListRepo::items(&pool, owner.id, list.id, false)
+    let items = ShoppingListRepo::items(&pool, owner.id, list_id, false)
         .await
         .unwrap();
     assert_eq!(items.len(), 1);
