@@ -3,7 +3,6 @@
 use crate::Conflict;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use sqlx::Row;
 use uuid::Uuid;
 
 use crate::domain::{Language, User};
@@ -15,31 +14,25 @@ use super::{SqlitePool, conflict_on_unique, parse_uuid};
 #[async_trait]
 impl UserRepo for SqlitePool {
     async fn find_by_email(&self, email: &str) -> CoreResult<Option<(User, String)>> {
-        let row = sqlx::query(
-            r"SELECT id, email, display_name, password_hash, created_at
+        let row = sqlx::query!(
+            r#"SELECT id, email, display_name, password_hash, created_at AS "created_at: DateTime<Utc>"
                 FROM users
-                WHERE email = ?1 COLLATE NOCASE",
+                WHERE email = ?1 COLLATE NOCASE"#,
+            email
         )
-        .bind(email)
         .fetch_optional(&self.inner)
         .await?;
 
         let Some(row) = row else { return Ok(None) };
 
-        let id_str: String = row.try_get("id")?;
-        let email: String = row.try_get("email")?;
-        let display_name: String = row.try_get("display_name")?;
-        let password_hash: String = row.try_get("password_hash")?;
-        let created_at: DateTime<Utc> = row.try_get("created_at")?;
-
         Ok(Some((
             User {
-                id: parse_uuid(&id_str)?,
-                email,
-                display_name,
-                created_at,
+                id: parse_uuid(&row.id)?,
+                email: row.email,
+                display_name: row.display_name,
+                created_at: row.created_at,
             },
-            password_hash,
+            row.password_hash,
         )))
     }
 
@@ -53,18 +46,18 @@ impl UserRepo for SqlitePool {
     }
 
     async fn language(&self, user_id: Uuid) -> CoreResult<Option<Language>> {
+        let id = user_id.to_string();
         let stored: Option<Option<String>> =
-            sqlx::query_scalar(r"SELECT language FROM users WHERE id = ?1")
-                .bind(user_id.to_string())
+            sqlx::query_scalar!(r"SELECT language FROM users WHERE id = ?1", id)
                 .fetch_optional(&self.inner)
                 .await?;
         Ok(stored.flatten().as_deref().and_then(Language::parse))
     }
 
     async fn set_language(&self, user_id: Uuid, language: Option<Language>) -> CoreResult<()> {
-        let done = sqlx::query(r"UPDATE users SET language = ?2 WHERE id = ?1")
-            .bind(user_id.to_string())
-            .bind(language.map(Language::tag))
+        let id = user_id.to_string();
+        let tag = language.map(Language::tag);
+        let done = sqlx::query!(r"UPDATE users SET language = ?2 WHERE id = ?1", id, tag)
             .execute(&self.inner)
             .await?;
         if done.rows_affected() == 0 {
@@ -89,15 +82,16 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     let id = Uuid::new_v4();
-    sqlx::query(
+    let id_text = id.to_string();
+    sqlx::query!(
         r"INSERT INTO users (id, email, display_name, password_hash, created_at)
           VALUES (?1, ?2, ?3, ?4, ?5)",
+        id_text,
+        email,
+        display_name,
+        password_hash,
+        now
     )
-    .bind(id.to_string())
-    .bind(email)
-    .bind(display_name)
-    .bind(password_hash)
-    .bind(now)
     .execute(executor)
     .await
     .map_err(|e| conflict_on_unique(e, || Conflict::EmailTaken))?;

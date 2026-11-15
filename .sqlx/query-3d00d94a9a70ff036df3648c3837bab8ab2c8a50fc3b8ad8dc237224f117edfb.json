@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE invitations SET used_at = ?1, used_by = ?2\n               WHERE token_hash = ?3 AND used_at IS NULL AND revoked_at IS NULL\n                 AND expires_at > ?1\n           RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3d00d94a9a70ff036df3648c3837bab8ab2c8a50fc3b8ad8dc237224f117edfb"
+}

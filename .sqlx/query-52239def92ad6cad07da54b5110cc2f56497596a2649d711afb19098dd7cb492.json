@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n    SELECT i.id, i.note, i.created_by, i.created_at AS \"created_at: DateTime<Utc>\", i.expires_at AS \"expires_at: DateTime<Utc>\", i.revoked_at AS \"revoked_at: DateTime<Utc>\", i.used_at AS \"used_at: DateTime<Utc>\",\n           u.id AS \"used_by_id?\", u.display_name AS \"used_by_name?\", u.email AS \"used_by_email?\"\n      FROM invitations i\n      LEFT JOIN users u ON u.id = i.used_by\n     WHERE ?1 IS NULL OR i.id = ?1\n     ORDER BY i.created_at DESC, i.id ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "note",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_by",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at: DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "expires_at: DateTime<Utc>",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "revoked_at: DateTime<Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "used_at: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "used_by_id?",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "used_by_name?",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "used_by_email?",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "52239def92ad6cad07da54b5110cc2f56497596a2649d711afb19098dd7cb492"
+}
