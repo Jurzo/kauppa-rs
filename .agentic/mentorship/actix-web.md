@@ -4,14 +4,17 @@ Version: v1 · Scope: `crates/kauppa-web/src/routes/**` and middleware.
 
 ## Handler shape
 
-- Signature: `async fn name(state: web::Data<AppState>, …) -> WebResult<HttpResponse>`.
-- Order of extractors: `HttpRequest` → shared state → `Identity` (or `Option<Identity>`) → `web::Path`/`web::Query`/`web::Form`/`web::Json`.
+- Signature: `async fn name(state: web::Data<AppState>, ui: Ui, …) -> WebResult<HttpResponse>`;
+  `Ui` carries the request's language and theme and renders templates.
+- Order of extractors: `HttpRequest` → shared state → `Ui` → `Identity` (or `Option<Identity>`) → `web::Path`/`web::Query`/`web::Form`.
 - Thin handlers: parse input → call a `kauppa_core` function → render.
   Business logic in handlers is a smell.
 
 ## Request / response conventions
 
-- HTML pages return `HttpResponse::Ok().content_type("text/html").body(...)`.
+- HTML pages render with `ui.render(&state, template, &view)` and answer
+  `text/html` with `Vary: Cookie, Accept-Language` (`i18n::VARY`), since the
+  language comes from the cookie or the header.
 - htmx-triggered endpoints detect `HX-Request: true` and return a fragment;
   without the header they return the full page or 303-redirect to the page.
 - Form POSTs that succeed respond `303 See Other` with `Location: /...`, so a
@@ -24,7 +27,9 @@ Version: v1 · Scope: `crates/kauppa-web/src/routes/**` and middleware.
 ## State
 
 - Shared data lives in `AppState` behind `web::Data<AppState>`.
-- Repo trait objects are owned by `AppState` and cloned per-worker.
+- `AppState` holds the `SqlitePool`, the templates, the origin policy, the
+  auth limiter and settings. The repo traits are implemented on
+  `SqlitePool`; handlers call them through `&state.pool`.
 - Do not reach into `AppState` for ad-hoc globals; add a field with a reviewer.
 
 ## Authentication

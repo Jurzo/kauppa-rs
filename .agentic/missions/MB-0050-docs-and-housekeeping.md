@@ -27,7 +27,7 @@ acceptance:
     check: "python scripts/agentic/validate_artifacts.py"
   - id: P6
     property: "`scripts/agentic/scaffold-mission.sh` creates the brief's Continuity Pack from the template with state \"not started\", as AGENTS.md requires."
-    check: "scripts/agentic/test_check_triggers.sh"
+    check: "scripts/agentic/test_scaffold_mission.sh"
   - id: P7
     property: "Merged remote and local branches, finished worktrees and obsolete stashes are removed after the owner confirms a list, and `.gitignore` covers the agent's local directory (`.claude/`)."
     check: "manual: before and after counts recorded in MB-0050's Continuity Pack"
@@ -62,7 +62,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions: [RR-0042]
 ---
 ```
 
@@ -92,7 +92,9 @@ Found in the audit of 2026-11-10 (findings 8, 11, 13 and 21–26).
 
 1. Close out the packs and fix the scaffold (no consult needed for packs).
 2. **Clarify (S1).** One CRP with the proposed text for AGENTS.md and the
-   packs, the baseline question and the deletion list.
+   packs, the baseline question and the deletion list. Done: CRP-0042
+   answered, RR-0042 approved (baseline copied to
+   `docs/agentic-se-baseline.md`).
 3. README and deploy README; then the roll-back and the cleanup.
 
 ## Validation plan

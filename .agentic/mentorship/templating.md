@@ -9,8 +9,10 @@ Version: v1 · Scope: `templates/**`, `assets/**`, and any route rendering HTML.
 - Pass data through typed structs serialized to JSON via `serde_json::json!`
   only for scaffolds — prefer `#[derive(Serialize)]` structs for anything
   non-trivial. Strict mode is on, so missing fields are errors at render time.
-- No inline JavaScript in templates. If an interaction needs scripting beyond
-  htmx, write a small vanilla-JS module in `assets/js/` and link it.
+- No inline JavaScript in templates. Interactivity is htmx (`hx-*`
+  attributes). Anything htmx can't do needs a platform decision first:
+  `assets/` holds nothing executable outside `assets/vendor/` (AGENTS.md →
+  Do-not-touch boundaries).
 
 ## Translations
 

@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0050 autonomy.escalate (every AGENTS.md and Mentorship Pack edit as one CRP with the exact text → owner; where the baseline document lives → owner; which branches, worktrees and stashes may be deleted → owner; Cargo.toml comment edits → platform-owner; .gitignore and scripts/agentic/ → platform-owner); feature.md escalation triggers `AGENTS.md`, `.agentic/{mentorship,resolutions}/**`, `Cargo.toml`, `scripts/agentic/**`"
 ---
 ```
