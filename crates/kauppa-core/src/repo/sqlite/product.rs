@@ -13,7 +13,12 @@ use crate::error::CoreError;
 use crate::repo::ProductRepo;
 use crate::repo::name_key::name_key;
 
-use super::{ProductRow, SqlitePool, clean_name, conflict_on_unique, parse_uuid, unknown_category};
+use super::{
+    CategoryRow, ProductRow, SqlitePool, clean_name, conflict_on_unique, parse_uuid,
+    unknown_category,
+};
+use crate::domain::ListItem;
+use crate::export::{self, ExportOutcome, ReviewAnswers, ReviewReason, Write};
 
 /// A row's category columns, `group_id`, `group_name`, `group_position` and
 /// `group_created_at` (all NULL when uncategorized), from a join that
@@ -644,4 +649,149 @@ impl ProductRepo for SqlitePool {
         tx.commit().await?;
         Ok(product)
     }
+
+    async fn apply_export(
+        &self,
+        owner_id: Uuid,
+        items: &[ListItem],
+        review: Option<&ReviewAnswers>,
+    ) -> CoreResult<ExportOutcome> {
+        let owner = owner_id.to_string();
+        // IMMEDIATE: the catalog the plan reads is the one the writes change,
+        // so a confirmation can't apply answers to a catalog that changed
+        // after its check (RR-0047 sub-answers 6 and 7). Only `products` is
+        // written, and only the owner's rows.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        let categories = sqlx::query_as!(
+            CategoryRow,
+            r#"SELECT id, owner_id, name, position, created_at AS "created_at: DateTime<Utc>"
+                FROM categories
+                WHERE owner_id = ?1
+                ORDER BY position ASC, name ASC"#,
+            owner
+        )
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .map(CategoryRow::into_category)
+        .collect::<CoreResult<Vec<Category>>>()?;
+        let products = sqlx::query_as!(
+            ProductRow,
+            r#"SELECT id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                      created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>"
+                FROM products
+                WHERE owner_id = ?1"#,
+            owner
+        )
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .map(ProductRow::into_product)
+        .collect::<CoreResult<Vec<Product>>>()?;
+
+        let plan = export::plan(owner_id, items, &categories, &products);
+        let decisions = match review {
+            None if plan.needs_review() => Err(ReviewReason::Needed),
+            None => Ok(export::Decisions::new()),
+            Some(answers) => export::decide(&plan, &categories, answers)?,
+        };
+        let decisions = match decisions {
+            Ok(decisions) => decisions,
+            Err(reason) => {
+                return Ok(ExportOutcome::Review {
+                    plan,
+                    categories,
+                    reason,
+                });
+            }
+        };
+
+        let (writes, summary) = export::writes(&plan, &decisions);
+        apply_writes(&mut tx, &owner, writes).await?;
+        tx.commit().await?;
+        Ok(ExportOutcome::Saved(summary))
+    }
+}
+
+/// Apply an export's writes inside `tx`, for `owner` only (RR-0047
+/// constraint 1). Each statement checks the category is the owner's (RR-0001
+/// constraint 9); a miss is `Invalid` and the caller's transaction rolls
+/// everything back.
+async fn apply_writes(
+    tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    owner: &str,
+    writes: Vec<Write>,
+) -> CoreResult<()> {
+    let now = Utc::now();
+    for write in writes {
+        // Each statement checks the category is the owner's (RR-0001
+        // constraint 9); a miss rolls everything back.
+        let written = match write {
+            Write::Insert { name, category } => {
+                let name = clean_name(Entity::Product, &name)?.to_owned();
+                let key = name_key(&name);
+                let id = Uuid::new_v4().to_string();
+                let category = category.to_string();
+                sqlx::query!(
+                    r#"INSERT INTO products
+                              (id, owner_id, name, name_key, category_id, position, is_favorite,
+                               created_at, updated_at)
+                          SELECT ?1, ?2, ?3, ?4, c.id,
+                                 (SELECT COALESCE(MAX(p.position), -1) + 1
+                                    FROM products p
+                                    WHERE p.owner_id = ?2 AND p.category_id = c.id),
+                                 1, ?5, ?5
+                            FROM categories c
+                            WHERE c.id = ?6 AND c.owner_id = ?2"#,
+                    id,
+                    owner,
+                    name,
+                    key,
+                    now,
+                    category
+                )
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| {
+                    conflict_on_unique(e, || Conflict::Exists {
+                        entity: Entity::Product,
+                        name: name.clone(),
+                    })
+                })?
+                .rows_affected()
+            }
+            Write::Favorite { id, category } => {
+                let id = id.to_string();
+                let category = category.to_string();
+                // A product already in the category keeps its place only
+                // if it was a favorite there; otherwise it goes last, as
+                // `make_favorite` and `recategorize` do.
+                sqlx::query!(
+                        r#"UPDATE products
+                            SET is_favorite = 1,
+                                position = CASE WHEN is_favorite = 1 AND category_id IS ?1
+                                                THEN position
+                                                ELSE (SELECT COALESCE(MAX(p.position), -1) + 1
+                                                        FROM products p
+                                                        WHERE p.owner_id = ?2 AND p.category_id = ?1)
+                                           END,
+                                category_id = ?1,
+                                updated_at = ?3
+                            WHERE id = ?4 AND owner_id = ?2
+                              AND EXISTS (SELECT 1 FROM categories c WHERE c.id = ?1 AND c.owner_id = ?2)"#,
+                        category,
+                        owner,
+                        now,
+                        id
+                    )
+                    .execute(&mut **tx)
+                    .await?
+                    .rows_affected()
+            }
+        };
+        if written != 1 {
+            return Err(unknown_category());
+        }
+    }
+    Ok(())
 }

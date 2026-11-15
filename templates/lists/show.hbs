@@ -4,6 +4,10 @@
     <h1>{{list.name}}</h1>
     <a href="/lists">{{t "lists.all"}}</a>
     {{#if list.is_owner}}<a href="/lists/{{list.id}}/sharing">{{t "sharing.share"}}</a>{{/if}}
+    {{!-- MB-0060 (RR-0047): anyone who can open the list adds its items to their own favorites. --}}
+    <form class="export-form" method="post" action="/lists/{{list.id}}/export">
+      <button type="submit" class="button">{{t "export.button"}}</button>
+    </form>
     <a class="button" href="/lists/{{list.id}}/shop">{{t "lists.go_shopping"}}</a>
   </header>
 

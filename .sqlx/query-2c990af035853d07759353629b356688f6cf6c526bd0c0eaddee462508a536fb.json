@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE products\n                            SET is_favorite = 1,\n                                position = CASE WHEN is_favorite = 1 AND category_id IS ?1\n                                                THEN position\n                                                ELSE (SELECT COALESCE(MAX(p.position), -1) + 1\n                                                        FROM products p\n                                                        WHERE p.owner_id = ?2 AND p.category_id = ?1)\n                                           END,\n                                category_id = ?1,\n                                updated_at = ?3\n                            WHERE id = ?4 AND owner_id = ?2\n                              AND EXISTS (SELECT 1 FROM categories c WHERE c.id = ?1 AND c.owner_id = ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2c990af035853d07759353629b356688f6cf6c526bd0c0eaddee462508a536fb"
+}

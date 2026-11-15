@@ -104,6 +104,50 @@
   "errors.unknown.list": "unknown list",
   "errors.unknown.product": "unknown product",
   "errors.unknown.recipe": "unknown recipe",
+  "export.add_in": "Add in {category}",
+  "export.added": {
+    "one": "1 new favorite",
+    "other": "{count} new favorites"
+  },
+  "export.already": {
+    "one": "1 was already a favorite",
+    "other": "{count} were already favorites"
+  },
+  "export.auto": {
+    "one": "1 other item will be added as it is.",
+    "other": "{count} other items will be added as they are."
+  },
+  "export.back": "Back to the list",
+  "export.button": "Add to favorites",
+  "export.changed": "The list or your favorites changed since. Check the choices again.",
+  "export.choose": "Choose a category",
+  "export.done_title": "Added to favorites",
+  "export.favorite_in": "Make it a favorite in {category}",
+  "export.from_recipes": "From your recipes: {category}.",
+  "export.intro": "These items need your choice before the items of {list} are added to your favorites. Nothing is saved until you confirm.",
+  "export.keep": "Keep in {category}",
+  "export.made_favorite": {
+    "one": "1 product from recipes made a favorite",
+    "other": "{count} products from recipes made favorites"
+  },
+  "export.move": "Move to {category}",
+  "export.nothing": "The list had nothing to add.",
+  "export.on_list": "On the list: {list}.",
+  "export.on_list_none": "On the list: no category.",
+  "export.on_list_unmatched": "On the list: {list}, which isn't one of your categories.",
+  "export.recategorized": {
+    "one": "1 favorite moved to another category",
+    "other": "{count} favorites moved to another category"
+  },
+  "export.skip": "Skip",
+  "export.skipped": {
+    "one": "1 skipped",
+    "other": "{count} skipped"
+  },
+  "export.title": "Check before adding",
+  "export.to_favorites": "Go to favorites",
+  "export.unanswered": "Choose an option for every item.",
+  "export.your_favorite": "Your favorite: {category}.",
   "format.date": "%-d.%-m.%Y",
   "format.datetime": "%Y-%m-%d %H:%M UTC",
   "home.invite_only": "Accounts are by invitation.",

@@ -5,6 +5,13 @@
 //! Postgres later) without touching handlers.
 
 mod name_key;
+
+/// The one name-matching key (RR-0003 constraint 3), for kauppa-core code
+/// outside `repo`: the export plan (MB-0060) matches list items to products
+/// and categories with it.
+pub(crate) fn name_key(name: &str) -> String {
+    name_key::name_key(name)
+}
 pub mod sqlite;
 
 // Mission Brief acceptance tests for the repo traits; the module paths match
@@ -213,6 +220,21 @@ pub trait ProductRepo: Send + Sync {
         id: Uuid,
         direction: Direction,
     ) -> CoreResult<()>;
+
+    /// Export a list's active `items` (read by the caller through
+    /// `ShoppingListRepo::items`) into `owner_id`'s favorites (MB-0060,
+    /// RR-0047), in one transaction on `products` only. Plans against the
+    /// catalog inside the transaction (`export::plan`). Without `review`, a
+    /// plan with rows to review saves nothing and returns them; with it, a
+    /// changed fingerprint or a missing answer saves nothing and returns the
+    /// review again, and a tampered answer is `Invalid`. Otherwise every
+    /// write is applied and the summary returned.
+    async fn apply_export(
+        &self,
+        owner_id: Uuid,
+        items: &[ListItem],
+        review: Option<&crate::export::ReviewAnswers>,
+    ) -> CoreResult<crate::export::ExportOutcome>;
 
     /// Delete a product the caller owns. `NotFound` if it isn't theirs.
     /// Recipe ingredients that use it stay, unlinked, under the product's

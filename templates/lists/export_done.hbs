@@ -1,0 +1,24 @@
+{{#> layout page_title=(t "export.done_title") page_signed_in=true page_nav="lists"}}
+<section>
+  <header class="section-header">
+    <h1>{{t "export.done_title"}}</h1>
+  </header>
+
+  {{!-- MB-0060 P5: what the export did. --}}
+  {{#if nothing}}
+    <p role="status">{{t "export.nothing"}}</p>
+  {{else}}
+    <ul class="export-summary" role="status">
+      {{#if summary.added}}<li>{{t "export.added" count=summary.added}}</li>{{/if}}
+      {{#if summary.made_favorite}}<li>{{t "export.made_favorite" count=summary.made_favorite}}</li>{{/if}}
+      {{#if summary.recategorized}}<li>{{t "export.recategorized" count=summary.recategorized}}</li>{{/if}}
+      {{#if summary.already}}<li>{{t "export.already" count=summary.already}}</li>{{/if}}
+      {{#if summary.skipped}}<li>{{t "export.skipped" count=summary.skipped}}</li>{{/if}}
+    </ul>
+  {{/if}}
+  <p class="export-links">
+    <a class="button primary" href="/favorites">{{t "export.to_favorites"}}</a>
+    <a href="/lists/{{list_id}}">{{t "export.back"}}</a>
+  </p>
+</section>
+{{/layout}}
