@@ -37,7 +37,12 @@ Version: v1 · Scope: `crates/kauppa-web/src/routes/**` and middleware.
 
 - Unit-test core logic in `kauppa-core`.
 - For HTTP smoke tests, use `actix_web::test::init_service` + `TestRequest`.
-- Reserve full E2E (Playwright) for user-visible flows.
+- `scripts/browser/run.sh` drives the built app in Chromium (Playwright,
+  `tests/browser/`, RR-0041): a boosted wrong-password sign-in, a list item
+  add and check, and boosted navigation, failing on any CSP violation,
+  console error or htmx error event. Add a flow there when a change wires
+  htmx or its extensions in a way markup tests can't prove (RR-0025
+  constraint 4).
 - A module's tests live in `<module>/tests/<area>.rs`, grouped by feature
   area, with shared fixtures in `routes::test_support` (RR-0009).
 - Brief checks name the full test path (for example

@@ -15,7 +15,7 @@
 # follows .agentic/runbooks/dependency-bump.md.
 #
 # Volume: one grouped PR per entry and `open-pull-requests-limit: 1` on each
-# of the five entries, so at most five open bot PRs. Releases must be 7 days
+# of the six entries, so at most six open bot PRs. Releases must be 7 days
 # old (`cooldown`); security updates are not held back by it.
 
 version: 2
@@ -93,3 +93,19 @@ updates:
     labels: [dependencies]
     cooldown:
       default-days: 7
+
+  # Not an RR-0032 class: Playwright in tests/browser/ (MB-0047, RR-0041
+  # sub-answer 2). Each PR is reviewed by hand; a Playwright bump brings its
+  # Chromium with it (RR-0041 constraint 4), so the `browser` job must pass.
+  - package-ecosystem: npm
+    directory: /tests/browser
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 1
+    labels: [dependencies]
+    cooldown:
+      default-days: 7
+    groups:
+      browser-tests:
+        patterns: ["*"]
