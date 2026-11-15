@@ -12,13 +12,13 @@ non_goals:
 acceptance:
   - id: P1
     property: "A test drives a built app through a DOM with the vendored htmx and extension loaded: a boosted wrong-password sign-in shows its error (the #58 regression), a list item add and check swap their fragment, and boosted navigation updates the page."
-    check: "the command the RR approves, recorded here when the brief delta lands (for example `scripts/browser/run.sh`)"
+    check: "scripts/browser/run.sh"
   - id: P2
     property: "The same run fails on any Content-Security-Policy violation or htmx error reported during those flows."
-    check: "the same command (CSP and console assertions)"
+    check: "scripts/browser/run.sh (CSP, console and htmx error assertions)"
   - id: P3
     property: "The test runs in CI on pull requests that touch templates, assets or the web crate, with its tools pinned and no executable added under `assets/`."
-    check: "manual: the CI run linked in MB-0047's Continuity Pack"
+    check: "manual: a run of the `browser` job (`.github/workflows/browser.yml`) linked in MB-0047's Continuity Pack"
   - id: P4
     property: "`actix-web.md`'s testing section describes the test that exists (replacing the Playwright line) through an RR roll-back."
     check: "manual: the RR roll-back applied, recorded in MB-0047's Continuity Pack"
@@ -47,7 +47,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/actix-web.md@v1
-resolutions: []
+resolutions: [RR-0041]
 ---
 ```
 
@@ -66,6 +66,8 @@ done until it works in a browser, and nothing automated checks that.
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP to platform-owner: tool, pinning, CI cost.
+   Done: CRP-0041 answered, RR-0041 approved (Playwright, `tests/browser/`,
+   not required at first).
 2. The harness and the three flows; CSP and error assertions.
 3. CI job with a path filter; roll-back into `actix-web.md`.
 
