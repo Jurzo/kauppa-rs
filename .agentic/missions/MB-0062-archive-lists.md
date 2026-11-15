@@ -18,16 +18,16 @@ acceptance:
     property: "The owner can restore (unarchive) an archived list; it returns to the main list in its usual order."
     check: cargo test -p kauppa-web routes::lists::tests::archive::restore
   - id: P3
-    property: "An archived list's own page and shopping view behave as the RR decides (read-only with a Restore button, or fully usable), and a change attempt that the RR forbids is refused with the existing error handling."
+    property: "An archived list's page and shopping view open read-only with a notice ('Archived on …') and, for the owner, Restore; item and recipe changes (add, edit, check, remove, restore an item, add a recipe) are refused with 409 and the translated error page, and their controls aren't rendered; the owner can still rename it, delete it and manage its sharing (RR-0045)."
     check: cargo test -p kauppa-web routes::lists::tests::archive::archived_list_pages
   - id: P4
-    property: "Grantees see an archived shared list as the RR decides (hidden, or under their own 'Archived' section), and only the owner can archive or restore; the archive routes refuse grantees and strangers as the list's other owner actions do."
+    property: "An archived shared list leaves the grantee's 'Shared with you' and appears, read-only, in a collapsed 'Archived' section on the grantee's `/lists`; shares are unchanged; only the owner can archive or restore, and the archive routes refuse grantees and strangers as the list's other owner actions do (RR-0045)."
     check: cargo test -p kauppa-web routes::lists::tests::archive::owner_only
   - id: P5
     property: "After archive or restore with htmx, the `#lists` fragment swaps and the Archived section is open if the action happened inside it; without htmx, 303 back to `/lists`; the cross-site check covers the new routes."
     check: cargo test -p kauppa-web routes::lists::tests::archive::htmx_and_plain
   - id: P6
-    property: "The archived state is stored by a new migration (append-only); existing lists start unarchived; every query on the list tables, the archived filter included, goes through the central access predicate."
+    property: "Migration `0011_list_archive.sql` adds `shopping_lists.archived_at TEXT` (NULL = active; existing lists stay active; archiving and restoring don't change `updated_at`); the access predicate returns `archived_at`, `begin_write` refuses item and recipe writes on an archived list with a new `Conflict` kind, and every list write states whether it is allowed when archived (RR-0045)."
     check: cargo test -p kauppa-core repo::sqlite::tests
   - id: P7
     property: "Every string in both catalogs; no JavaScript or inline styles; existing tests change only where they asserted the lists page's markup."
@@ -56,11 +56,11 @@ autonomy:
     - "the routes' paths under `/lists/{id}/` and test names inside `routes::lists::tests::archive` (record renames here)"
     - "markup and styles, inside the design system"
   escalate:
-    - { when: "the schema: `shopping_lists.archived_at TEXT NULL` (recommended) or a flag; whether archiving bumps `updated_at` (it orders the lists page); migrations/ is a trigger path", to: data-owner }
-    - { when: "an archived list's pages: read-only with Restore, or fully usable; whether its shopping view stays reachable", to: owner }
-    - { when: "grantees: hide archived shared lists, or show them in the grantee's own Archived section; whether archiving notifies or changes a share", to: owner }
-    - { when: "the access predicate's handling of the archived state for grantees and the owner-only archive routes (routes/lists/ and repo/sqlite/list.rs are trigger paths, RR-0027)", to: security }
-    - { when: "order inside the Archived section (most recently archived first is assumed)", to: owner }
+    - { when: "the schema: `shopping_lists.archived_at TEXT NULL` (recommended) or a flag; whether archiving bumps `updated_at` (it orders the lists page); migrations/ is a trigger path (decided: RR-0045)", to: data-owner }
+    - { when: "an archived list's pages: read-only with Restore, or fully usable; whether its shopping view stays reachable (decided: RR-0045)", to: owner }
+    - { when: "grantees: hide archived shared lists, or show them in the grantee's own Archived section; whether archiving notifies or changes a share (decided: RR-0045)", to: owner }
+    - { when: "the access predicate's handling of the archived state for grantees and the owner-only archive routes (routes/lists/ and repo/sqlite/list.rs are trigger paths, RR-0027) (decided: RR-0045)", to: security }
+    - { when: "order inside the Archived section (most recently archived first is assumed) (decided: RR-0045)", to: owner }
   forbidden:
     - "a query on the list tables outside the central access predicate"
     - "edit a committed migration"
@@ -72,7 +72,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0045]
 ---
 ```
 
@@ -103,7 +103,8 @@ changes; whichever lands second covers it.
 ## Conceptual plan
 
 1. **Clarify (S1).** One CRP: schema (data); archived list pages, grantees,
-   order (owner); predicate and routes (security).
+   order (owner); predicate and routes (security). Done: CRP-0045 answered,
+   RR-0045 approved (all as recommended).
 2. Migration and repo with core tests (P6).
 3. Routes and templates; route tests (P1–P5).
 4. Browser check (P8).

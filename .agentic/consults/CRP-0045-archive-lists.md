@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: data-owner
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0062 autonomy.escalate (schema → data-owner; archived list pages, grantees, order → owner; the access predicate and owner-only routes → security); feature.md escalation triggers `migrations/`, `crates/kauppa-web/src/routes/lists/`, `crates/kauppa-core/src/repo/sqlite/list.rs`, `crates/kauppa-core/src/repo/sqlite/list_access.rs` (RR-0027)"
 ---
 ```

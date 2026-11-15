@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: product
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0058 autonomy.escalate (a product from recipes that has no category: may a rename leave it uncategorized, or must Save require a category → owner)"
 ---
 ```

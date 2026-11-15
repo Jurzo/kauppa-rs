@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: product
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0059 autonomy.escalate (other groups after an action; the 'From recipes' section; the add form → owner)"
 ---
 ```
