@@ -5,11 +5,11 @@
 id: RR-0047
 closes: CRP-0047
 mission: MB-0060
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: security
 risk_tier: medium
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-15T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-15t14:30:00z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0060-list-export-to-favorites.md
@@ -102,7 +102,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as security for sub-answers 1, 6 and 7; as owner for sub-answers 2, 3, 4, 5 and 8.">
+@Jurzo as security for sub-answers 1, 6 and 7; as owner for sub-answers 2, 3, 4, 5 and 8.
 
 ## Linked artifacts and evidence
 
