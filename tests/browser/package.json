@@ -1,0 +1,12 @@
+{
+  "name": "kauppa-browser-tests",
+  "private": true,
+  "description": "MB-0047 (RR-0041): drives the built app in Chromium; run through scripts/browser/run.sh.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "1.65.0"
+  }
+}
