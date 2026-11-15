@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM catalog_shares WHERE id = ?1 AND owner_id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "7e5ae27a1d3b446454d2582b6765b39dacacf9b7f7406dd25e21cb035f3969fd"
+}

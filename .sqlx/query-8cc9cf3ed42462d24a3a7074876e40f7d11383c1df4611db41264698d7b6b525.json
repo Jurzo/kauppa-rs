@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT s.owner_id, u.display_name,\n                  s.favorites AS \"favorites: bool\", s.recipes AS \"recipes: bool\"\n             FROM catalog_shares s\n             JOIN users u ON u.id = s.owner_id\n            WHERE s.grantee_id = ?1\n            ORDER BY u.display_name ASC, s.owner_id ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "owner_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "display_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "favorites: bool",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "recipes: bool",
+        "ordinal": 3,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8cc9cf3ed42462d24a3a7074876e40f7d11383c1df4611db41264698d7b6b525"
+}

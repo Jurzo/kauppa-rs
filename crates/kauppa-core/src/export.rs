@@ -28,6 +28,26 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::domain::{Category, ListItem, Product};
+
+/// One thing to bring into the user's catalog.
+///
+/// A name and, if it has one, a category of whoever it comes from — a list
+/// item (MB-0060) or a shared favorite (MB-0061, RR-0048). A category the
+/// user owns is used by id; anyone else's is matched by name.
+#[derive(Debug, Clone)]
+pub struct Candidate {
+    pub name: String,
+    pub category: Option<Category>,
+}
+
+impl From<&ListItem> for Candidate {
+    fn from(item: &ListItem) -> Self {
+        Self {
+            name: item.text.clone(),
+            category: item.category.clone(),
+        }
+    }
+}
 use crate::repo::name_key;
 use crate::{CoreError, CoreResult, Entity, Invalid};
 
@@ -147,13 +167,13 @@ impl ExportPlan {
     }
 }
 
-/// Plan an export of `items` (the list's active items) by `user` into their
-/// catalog: their `categories` and all their `products`, favorites and from
-/// recipes.
+/// Plan bringing `items` (a list's active items, or shared favorites) into
+/// `user`'s catalog: their `categories` and all their `products`, favorites
+/// and from recipes.
 #[must_use]
 pub fn plan(
     user: Uuid,
-    items: &[ListItem],
+    items: &[Candidate],
     categories: &[Category],
     products: &[Product],
 ) -> ExportPlan {
@@ -167,7 +187,7 @@ pub fn plan(
 
     let mut rows: Vec<PlanRow> = Vec::new();
     for item in items {
-        let key = name_key(&item.text);
+        let key = name_key(&item.name);
         if key.is_empty() {
             continue;
         }
@@ -180,7 +200,7 @@ pub fn plan(
         };
         let index = rows.iter().position(|r| r.key == key).unwrap_or_else(|| {
             rows.push(PlanRow {
-                name: item.text.trim().to_owned(),
+                name: item.name.trim().to_owned(),
                 key: key.clone(),
                 list_categories: Vec::new(),
                 unmatched: Vec::new(),

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO catalog_shares (id, owner_id, grantee_id, favorites, recipes, created_at)\n              VALUES (?1, ?2, ?3, ?4, ?5, ?6)\n              ON CONFLICT (owner_id, grantee_id)\n              DO UPDATE SET favorites = excluded.favorites, recipes = excluded.recipes",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "0dc682e4f33a59f7a7a5c20c9bc9f4b1c59851239e73b38e05f3eb218490d4d7"
+}

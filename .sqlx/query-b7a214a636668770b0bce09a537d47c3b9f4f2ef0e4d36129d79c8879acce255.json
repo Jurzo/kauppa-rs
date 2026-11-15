@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT s.id, s.grantee_id, u.display_name AS grantee_name,\n                      u.email AS grantee_email,\n                      s.favorites AS \"favorites: bool\", s.recipes AS \"recipes: bool\",\n                      s.created_at AS \"created_at: DateTime<Utc>\"\n                 FROM catalog_shares s\n                 JOIN users u ON u.id = s.grantee_id\n                WHERE s.owner_id = ?1\n                ORDER BY s.created_at ASC, s.id ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_email",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "favorites: bool",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "recipes: bool",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "b7a214a636668770b0bce09a537d47c3b9f4f2ef0e4d36129d79c8879acce255"
+}

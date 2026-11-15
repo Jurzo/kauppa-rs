@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM catalog_shares WHERE owner_id = ?1 AND grantee_id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "ac8ac7b332bec7065a92d6fb1aa80a1731dae422fb1daea93dc8f1d3e86914b5"
+}

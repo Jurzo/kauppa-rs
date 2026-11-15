@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE catalog_shares SET favorites = ?1, recipes = ?2 WHERE id = ?3 AND owner_id = ?4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "375df0515b0342bf263abfb1f30afb37867eb46c3a0a1d93e86d369ea784b240"
+}

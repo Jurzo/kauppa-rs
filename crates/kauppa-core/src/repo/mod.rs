@@ -39,10 +39,10 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    ArchivedList, Category, CreatedInvitation, Direction, HiddenProductGroup, Ingredient,
-    Invitation, Language, ListAccess, ListGroup, ListItem, ListShare, NewIngredient, Product,
-    ProductGroup, Recipe, RecipeDetail, RecipeInput, Registered, ShareRole, SharedList,
-    ShoppingList, User,
+    ArchivedList, CatalogShare, Category, CreatedInvitation, Direction, HiddenProductGroup,
+    Ingredient, Invitation, Language, ListAccess, ListGroup, ListItem, ListShare, NewIngredient,
+    Product, ProductGroup, Recipe, RecipeDetail, RecipeInput, Registered, ShareRole, SharedCatalog,
+    SharedFavorites, SharedList, ShoppingList, User,
 };
 
 #[async_trait]
@@ -221,9 +221,10 @@ pub trait ProductRepo: Send + Sync {
         direction: Direction,
     ) -> CoreResult<()>;
 
-    /// Export a list's active `items` (read by the caller through
-    /// `ShoppingListRepo::items`) into `owner_id`'s favorites (MB-0060,
-    /// RR-0047), in one transaction on `products` only. Plans against the
+    /// Bring `items` into `owner_id`'s favorites, in one transaction on
+    /// `products` only: a list's active items (MB-0060, RR-0047, read by the
+    /// caller through `ShoppingListRepo::items`) or favorites shared with
+    /// them (MB-0061, RR-0048, read through `CatalogShareRepo`). Plans against the
     /// catalog inside the transaction (`export::plan`). Without `review`, a
     /// plan with rows to review saves nothing and returns them; with it, a
     /// changed fingerprint or a missing answer saves nothing and returns the
@@ -232,7 +233,7 @@ pub trait ProductRepo: Send + Sync {
     async fn apply_export(
         &self,
         owner_id: Uuid,
-        items: &[ListItem],
+        items: &[crate::export::Candidate],
         review: Option<&crate::export::ReviewAnswers>,
     ) -> CoreResult<crate::export::ExportOutcome>;
 
@@ -528,4 +529,50 @@ pub trait RecipeRepo: Send + Sync {
         recipe_id: Uuid,
         ingredient_id: Uuid,
     ) -> CoreResult<()>;
+}
+
+/// Sharing favorites and recipes for import (MB-0061, RR-0048): one share per
+/// pair of users, with a favorites and a recipes switch.
+///
+/// The share methods act on the caller's own shares. Reading another user's
+/// catalog goes only through the predicate in `repo/sqlite/catalog_access.rs`
+/// (RR-0048 constraint 1): no share, or the switch off, is `NotFound`.
+#[async_trait]
+pub trait CatalogShareRepo: Send + Sync {
+    /// The owner's shares, oldest first, with each grantee's name and email.
+    async fn catalog_shares(&self, owner_id: Uuid) -> CoreResult<Vec<CatalogShare>>;
+
+    /// Share with the one other account whose email matches ignoring ASCII
+    /// case (RR-0028), setting both switches; sharing again changes them, and
+    /// both off deletes the share. `Ok(None)` when no single account matches
+    /// or nothing is shared, so the caller answers the same either way
+    /// (RR-0002 constraint 3). `Invalid` for an empty email.
+    async fn share_catalog(
+        &self,
+        owner_id: Uuid,
+        email: &str,
+        favorites: bool,
+        recipes: bool,
+    ) -> CoreResult<Option<CatalogShare>>;
+
+    /// Change one of the owner's shares; both off deletes it (`Ok(None)`).
+    /// `NotFound` if it isn't theirs.
+    async fn set_catalog_share(
+        &self,
+        owner_id: Uuid,
+        share_id: Uuid,
+        favorites: bool,
+        recipes: bool,
+    ) -> CoreResult<Option<CatalogShare>>;
+
+    /// Revoke one of the owner's shares. `NotFound` if it isn't theirs.
+    /// Copies already imported are untouched.
+    async fn revoke_catalog_share(&self, owner_id: Uuid, share_id: Uuid) -> CoreResult<()>;
+
+    /// The users who share with `user_id`, by display name, and what.
+    async fn shared_with(&self, user_id: Uuid) -> CoreResult<Vec<SharedCatalog>>;
+
+    /// `owner_id`'s favorites, if they share them with `user_id`, grouped by
+    /// the owner's categories (uncategorized last). `NotFound` otherwise.
+    async fn shared_favorites(&self, user_id: Uuid, owner_id: Uuid) -> CoreResult<SharedFavorites>;
 }

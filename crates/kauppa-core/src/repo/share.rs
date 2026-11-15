@@ -790,3 +790,111 @@ fn list_queries_route_through_central_predicate() {
         }
     }
 }
+
+const CATALOG_ACCESS_RS: &str = include_str!("sqlite/catalog_access.rs");
+const CATALOG_SHARE_RS: &str = include_str!("sqlite/catalog_share.rs");
+
+/// MB-0061 P2 (RR-0048 constraint 1, widening RR-0036 constraint 3's guard):
+/// reading another user's catalog goes only through `catalog_access.rs`.
+/// Fails if:
+/// - any other repo/sqlite file names `catalog_shares`;
+/// - `CatalogGrant` has a public field, or is built outside
+///   `catalog_access.rs`;
+/// - a function in `catalog_access.rs` other than `authorize` and
+///   `shared_with` (the grantee's own rows) reads products, categories or
+///   recipes without taking a `&CatalogGrant`;
+/// - a `CatalogShareRepo` method reads through such a function without
+///   `authorize` first.
+#[test]
+fn catalog_reads_route_through_catalog_predicate() {
+    let code = |src: &str| -> String {
+        src.lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/repo/sqlite");
+    let mut seen = 0;
+    for entry in std::fs::read_dir(&dir).expect("read repo/sqlite") {
+        let path = entry.expect("dir entry").path();
+        let Some(name) = path.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        if path.extension().is_none_or(|e| e != "rs")
+            || name == "catalog_access.rs"
+            || name == "catalog_share.rs"
+        {
+            continue;
+        }
+        seen += 1;
+        let src = code(&std::fs::read_to_string(&path).expect("read source"));
+        assert!(
+            !src.contains("catalog_shares"),
+            "sqlite/{name} names `catalog_shares`; it belongs in catalog_access.rs or catalog_share.rs"
+        );
+        assert!(
+            !src.contains("CatalogGrant {"),
+            "sqlite/{name} builds a `CatalogGrant`"
+        );
+    }
+    assert!(seen >= 8, "read the other repo/sqlite files");
+
+    let grant = block(CATALOG_ACCESS_RS, "pub(super) struct CatalogGrant {");
+    for line in grant.lines().skip(1) {
+        assert!(
+            !line.trim_start().starts_with("pub"),
+            "`CatalogGrant` has a public field: {line}"
+        );
+    }
+    assert!(
+        !code(CATALOG_SHARE_RS).contains("CatalogGrant {"),
+        "catalog_share.rs builds a `CatalogGrant`"
+    );
+
+    let mut readers = Vec::new();
+    for (header, text) in items(CATALOG_ACCESS_RS) {
+        let header = header.strip_prefix("pub(super) ").unwrap_or(header);
+        let Some(name) = header
+            .strip_prefix("async fn ")
+            .and_then(|h| h.split(['(', '<']).next())
+        else {
+            continue;
+        };
+        let text = code(&text);
+        let reads = [
+            "FROM products",
+            "FROM categories",
+            "FROM recipes",
+            "FROM ingredients",
+        ]
+        .iter()
+        .any(|t| text.contains(t));
+        if name == "authorize" || name == "shared_with" || !reads {
+            continue;
+        }
+        let flat: String = text.split_whitespace().collect();
+        assert!(
+            flat.contains("grant:&CatalogGrant"),
+            "catalog_access::{name} reads another user's catalog without a `&CatalogGrant`"
+        );
+        readers.push(name.to_owned());
+    }
+    assert!(!readers.is_empty(), "found the grant-taking reads");
+
+    let repo = block(CATALOG_SHARE_RS, "impl CatalogShareRepo for SqlitePool {");
+    for method in repo.split("\n    async fn ").skip(1) {
+        let name = method.split('(').next().unwrap_or_default();
+        let flat: String = method.split_whitespace().collect();
+        let read = readers
+            .iter()
+            .filter_map(|r| flat.find(&format!("catalog_access::{r}(")))
+            .min();
+        if let Some(read) = read {
+            let gate = flat.find("catalog_access::authorize(");
+            assert!(
+                gate.is_some_and(|g| g < read),
+                "CatalogShareRepo::{name} reads another user's catalog before `authorize`"
+            );
+        }
+    }
+}

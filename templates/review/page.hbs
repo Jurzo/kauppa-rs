@@ -1,23 +1,26 @@
-{{#> layout page_title=(t "export.title") page_signed_in=true page_nav="lists"}}
+{{#> layout page_title=(t "export.title") page_signed_in=true}}
 <section>
   <header class="section-header">
     <h1>{{t "export.title"}}</h1>
-    <a href="/lists/{{list_id}}">{{t "export.back"}}</a>
+    <a href="{{back}}">{{#if source.from_list}}{{t "export.back"}}{{else}}{{t "import.back" name=source.name}}{{/if}}</a>
   </header>
 
   {{#if changed}}<p class="error" role="alert">{{t "export.changed"}}</p>{{/if}}
   {{#if unanswered}}<p class="error" role="alert">{{t "export.unanswered"}}</p>{{/if}}
-  <p class="muted">{{t "export.intro" list=list_name}}</p>
+  <p class="muted">{{#if source.from_list}}{{t "export.intro" list=source.name}}{{else}}{{t "import.intro" name=source.name}}{{/if}}</p>
   {{#if auto_count}}<p class="muted">{{t "export.auto" count=auto_count}}</p>{{/if}}
 
-  {{!-- MB-0060 (RR-0047): every row needs an explicit answer, none preselected; the fingerprint is rechecked when saving. --}}
-  <form class="export-review" method="post" action="/lists/{{list_id}}/export/confirm">
+  {{!-- MB-0060 (RR-0047), reused by MB-0061 (RR-0048): every row needs an explicit answer, none preselected; the fingerprint is rechecked when saving. --}}
+  <form class="export-review" method="post" action="{{action}}">
     <input type="hidden" name="fingerprint" value="{{fingerprint}}" />
+    {{#each hidden}}
+      <input type="hidden" name="{{this.name}}" value="{{this.value}}" />
+    {{/each}}
     {{#each rows}}
       <fieldset class="export-row">
         <legend>{{this.name}}</legend>
         <p class="muted">
-          {{#if this.on_list}}{{t "export.on_list" list=this.on_list}}{{else if this.unmatched}}{{t "export.on_list_unmatched" list=this.unmatched}}{{else}}{{t "export.on_list_none"}}{{/if}}
+          {{#if @root.source.from_list}}{{#if this.on_list}}{{t "export.on_list" list=this.on_list}}{{else if this.unmatched}}{{t "export.on_list_unmatched" list=this.unmatched}}{{else}}{{t "export.on_list_none"}}{{/if}}{{else}}{{#if this.on_list}}{{t "import.in_theirs" list=this.on_list}}{{else if this.unmatched}}{{t "import.in_theirs_unmatched" list=this.unmatched}}{{else}}{{t "import.in_theirs_none"}}{{/if}}{{/if}}
           {{#if this.is_favorite}}{{t "export.your_favorite" category=this.mine}}{{/if}}
           {{#if this.from_recipes}}{{t "export.from_recipes" category=this.mine}}{{/if}}
         </p>

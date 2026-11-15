@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.name, p.position,\n                  p.created_at AS \"created_at: DateTime<Utc>\",\n                  p.updated_at AS \"updated_at: DateTime<Utc>\",\n                  c.id AS \"group_id?\", c.name AS \"group_name?\",\n                  c.position AS \"group_position?\",\n                  c.created_at AS \"group_created_at?: DateTime<Utc>\"\n             FROM products p\n             LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = p.owner_id\n            WHERE p.owner_id = ?1 AND p.is_favorite = 1\n            ORDER BY c.id IS NULL, c.position ASC, c.name ASC, p.position ASC, p.name ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "position",
+        "ordinal": 2,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at: DateTime<Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at: DateTime<Utc>",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "group_id?",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "group_name?",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "group_position?",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "group_created_at?: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ea25908788140a37a2ae74bad0dea92f63db736ec5260eb6958729b8d475c309"
+}
