@@ -601,6 +601,18 @@ select {
 .archived-notice form { margin: 0; }
 .removed-items summary { cursor: pointer; color: var(--ink-muted); padding: 0.625rem 0; border-radius: var(--radius-sm); }
 
+/* MB-0060 (RR-0047): exporting a list to favorites. The button sits in the
+   list header; the review is one card per row with 44px choices. */
+.export-form { margin: 0; }
+.export-review { display: flex; flex-direction: column; gap: var(--space-4); }
+.export-row { margin: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.export-row legend { padding: 0 var(--space-1); font-weight: 600; }
+.export-row p { margin: 0 0 var(--space-2); }
+.export-choice { display: flex; align-items: center; gap: var(--space-3); min-height: 2.75rem; cursor: pointer; }
+.export-review > .button { align-self: flex-start; }
+.export-summary { margin: 0 0 var(--space-4); padding-left: var(--space-5); }
+.export-links { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+
 /* Store view (MB-0006): big one-handed targets. The checkbox is drawn
    (MB-0054): a 22px box with a control's edge, filled with the brand colour
    and ticked in on-brand when the item is found; the found item's name is

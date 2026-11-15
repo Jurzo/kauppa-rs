@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO products\n                              (id, owner_id, name, name_key, category_id, position, is_favorite,\n                               created_at, updated_at)\n                          SELECT ?1, ?2, ?3, ?4, c.id,\n                                 (SELECT COALESCE(MAX(p.position), -1) + 1\n                                    FROM products p\n                                    WHERE p.owner_id = ?2 AND p.category_id = c.id),\n                                 1, ?5, ?5\n                            FROM categories c\n                            WHERE c.id = ?6 AND c.owner_id = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "ec45ec44248fb7fba8dc9814064dfcd5875ad09e496b6fefaf2646bb213880ff"
+}

@@ -49,6 +49,17 @@ async fn view_role_is_read_only() {
             // htmx on every page; it isn't a list control, so the checks
             // below look at the page without it.
             let body = without_theme_switch(&body);
+            // "Add to favorites" (MB-0060, RR-0047) is a viewer's too: it
+            // writes only their own favorites. It is in the list page's
+            // header, so only on the full list page; set it aside too.
+            let export_action = format!(r#"action="{base}/export""#);
+            let exports = body.matches(&export_action).count();
+            assert_eq!(
+                exports,
+                usize::from(uri == base && !htmx),
+                "{uri} htmx={htmx}: export"
+            );
+            let body = body.replace(&export_action, "");
             // No form posts to the list (the layout's sign-out form is the
             // page's only form besides the language switcher, MB-0035), and
             // no link to its sharing page.
@@ -63,7 +74,8 @@ async fn view_role_is_read_only() {
                 );
             }
             let forms = body.matches(r#"method="post""#).count()
-                - body.matches(r#"action="/language""#).count();
+                - body.matches(r#"action="/language""#).count()
+                - exports;
             assert_eq!(
                 forms,
                 usize::from(!htmx),

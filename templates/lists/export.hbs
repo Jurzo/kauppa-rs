@@ -1,0 +1,46 @@
+{{#> layout page_title=(t "export.title") page_signed_in=true page_nav="lists"}}
+<section>
+  <header class="section-header">
+    <h1>{{t "export.title"}}</h1>
+    <a href="/lists/{{list_id}}">{{t "export.back"}}</a>
+  </header>
+
+  {{#if changed}}<p class="error" role="alert">{{t "export.changed"}}</p>{{/if}}
+  {{#if unanswered}}<p class="error" role="alert">{{t "export.unanswered"}}</p>{{/if}}
+  <p class="muted">{{t "export.intro" list=list_name}}</p>
+  {{#if auto_count}}<p class="muted">{{t "export.auto" count=auto_count}}</p>{{/if}}
+
+  {{!-- MB-0060 (RR-0047): every row needs an explicit answer, none preselected; the fingerprint is rechecked when saving. --}}
+  <form class="export-review" method="post" action="/lists/{{list_id}}/export/confirm">
+    <input type="hidden" name="fingerprint" value="{{fingerprint}}" />
+    {{#each rows}}
+      <fieldset class="export-row">
+        <legend>{{this.name}}</legend>
+        <p class="muted">
+          {{#if this.on_list}}{{t "export.on_list" list=this.on_list}}{{else if this.unmatched}}{{t "export.on_list_unmatched" list=this.unmatched}}{{else}}{{t "export.on_list_none"}}{{/if}}
+          {{#if this.is_favorite}}{{t "export.your_favorite" category=this.mine}}{{/if}}
+          {{#if this.from_recipes}}{{t "export.from_recipes" category=this.mine}}{{/if}}
+        </p>
+        {{#each this.choices}}
+          <label class="export-choice" for="{{this.dom_id}}">
+            <input id="{{this.dom_id}}" type="radio" name="{{../field}}" value="{{this.value}}" required />
+            {{#if this.label.keep}}{{t "export.keep" category=this.category}}{{/if}}{{#if this.label.move_to}}{{t "export.move" category=this.category}}{{/if}}{{#if this.label.favorite_in}}{{t "export.favorite_in" category=this.category}}{{/if}}{{#if this.label.add_in}}{{t "export.add_in" category=this.category}}{{/if}}{{#if this.label.skip}}{{t "export.skip"}}{{/if}}
+          </label>
+        {{/each}}
+        {{#if this.picker}}
+          <label>{{t "common.category"}}
+            <select name="{{this.field}}" required>
+              <option value="" disabled selected>{{t "export.choose"}}</option>
+              {{#each this.options}}
+                <option value="{{this.id}}">{{this.name}}</option>
+              {{/each}}
+              <option value="skip">{{t "export.skip"}}</option>
+            </select>
+          </label>
+        {{/if}}
+      </fieldset>
+    {{/each}}
+    <button type="submit" class="button primary">{{t "export.button"}}</button>
+  </form>
+</section>
+{{/layout}}

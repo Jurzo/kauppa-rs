@@ -46,8 +46,8 @@
 //!
 //! Split by area (MB-0019, RR-0009): this file has the shared views and
 //! rendering, and the list index and lifecycle handlers; `items` (MB-0004,
-//! MB-0005), `store` (MB-0006), `shares` (MB-0008) and `archiving` (MB-0062)
-//! have the rest. Tests are in `tests/<area>.rs`.
+//! MB-0005), `store` (MB-0006), `shares` (MB-0008), `archiving` (MB-0062) and
+//! `exporting` (MB-0060) have the rest. Tests are in `tests/<area>.rs`.
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -69,6 +69,7 @@ use crate::routes::request::{current_user, is_hx, wants_fragment};
 use crate::state::AppState;
 
 mod archiving;
+mod exporting;
 mod items;
 mod shares;
 mod store;
@@ -76,6 +77,7 @@ mod store;
 mod tests;
 
 pub use archiving::{archive, unarchive};
+pub use exporting::{export, export_confirm, export_done};
 pub use items::{add_item, add_recipe, remove_item, restore_item, update_item};
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};

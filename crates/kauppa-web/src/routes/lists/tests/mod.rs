@@ -3,6 +3,7 @@
 mod add_field;
 mod archive;
 mod editor_match;
+mod export;
 mod item_edit;
 mod items;
 mod lifecycle;

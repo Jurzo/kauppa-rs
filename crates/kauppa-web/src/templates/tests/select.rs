@@ -28,8 +28,15 @@ use std::collections::BTreeSet;
 use super::{TEMPLATES, attr, tags};
 
 /// The `name` of every `<select>` the templates render: the category
-/// picker, the recipe picker, the list picker and the share role.
-const SELECT_NAMES: [&str; 4] = ["category_id", "list_id", "recipe_id", "role"];
+/// picker, the recipe picker, the list picker, the share role, and the
+/// export review's category picker, named per row (MB-0060).
+const SELECT_NAMES: [&str; 5] = [
+    "category_id",
+    "list_id",
+    "recipe_id",
+    "role",
+    "{{this.field}}",
+];
 
 /// The least space between the chevron and the select's right edge, and
 /// between the selected text and the chevron, in thousandths of a `rem`.
