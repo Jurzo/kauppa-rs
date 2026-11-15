@@ -298,3 +298,9 @@ Rollback plan:
   - `crates/kauppa-web/src/routes/lists/shares.rs`;
   - `crates/kauppa-core/src/repo/mod.rs` (`RecipeRepo::add_ingredient`);
   - `migrations/` ends at `0011_list_archive.sql`.
+
+## Owner's answer (2026-11-15)
+
+As recommended: Q1 A, Q2 A, Q3 A, Q4 A, Q5 A, Q6 A, Q7 A, Q8 A.
+
+Recorded in RR-0048 (scaffold; the owner signs).
