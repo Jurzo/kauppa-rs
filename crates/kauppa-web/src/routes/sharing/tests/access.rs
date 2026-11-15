@@ -23,7 +23,7 @@ async fn only_shared_content() {
     let state = test_state().await;
     let app = test_app!(state);
     let me = make_user(&state, "me@example.com").await;
-    make_user(&state, "friend@example.com").await;
+    let friend_id = make_user(&state, "friend@example.com").await;
     make_user(&state, "stranger@example.com").await;
     let hevi = CategoryRepo::create(&state.pool, me, "Hevi")
         .await
@@ -46,19 +46,32 @@ async fn only_shared_content() {
     let friend = login("friend@example.com").await;
     let stranger = login("stranger@example.com").await;
     let browse = format!("/sharing/from/{me}/favorites");
+    // (kind, method, uri): every favorites and recipes route.
     let routes = |owner: Uuid| {
         let base = format!("/sharing/from/{owner}/favorites");
+        let recipes = format!("/sharing/from/{owner}/recipes");
+        let one = format!("{recipes}/{}", Uuid::new_v4());
         [
-            ("GET", base.clone()),
-            ("POST", format!("{base}/import")),
-            ("POST", format!("{base}/import/confirm")),
-            ("GET", format!("{base}/import/done")),
+            ("favorites", "GET", base.clone()),
+            ("favorites", "POST", format!("{base}/import")),
+            ("favorites", "POST", format!("{base}/import/confirm")),
+            ("favorites", "GET", format!("{base}/import/done")),
+            ("recipes", "GET", recipes),
+            ("recipes", "GET", one.clone()),
+            ("recipes", "POST", format!("{one}/import")),
+            ("recipes", "POST", format!("{one}/import/confirm")),
         ]
     };
-    let all_404 = |cookie: actix_web::cookie::Cookie<'static>, owner: Uuid, why: &'static str| {
+    let all_404 = |cookie: actix_web::cookie::Cookie<'static>,
+                   owner: Uuid,
+                   kinds: &'static [&'static str],
+                   why: &'static str| {
         let app = &app;
         async move {
-            for (method, uri) in routes(owner) {
+            for (kind, method, uri) in routes(owner) {
+                if !kinds.contains(&kind) {
+                    continue;
+                }
                 for htmx in [false, true] {
                     let mut req = if method == "GET" {
                         TestRequest::get()
@@ -81,15 +94,45 @@ async fn only_shared_content() {
         }
     };
 
-    all_404(friend.clone(), me, "never shared").await;
+    all_404(
+        friend.clone(),
+        me,
+        &["favorites", "recipes"],
+        "never shared",
+    )
+    .await;
     let share = CatalogShareRepo::share_catalog(&state.pool, me, "friend@example.com", false, true)
         .await
         .expect("share")
         .expect("matched");
-    all_404(friend.clone(), me, "favorites switch off").await;
+    all_404(friend.clone(), me, &["favorites"], "favorites switch off").await;
+    let resp = call_service(
+        &app,
+        TestRequest::get()
+            .uri(&format!("/sharing/from/{me}/recipes"))
+            .cookie(friend.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK, "recipes switch on");
+    // A recipe that isn't the sharer's (unknown, or the viewer's own) is
+    // 404 even with the recipes switch on.
+    let own = crate::routes::test_support::make_recipe(&state, friend_id, "Oma").await;
+    for recipe in [Uuid::new_v4(), own] {
+        let resp = call_service(
+            &app,
+            TestRequest::get()
+                .uri(&format!("/sharing/from/{me}/recipes/{recipe}"))
+                .cookie(friend.clone())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND, "{recipe}");
+    }
     CatalogShareRepo::set_catalog_share(&state.pool, me, share.id, true, false)
         .await
         .expect("change");
+    all_404(friend.clone(), me, &["recipes"], "recipes switch off").await;
 
     let resp = call_service(
         &app,
@@ -114,10 +157,16 @@ async fn only_shared_content() {
     let form = &body[body.find(r#"class="export-review""#).expect("form")..];
     assert!(!form.contains("checked"), "nothing ticked by default");
 
-    all_404(stranger, me, "a stranger").await;
-    all_404(friend.clone(), Uuid::new_v4(), "an unknown user").await;
+    all_404(stranger, me, &["favorites", "recipes"], "a stranger").await;
+    all_404(
+        friend.clone(),
+        Uuid::new_v4(),
+        &["favorites", "recipes"],
+        "an unknown user",
+    )
+    .await;
     CatalogShareRepo::revoke_catalog_share(&state.pool, me, share.id)
         .await
         .expect("revoke");
-    all_404(friend, me, "revoked").await;
+    all_404(friend, me, &["favorites", "recipes"], "revoked").await;
 }

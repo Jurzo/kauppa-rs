@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE products\n                    SET category_id = ?1,\n                        position = (SELECT COALESCE(MAX(p.position), -1) + 1\n                                      FROM products p\n                                      WHERE p.owner_id = ?2 AND p.category_id = ?1),\n                        updated_at = ?3\n                  WHERE id = ?4 AND owner_id = ?2 AND category_id IS NULL\n                    AND EXISTS (SELECT 1 FROM categories c WHERE c.id = ?1 AND c.owner_id = ?2)\n                  RETURNING name",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c3d410ee520e86bf35ac110d17caf8e8eaa806ed148163c5639a5aa9546cc597"
+}

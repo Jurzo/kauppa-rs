@@ -110,7 +110,11 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(sharing::browse)
                 .service(sharing::import)
                 .service(sharing::import_confirm)
-                .service(sharing::import_done),
+                .service(sharing::import_done)
+                .service(sharing::browse_recipes)
+                .service(sharing::show_recipe)
+                .service(sharing::import_recipe)
+                .service(sharing::import_recipe_confirm),
         )
         .service(
             web::scope("/favorites")

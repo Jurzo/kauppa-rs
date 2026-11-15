@@ -48,6 +48,7 @@
       <li class="product-row">
         <span class="product-name">{{this.owner_name}}</span>
         {{#if this.favorites}}<a href="/sharing/from/{{this.owner_id}}/favorites">{{t "catalog_sharing.their_favorites"}}<span class="visually-hidden"> {{this.owner_name}}</span></a>{{/if}}
+        {{#if this.recipes}}<a href="/sharing/from/{{this.owner_id}}/recipes">{{t "catalog_sharing.their_recipes"}}<span class="visually-hidden"> {{this.owner_name}}</span></a>{{/if}}
       </li>
     {{else}}
       <li class="product-row empty">{{t "catalog_sharing.none_with_you"}}</li>

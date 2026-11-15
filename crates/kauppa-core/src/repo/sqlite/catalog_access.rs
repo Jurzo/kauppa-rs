@@ -10,16 +10,16 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::CoreResult;
-use crate::domain::{Category, Product, ProductGroup, SharedCatalog};
+use crate::domain::{Category, Ingredient, Product, ProductGroup, Recipe, SharedCatalog};
 use crate::error::CoreError;
 
 use super::parse_uuid;
 
-/// What a share lets its grantee read. (Recipes join with MB-0061's second
-/// PR, RR-0048 sub-answer 8.)
+/// What a share lets its grantee read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Shared {
     Favorites,
+    Recipes,
 }
 
 /// Proof that `owner`'s catalog is shared with the grantee for one kind.
@@ -56,7 +56,8 @@ where
     let user_id = user.to_string();
     let owner_id = owner.to_string();
     let row = sqlx::query!(
-        r#"SELECT s.favorites AS "favorites: bool", u.display_name
+        r#"SELECT s.favorites AS "favorites: bool", s.recipes AS "recipes: bool",
+                  u.display_name
              FROM catalog_shares s
              JOIN users u ON u.id = s.owner_id
             WHERE s.owner_id = ?1 AND s.grantee_id = ?2"#,
@@ -68,6 +69,7 @@ where
     .ok_or(CoreError::NotFound)?;
     let allowed = match kind {
         Shared::Favorites => row.favorites,
+        Shared::Recipes => row.recipes,
     };
     if !allowed {
         return Err(CoreError::NotFound);
@@ -172,4 +174,124 @@ where
         }
     }
     Ok(groups)
+}
+
+/// The granted owner's recipes, most recently updated first.
+pub(super) async fn shared_recipes<'e, E>(exec: E, grant: &CatalogGrant) -> CoreResult<Vec<Recipe>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let owner_id = grant.owner.to_string();
+    sqlx::query!(
+        r#"SELECT id, title, instructions, servings,
+                  created_at AS "created_at: DateTime<Utc>",
+                  updated_at AS "updated_at: DateTime<Utc>"
+             FROM recipes
+            WHERE owner_id = ?1
+            ORDER BY updated_at DESC, id ASC"#,
+        owner_id
+    )
+    .fetch_all(exec)
+    .await?
+    .into_iter()
+    .map(|row| {
+        Ok(Recipe {
+            id: parse_uuid(&row.id)?,
+            owner_id: grant.owner,
+            title: row.title,
+            instructions: row.instructions,
+            servings: row.servings,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    })
+    .collect()
+}
+
+/// One of the granted owner's recipes; `NotFound` if it isn't theirs.
+pub(super) async fn shared_recipe(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    grant: &CatalogGrant,
+    recipe_id: Uuid,
+) -> CoreResult<Recipe> {
+    let owner_id = grant.owner.to_string();
+    let id = recipe_id.to_string();
+    let row = sqlx::query!(
+        r#"SELECT id, title, instructions, servings,
+                  created_at AS "created_at: DateTime<Utc>",
+                  updated_at AS "updated_at: DateTime<Utc>"
+             FROM recipes
+            WHERE id = ?1 AND owner_id = ?2"#,
+        id,
+        owner_id
+    )
+    .fetch_optional(&mut **tx)
+    .await?
+    .ok_or(CoreError::NotFound)?;
+    Ok(Recipe {
+        id: parse_uuid(&row.id)?,
+        owner_id: grant.owner,
+        title: row.title,
+        instructions: row.instructions,
+        servings: row.servings,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
+/// A granted owner's recipe's ingredients in order, with their products'
+/// current names and the owner's categories (every join checks the owner,
+/// RR-0001 constraint 9).
+pub(super) async fn shared_ingredients(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    grant: &CatalogGrant,
+    recipe_id: Uuid,
+) -> CoreResult<Vec<Ingredient>> {
+    let owner_id = grant.owner.to_string();
+    let id = recipe_id.to_string();
+    sqlx::query!(
+        r#"SELECT i.id, p.id AS "product_id?", COALESCE(p.name, i.text) AS "text!: String",
+                  i.quantity, i.position,
+                  c.id AS "category_id?", c.name AS "category_name?",
+                  c.position AS "category_position?",
+                  c.created_at AS "category_created_at?: DateTime<Utc>"
+             FROM ingredients i
+             JOIN recipes r ON r.id = i.recipe_id AND r.owner_id = ?2
+             LEFT JOIN products p ON p.id = i.product_id AND p.owner_id = r.owner_id
+             LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = r.owner_id
+            WHERE i.recipe_id = ?1
+            ORDER BY i.position ASC, i.id ASC"#,
+        id,
+        owner_id
+    )
+    .fetch_all(&mut **tx)
+    .await?
+    .into_iter()
+    .map(|row| {
+        let category = match (
+            row.category_id,
+            row.category_name,
+            row.category_position,
+            row.category_created_at,
+        ) {
+            (Some(id), Some(name), Some(position), Some(created_at)) => Some(Category {
+                id: parse_uuid(&id)?,
+                owner_id: grant.owner,
+                name,
+                position,
+                created_at,
+            }),
+            _ => None,
+        };
+        Ok(Ingredient {
+            id: parse_uuid(&row.id)?,
+            recipe_id,
+            product_id: row.product_id.as_deref().map(parse_uuid).transpose()?,
+            text: row.text,
+            quantity: row.quantity,
+            position: row.position,
+            category,
+        })
+    })
+    .collect()
 }

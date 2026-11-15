@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT s.favorites AS \"favorites: bool\", s.recipes AS \"recipes: bool\",\n                  u.display_name\n             FROM catalog_shares s\n             JOIN users u ON u.id = s.owner_id\n            WHERE s.owner_id = ?1 AND s.grantee_id = ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "favorites: bool",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "recipes: bool",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "display_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cf61690d19de8165a38311f9b7b6abd7bceda9bf4e77a950ad79fd9ed50c65c9"
+}

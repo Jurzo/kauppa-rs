@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::domain::{CatalogShare, SharedCatalog, SharedFavorites};
+use crate::domain::{CatalogShare, SharedCatalog, SharedFavorites, SharedRecipe, SharedRecipes};
 use crate::error::CoreError;
 use crate::repo::CatalogShareRepo;
 use crate::{CoreResult, Invalid};
@@ -223,6 +223,37 @@ impl CatalogShareRepo for SqlitePool {
             owner_id: grant.owner(),
             owner_name: grant.owner_name().to_owned(),
             groups,
+        })
+    }
+
+    async fn shared_recipes(&self, user_id: Uuid, owner_id: Uuid) -> CoreResult<SharedRecipes> {
+        let mut tx = self.inner.begin().await?;
+        let grant = catalog_access::authorize(&mut *tx, user_id, owner_id, Shared::Recipes).await?;
+        let recipes = catalog_access::shared_recipes(&mut *tx, &grant).await?;
+        tx.commit().await?;
+        Ok(SharedRecipes {
+            owner_id: grant.owner(),
+            owner_name: grant.owner_name().to_owned(),
+            recipes,
+        })
+    }
+
+    async fn shared_recipe(
+        &self,
+        user_id: Uuid,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+    ) -> CoreResult<SharedRecipe> {
+        let mut tx = self.inner.begin().await?;
+        let grant = catalog_access::authorize(&mut *tx, user_id, owner_id, Shared::Recipes).await?;
+        let recipe = catalog_access::shared_recipe(&mut tx, &grant, recipe_id).await?;
+        let ingredients = catalog_access::shared_ingredients(&mut tx, &grant, recipe_id).await?;
+        tx.commit().await?;
+        Ok(SharedRecipe {
+            owner_id: grant.owner(),
+            owner_name: grant.owner_name().to_owned(),
+            recipe,
+            ingredients,
         })
     }
 }

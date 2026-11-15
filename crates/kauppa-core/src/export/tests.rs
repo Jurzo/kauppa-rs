@@ -263,3 +263,79 @@ fn answers_are_checked() {
         (1, 1, 1, 1, 0)
     );
 }
+
+/// MB-0061 (RR-0048 sub-answer 6): a recipe's ingredients. An existing
+/// product with a category is linked as it is (its category and favorite
+/// flag untouched, no conflict); one without a category, or a new one whose
+/// category doesn't map, needs a category (no skip); a new one whose
+/// category maps is created hidden there.
+#[test]
+fn ingredients_link_or_create() {
+    use super::{IngredientProduct, ingredient_products, plan_ingredients};
+
+    let sharer = Uuid::new_v4();
+    let me = Uuid::new_v4();
+    let (their_hevi, their_mauste) = (category(sharer, "Hevi"), category(sharer, "Mausteet"));
+    let my_hevi = category(me, "hevi");
+    let my_kylma = category(me, "Kylmä");
+    let cats = [my_hevi.clone(), my_kylma.clone()];
+    let maito = product(me, "Maito", Some(&my_kylma), true);
+    let suola = product(me, "Suola", None, false);
+    let items = [
+        item("maito", Some(&their_hevi)),
+        item("Suola", Some(&their_mauste)),
+        item("Kurkku", Some(&their_hevi)),
+        item("Pippuri", Some(&their_mauste)),
+    ];
+    let plan = plan_ingredients(me, &items, &cats, &[maito.clone(), suola.clone()]);
+    let actions: Vec<Action> = plan.rows.iter().map(|r| r.action).collect();
+    assert_eq!(
+        actions,
+        [
+            Action::AlreadyThere,
+            Action::Review(ReviewKind::Uncategorized),
+            Action::Add(my_hevi.id),
+            Action::Review(ReviewKind::Uncategorized),
+        ]
+    );
+    for index in [1, 3] {
+        let choices = plan.rows[index].choices().unwrap();
+        assert!(choices.any && !choices.skip, "a category, never skip");
+    }
+    assert_ne!(
+        plan.fingerprint,
+        plan_ingredients(me, &items[..3], &cats, &[maito.clone(), suola.clone()]).fingerprint
+    );
+
+    let answers = ReviewAnswers {
+        fingerprint: plan.fingerprint.clone(),
+        answers: [(1, my_kylma.id.to_string()), (3, SKIP.to_owned())].into(),
+    };
+    assert!(
+        matches!(decide(&plan, &cats, &answers), Err(CoreError::Invalid(_))),
+        "no skip for an ingredient"
+    );
+    let answers = ReviewAnswers {
+        fingerprint: plan.fingerprint.clone(),
+        answers: [(1, my_kylma.id.to_string()), (3, my_hevi.id.to_string())].into(),
+    };
+    let decisions = decide(&plan, &cats, &answers).unwrap().unwrap();
+    assert_eq!(
+        ingredient_products(&plan, &decisions).unwrap(),
+        [
+            IngredientProduct::Link(maito.id),
+            IngredientProduct::Categorize {
+                id: suola.id,
+                category: my_kylma.id
+            },
+            IngredientProduct::Create {
+                name: "Kurkku".to_owned(),
+                category: my_hevi.id
+            },
+            IngredientProduct::Create {
+                name: "Pippuri".to_owned(),
+                category: my_hevi.id
+            },
+        ]
+    );
+}

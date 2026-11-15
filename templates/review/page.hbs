@@ -2,12 +2,12 @@
 <section>
   <header class="section-header">
     <h1>{{t "export.title"}}</h1>
-    <a href="{{back}}">{{#if source.from_list}}{{t "export.back"}}{{else}}{{t "import.back" name=source.name}}{{/if}}</a>
+    <a href="{{back}}">{{#if source.from_list}}{{t "export.back"}}{{else if source.from_recipe}}{{t "import.recipe_back" title=source.title}}{{else}}{{t "import.back" name=source.name}}{{/if}}</a>
   </header>
 
   {{#if changed}}<p class="error" role="alert">{{t "export.changed"}}</p>{{/if}}
   {{#if unanswered}}<p class="error" role="alert">{{t "export.unanswered"}}</p>{{/if}}
-  <p class="muted">{{#if source.from_list}}{{t "export.intro" list=source.name}}{{else}}{{t "import.intro" name=source.name}}{{/if}}</p>
+  <p class="muted">{{#if source.from_list}}{{t "export.intro" list=source.name}}{{else if source.from_recipe}}{{t "import.recipe_intro" title=source.title name=source.name}}{{else}}{{t "import.intro" name=source.name}}{{/if}}</p>
   {{#if auto_count}}<p class="muted">{{t "export.auto" count=auto_count}}</p>{{/if}}
 
   {{!-- MB-0060 (RR-0047), reused by MB-0061 (RR-0048): every row needs an explicit answer, none preselected; the fingerprint is rechecked when saving. --}}
@@ -20,7 +20,7 @@
       <fieldset class="export-row">
         <legend>{{this.name}}</legend>
         <p class="muted">
-          {{#if @root.source.from_list}}{{#if this.on_list}}{{t "export.on_list" list=this.on_list}}{{else if this.unmatched}}{{t "export.on_list_unmatched" list=this.unmatched}}{{else}}{{t "export.on_list_none"}}{{/if}}{{else}}{{#if this.on_list}}{{t "import.in_theirs" list=this.on_list}}{{else if this.unmatched}}{{t "import.in_theirs_unmatched" list=this.unmatched}}{{else}}{{t "import.in_theirs_none"}}{{/if}}{{/if}}
+          {{#if @root.source.from_list}}{{#if this.on_list}}{{t "export.on_list" list=this.on_list}}{{else if this.unmatched}}{{t "export.on_list_unmatched" list=this.unmatched}}{{else}}{{t "export.on_list_none"}}{{/if}}{{else if @root.source.from_recipe}}{{#if this.on_list}}{{t "import.in_recipe" list=this.on_list}}{{else if this.unmatched}}{{t "import.in_recipe_unmatched" list=this.unmatched}}{{else}}{{t "import.in_recipe_none"}}{{/if}}{{else}}{{#if this.on_list}}{{t "import.in_theirs" list=this.on_list}}{{else if this.unmatched}}{{t "import.in_theirs_unmatched" list=this.unmatched}}{{else}}{{t "import.in_theirs_none"}}{{/if}}{{/if}}
           {{#if this.is_favorite}}{{t "export.your_favorite" category=this.mine}}{{/if}}
           {{#if this.from_recipes}}{{t "export.from_recipes" category=this.mine}}{{/if}}
         </p>
@@ -34,16 +34,16 @@
           <label>{{t "common.category"}}
             <select name="{{this.field}}" required>
               <option value="" disabled selected>{{t "export.choose"}}</option>
-              {{#each this.options}}
+              {{#each this.picker.options}}
                 <option value="{{this.id}}">{{this.name}}</option>
               {{/each}}
-              <option value="skip">{{t "export.skip"}}</option>
+              {{#if this.picker.skippable}}<option value="skip">{{t "export.skip"}}</option>{{/if}}
             </select>
           </label>
         {{/if}}
       </fieldset>
     {{/each}}
-    <button type="submit" class="button primary">{{t "export.button"}}</button>
+    <button type="submit" class="button primary">{{#if source.from_recipe}}{{t "import.recipe_button"}}{{else}}{{t "export.button"}}{{/if}}</button>
   </form>
 </section>
 {{/layout}}

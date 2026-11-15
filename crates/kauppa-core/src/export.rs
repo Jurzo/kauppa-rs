@@ -100,6 +100,10 @@ pub struct PlanRow {
     pub unmatched: Vec<String>,
     pub existing: Option<Existing>,
     pub action: Action,
+    /// A recipe's ingredient (MB-0061, RR-0048 sub-answer 6) rather than a
+    /// favorite: linked as it is if the user has the product, else created
+    /// hidden; only a missing category is asked, with no skip.
+    pub ingredient: bool,
 }
 
 /// What a review row offers. `keep` and `list` are category ids; `any` means
@@ -120,6 +124,16 @@ impl PlanRow {
         let Action::Review(kind) = self.action else {
             return None;
         };
+        if self.ingredient {
+            // The ingredient needs a categorized product (RR-0001
+            // constraint 3): any of the user's categories, never skip.
+            return Some(Choices {
+                keep: None,
+                list: Vec::new(),
+                any: true,
+                skip: false,
+            });
+        }
         let existing_category = self.existing.as_ref().and_then(|e| e.category_id);
         let favorite_in_place = self
             .existing
@@ -177,6 +191,32 @@ pub fn plan(
     categories: &[Category],
     products: &[Product],
 ) -> ExportPlan {
+    build(user, items, categories, products, false)
+}
+
+/// Plan bringing a shared recipe's ingredients (`items`, in order) into
+/// `user`'s catalog (MB-0061, RR-0048 sub-answer 6).
+///
+/// An existing product is linked as it is, and reviewed only if it has no
+/// category; a new one is created hidden in the mapped category, or
+/// reviewed when none maps.
+#[must_use]
+pub fn plan_ingredients(
+    user: Uuid,
+    items: &[Candidate],
+    categories: &[Category],
+    products: &[Product],
+) -> ExportPlan {
+    build(user, items, categories, products, true)
+}
+
+fn build(
+    user: Uuid,
+    items: &[Candidate],
+    categories: &[Category],
+    products: &[Product],
+    ingredient: bool,
+) -> ExportPlan {
     let own: Vec<Uuid> = categories.iter().map(|c| c.id).collect();
     let by_name: BTreeMap<String, Uuid> = categories
         .iter()
@@ -211,6 +251,7 @@ pub fn plan(
                     is_favorite: p.is_favorite,
                 }),
                 action: Action::AlreadyThere,
+                ingredient,
             });
             rows.len() - 1
         });
@@ -229,10 +270,24 @@ pub fn plan(
         }
     }
     for row in &mut rows {
-        row.action = classify(row);
+        row.action = if ingredient {
+            classify_ingredient(row)
+        } else {
+            classify(row)
+        };
     }
     let fingerprint = fingerprint(categories, &rows);
     ExportPlan { rows, fingerprint }
+}
+
+/// An ingredient: `AlreadyThere` means "link the existing product as it
+/// is"; `Add` means "create it hidden in this category".
+fn classify_ingredient(row: &PlanRow) -> Action {
+    match (&row.existing, row.list_categories.first()) {
+        (Some(e), _) if e.category_id.is_some() => Action::AlreadyThere,
+        (None, Some(c)) => Action::Add(*c),
+        _ => Action::Review(ReviewKind::Uncategorized),
+    }
 }
 
 fn classify(row: &PlanRow) -> Action {
@@ -271,7 +326,7 @@ fn fingerprint(categories: &[Category], rows: &[PlanRow]) -> String {
     for row in rows {
         let list: Vec<String> = row.list_categories.iter().map(Uuid::to_string).collect();
         line(&[
-            "r",
+            if row.ingredient { "i" } else { "r" },
             &row.key,
             &row.name,
             &list.join(","),
@@ -403,6 +458,22 @@ pub enum ExportOutcome {
     },
 }
 
+/// The result of `RecipeRepo::import_recipe` (MB-0061, RR-0048).
+#[derive(Debug, Clone)]
+pub enum RecipeImport {
+    /// The copy, created in one transaction with its products.
+    Saved(Uuid),
+    /// The user already has a copy of this recipe (`imported_from`):
+    /// nothing was saved (sub-answer 7).
+    AlreadyImported(Uuid),
+    /// Nothing was saved: ingredients that need a category.
+    Review {
+        plan: ExportPlan,
+        categories: Vec<Category>,
+        reason: ReviewReason,
+    },
+}
+
 /// One write the export makes, from a plan row and its decision.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Write {
@@ -451,6 +522,50 @@ pub fn writes(plan: &ExportPlan, decisions: &Decisions) -> (Vec<Write>, ExportSu
         }
     }
     (out, summary)
+}
+
+/// How each ingredient row ends up as a product of the user's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IngredientProduct {
+    /// Link the user's product as it is.
+    Link(Uuid),
+    /// Link the user's product, giving it this category (it had none).
+    Categorize { id: Uuid, category: Uuid },
+    /// Create a hidden product ("From recipes") in this category.
+    Create { name: String, category: Uuid },
+}
+
+/// The product for each row of an ingredient plan, in row order.
+///
+/// Reviewed rows take their decision; `None` if one has none (callers check
+/// with [`decide`] first).
+#[must_use]
+pub fn ingredient_products(
+    plan: &ExportPlan,
+    decisions: &Decisions,
+) -> Option<Vec<IngredientProduct>> {
+    plan.rows
+        .iter()
+        .enumerate()
+        .map(|(index, row)| match (row.action, &row.existing) {
+            (Action::AlreadyThere, Some(e)) => Some(IngredientProduct::Link(e.id)),
+            (Action::Add(category), None) => Some(IngredientProduct::Create {
+                name: row.name.clone(),
+                category,
+            }),
+            (Action::Review(_), existing) => {
+                let category = decisions.get(&index).copied().flatten()?;
+                Some(existing.as_ref().map_or_else(
+                    || IngredientProduct::Create {
+                        name: row.name.clone(),
+                        category,
+                    },
+                    |e| IngredientProduct::Categorize { id: e.id, category },
+                ))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]

@@ -275,3 +275,460 @@ async fn favorites_use_export_review() {
         "only their own categories"
     );
 }
+
+/// A recipe of `owner`'s with ingredients in different categories:
+/// Kurkkusalaatti (serves 2): 1 Kurkku (Hevi), 1 tl Suola (Mausteet),
+/// 1 dl Maito (Kylmä).
+#[allow(clippy::expect_used)]
+async fn salad(state: &AppState, owner: Uuid) -> Uuid {
+    use kauppa_core::domain::{NewIngredient, RecipeInput};
+    use kauppa_core::repo::RecipeRepo;
+
+    let recipe = RecipeRepo::create(
+        &state.pool,
+        owner,
+        &RecipeInput {
+            title: "Kurkkusalaatti".to_owned(),
+            instructions: "Sekoita.".to_owned(),
+            servings: Some(2),
+        },
+    )
+    .await
+    .expect("recipe")
+    .id;
+    for (name, quantity, category) in [
+        ("Kurkku", "1", "Hevi"),
+        ("Suola", "1 tl", "Mausteet"),
+        ("Maito", "1 dl", "Kylmä"),
+    ] {
+        let category = match CategoryRepo::create(&state.pool, owner, category).await {
+            Ok(c) => c.id,
+            Err(_) => {
+                CategoryRepo::list_for_owner(&state.pool, owner)
+                    .await
+                    .expect("categories")
+                    .into_iter()
+                    .find(|c| c.name == category)
+                    .expect("category")
+                    .id
+            }
+        };
+        RecipeRepo::add_ingredient(
+            &state.pool,
+            owner,
+            recipe,
+            &NewIngredient {
+                product_name: name.to_owned(),
+                quantity: Some(quantity.to_owned()),
+                category_id: Some(category),
+            },
+        )
+        .await
+        .expect("ingredient");
+    }
+    recipe
+}
+
+/// P4: importing a shared recipe creates the recipient's copy (title,
+/// instructions, servings, ingredients with quantities and order,
+/// `imported_from`) in one transaction with its products: an existing
+/// product is linked as it is; a new one whose category maps is created
+/// hidden there; a new one whose category doesn't map is asked on the
+/// review, with no skip. The sharer's catalog is untouched.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn recipe_copy_with_products() {
+    use actix_web::test::{TestRequest, call_service};
+    use kauppa_core::repo::RecipeRepo;
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let me = make_user(&state, "me@example.com").await;
+    let friend = make_user(&state, "friend@example.com").await;
+    let recipe = salad(&state, me).await;
+    let my_hevi = CategoryRepo::create(&state.pool, friend, "HEVI")
+        .await
+        .expect("c")
+        .id;
+    let dairy = CategoryRepo::create(&state.pool, friend, "Maitotuotteet")
+        .await
+        .expect("c")
+        .id;
+    let their_maito = ProductRepo::create(&state.pool, friend, "maito", dairy)
+        .await
+        .expect("their Maito")
+        .id;
+    CatalogShareRepo::share_catalog(&state.pool, me, "friend@example.com", false, true)
+        .await
+        .expect("share")
+        .expect("matched");
+    let sharer_before = format!(
+        "{:?}",
+        RecipeRepo::get(&state.pool, me, recipe)
+            .await
+            .expect("recipe")
+    );
+    let cookie =
+        session_cookie(&call_service(&app, login_request("friend@example.com").to_request()).await);
+    let page = format!("/sharing/from/{me}/recipes/{recipe}");
+
+    // The list and the recipe, read-only, with "Import recipe".
+    let list = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&format!("/sharing/from/{me}/recipes"))
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(list.contains(&format!(r#"href="{page}">Kurkkusalaatti</a>"#)));
+    let body = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&page)
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(
+        body.contains("Kurkkusalaatti") && body.contains("Serves 2") && body.contains("Sekoita.")
+    );
+    assert!(body.contains(&format!(r#"action="{page}/import""#)));
+    let (kurkku_at, suola_at) = (
+        body.find("Kurkku<").expect("k"),
+        body.find("Suola<").expect("s"),
+    );
+    assert!(kurkku_at < suola_at, "in order");
+
+    // Import: Suola's Mausteet isn't one of theirs, so the review asks.
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("{page}/import"))
+            .cookie(cookie.clone())
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    let form = &body[body.find(r#"class="export-review""#).expect("form")..];
+    assert!(body.contains("Some ingredients of Kurkkusalaatti from Test User need a category"));
+    assert!(form.contains("<legend>Suola</legend>"));
+    assert!(form.contains("In their recipe: Mausteet, which isn't one of your categories."));
+    assert!(form.contains(r#"<select name="r1" required>"#));
+    assert!(
+        !form.contains(r#"value="skip""#),
+        "an ingredient can't be skipped"
+    );
+    assert!(!form.contains("<legend>Kurkku</legend>") && !form.contains("<legend>Maito</legend>"));
+    assert_eq!(
+        RecipeRepo::list_for_owner(&state.pool, friend)
+            .await
+            .expect("r")
+            .len(),
+        0
+    );
+
+    // A skip is refused (not offered); nothing saved.
+    let confirm = |answer: String, fp: String| {
+        TestRequest::post()
+            .uri(&format!("{page}/import/confirm"))
+            .cookie(cookie.clone())
+            .set_form([("fingerprint", fp), ("r1", answer)])
+            .to_request()
+    };
+    let resp = call_service(&app, confirm("skip".to_owned(), fingerprint(&body))).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        RecipeRepo::list_for_owner(&state.pool, friend)
+            .await
+            .expect("r")
+            .len(),
+        0
+    );
+
+    // Suola into HEVI: saved, to the copy.
+    let resp = call_service(&app, confirm(my_hevi.to_string(), fingerprint(&body))).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let copy = RecipeRepo::imported_copy(&state.pool, friend, recipe)
+        .await
+        .expect("copy")
+        .expect("imported");
+    assert_eq!(location(&resp), format!("/recipes/{copy}"));
+    let detail = RecipeRepo::get(&state.pool, friend, copy)
+        .await
+        .expect("copy");
+    assert_eq!(
+        (
+            detail.recipe.title.as_str(),
+            detail.recipe.instructions.as_str(),
+            detail.recipe.servings
+        ),
+        ("Kurkkusalaatti", "Sekoita.", Some(2))
+    );
+    let lines: Vec<(String, Option<String>, Option<String>)> = detail
+        .ingredients
+        .iter()
+        .map(|i| {
+            (
+                i.text.clone(),
+                i.quantity.clone(),
+                i.category.as_ref().map(|c| c.name.clone()),
+            )
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            (
+                "Kurkku".to_owned(),
+                Some("1".to_owned()),
+                Some("HEVI".to_owned())
+            ),
+            (
+                "Suola".to_owned(),
+                Some("1 tl".to_owned()),
+                Some("HEVI".to_owned())
+            ),
+            (
+                "maito".to_owned(),
+                Some("1 dl".to_owned()),
+                Some("Maitotuotteet".to_owned())
+            ),
+        ]
+    );
+    assert_eq!(
+        detail.ingredients[2].product_id,
+        Some(their_maito),
+        "linked as it is"
+    );
+    // Their Maito stays a favorite in Maitotuotteet; Kurkku and Suola are
+    // new products from recipes.
+    assert_eq!(
+        favorites(&state, friend).await,
+        [(Some("Maitotuotteet".to_owned()), vec!["maito".to_owned()])]
+    );
+    let hidden: Vec<String> = ProductRepo::list_hidden_with_usage(&state.pool, friend)
+        .await
+        .expect("hidden")
+        .into_iter()
+        .flat_map(|g| g.products)
+        .map(|u| u.product.name)
+        .collect();
+    assert_eq!(hidden, ["Kurkku", "Suola"]);
+    for ingredient in &detail.ingredients {
+        let category = ingredient.category.as_ref().expect("categorized");
+        assert_eq!(category.owner_id, friend, "only their own categories");
+    }
+    assert_eq!(
+        format!(
+            "{:?}",
+            RecipeRepo::get(&state.pool, me, recipe)
+                .await
+                .expect("recipe")
+        ),
+        sharer_before,
+        "the sharer's recipe is untouched"
+    );
+}
+
+/// P5: a repeat import is refused, with a link to the copy, and saves
+/// nothing; once the copy is deleted, importing works again; a review made
+/// stale by a change to the shared recipe saves nothing and is shown again;
+/// a missing answer too.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn repeat_and_stale() {
+    use actix_web::test::{TestRequest, call_service};
+    use kauppa_core::domain::NewIngredient;
+    use kauppa_core::repo::RecipeRepo;
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let me = make_user(&state, "me@example.com").await;
+    let friend = make_user(&state, "friend@example.com").await;
+    let recipe = salad(&state, me).await;
+    for name in ["Hevi", "Kylmä"] {
+        CategoryRepo::create(&state.pool, friend, name)
+            .await
+            .expect("c");
+    }
+    let mausteet = CategoryRepo::create(&state.pool, friend, "Mausteet")
+        .await
+        .expect("c")
+        .id;
+    CatalogShareRepo::share_catalog(&state.pool, me, "friend@example.com", false, true)
+        .await
+        .expect("share")
+        .expect("matched");
+    let cookie =
+        session_cookie(&call_service(&app, login_request("friend@example.com").to_request()).await);
+    let page = format!("/sharing/from/{me}/recipes/{recipe}");
+    let import = || {
+        TestRequest::post()
+            .uri(&format!("{page}/import"))
+            .cookie(cookie.clone())
+            .to_request()
+    };
+
+    // Every category maps: saved at once.
+    let resp = call_service(&app, import()).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let copy = RecipeRepo::imported_copy(&state.pool, friend, recipe)
+        .await
+        .expect("copy")
+        .expect("imported");
+
+    // Again: refused, back to the recipe, which links the copy.
+    let resp = call_service(&app, import()).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location(&resp), page);
+    let body = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&page)
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(
+        body.contains("You already have this recipe.")
+            && body.contains(&format!(r#"href="/recipes/{copy}""#))
+    );
+    assert!(!body.contains(&format!(r#"action="{page}/import""#)));
+    assert_eq!(
+        RecipeRepo::list_for_owner(&state.pool, friend)
+            .await
+            .expect("r")
+            .len(),
+        1
+    );
+
+    // Deleted copy: importing works again. The sharer adds an ingredient in
+    // a category the friend lacks, so there is a review; the sharer then
+    // changes the recipe again, and the stale review saves nothing.
+    RecipeRepo::delete(&state.pool, friend, copy)
+        .await
+        .expect("delete");
+    let leivonta = CategoryRepo::create(&state.pool, me, "Leivonta")
+        .await
+        .expect("c")
+        .id;
+    RecipeRepo::add_ingredient(
+        &state.pool,
+        me,
+        recipe,
+        &NewIngredient {
+            product_name: "Sokeri".to_owned(),
+            quantity: None,
+            category_id: Some(leivonta),
+        },
+    )
+    .await
+    .expect("ingredient");
+    let resp = call_service(&app, import()).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let review = body_string(resp).await;
+    RecipeRepo::add_ingredient(
+        &state.pool,
+        me,
+        recipe,
+        &NewIngredient {
+            product_name: "Pippuri".to_owned(),
+            quantity: None,
+            category_id: Some(leivonta),
+        },
+    )
+    .await
+    .expect("ingredient");
+    let confirm = |form: Vec<(&'static str, String)>| {
+        TestRequest::post()
+            .uri(&format!("{page}/import/confirm"))
+            .cookie(cookie.clone())
+            .set_form(form)
+            .to_request()
+    };
+    let resp = call_service(
+        &app,
+        confirm(vec![
+            ("fingerprint", fingerprint(&review)),
+            ("r3", mausteet.to_string()),
+        ]),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains("changed since"));
+    assert_eq!(
+        RecipeRepo::list_for_owner(&state.pool, friend)
+            .await
+            .expect("r")
+            .len(),
+        0
+    );
+
+    // A missing answer: shown again, nothing saved.
+    let fresh = fingerprint(&body);
+    let resp = call_service(
+        &app,
+        confirm(vec![
+            ("fingerprint", fresh.clone()),
+            ("r3", mausteet.to_string()),
+        ]),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert!(
+        body_string(resp)
+            .await
+            .contains("Choose an option for every item.")
+    );
+    assert_eq!(
+        RecipeRepo::list_for_owner(&state.pool, friend)
+            .await
+            .expect("r")
+            .len(),
+        0
+    );
+
+    // Answered: saved, with all five ingredients.
+    let resp = call_service(
+        &app,
+        confirm(vec![
+            ("fingerprint", fresh),
+            ("r3", mausteet.to_string()),
+            ("r4", mausteet.to_string()),
+        ]),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let copy = RecipeRepo::imported_copy(&state.pool, friend, recipe)
+        .await
+        .expect("copy")
+        .expect("imported again");
+    assert_eq!(
+        RecipeRepo::get(&state.pool, friend, copy)
+            .await
+            .expect("copy")
+            .ingredients
+            .len(),
+        5
+    );
+}

@@ -1,0 +1,33 @@
+{{#> layout page_title=title page_signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>{{title}}</h1>
+    <a href="/sharing/from/{{owner_id}}/recipes">{{t "import.recipes_title" name=owner_name}}</a>
+  </header>
+
+  {{!-- MB-0061 (RR-0048 sub-answer 7): a recipe already imported links to the copy instead. --}}
+  {{#if copy}}
+    <p class="notice" role="status">{{t "import.already"}} <a href="/recipes/{{copy}}">{{t "import.open_copy"}}</a></p>
+  {{else}}
+    <form method="post" action="/sharing/from/{{owner_id}}/recipes/{{id}}/import">
+      <button type="submit" class="button primary">{{t "import.recipe_button"}}</button>
+    </form>
+  {{/if}}
+
+  {{#if servings}}<p class="muted">{{t "import.servings" count=servings}}</p>{{/if}}
+  <h2>{{t "import.ingredients"}}</h2>
+  <ul class="product-list">
+    {{#each ingredients}}
+      <li class="product-row">
+        <span class="product-name">{{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.text}}</span>
+      </li>
+    {{else}}
+      <li class="product-row empty">{{t "import.no_ingredients"}}</li>
+    {{/each}}
+  </ul>
+  {{#if instructions}}
+    <h2>{{t "import.instructions"}}</h2>
+    <p class="recipe-instructions">{{instructions}}</p>
+  {{/if}}
+</section>
+{{/layout}}

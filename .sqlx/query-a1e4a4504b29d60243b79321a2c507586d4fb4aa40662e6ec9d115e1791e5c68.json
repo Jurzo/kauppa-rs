@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT i.id, p.id AS \"product_id?\", COALESCE(p.name, i.text) AS \"text!: String\",\n                  i.quantity, i.position,\n                  c.id AS \"category_id?\", c.name AS \"category_name?\",\n                  c.position AS \"category_position?\",\n                  c.created_at AS \"category_created_at?: DateTime<Utc>\"\n             FROM ingredients i\n             JOIN recipes r ON r.id = i.recipe_id AND r.owner_id = ?2\n             LEFT JOIN products p ON p.id = i.product_id AND p.owner_id = r.owner_id\n             LEFT JOIN categories c ON c.id = p.category_id AND c.owner_id = r.owner_id\n            WHERE i.recipe_id = ?1\n            ORDER BY i.position ASC, i.id ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "product_id?",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "text!: String",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "quantity",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "position",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "category_id?",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_name?",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_position?",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "category_created_at?: DateTime<Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a1e4a4504b29d60243b79321a2c507586d4fb4aa40662e6ec9d115e1791e5c68"
+}

@@ -7,15 +7,19 @@ use uuid::Uuid;
 
 use crate::CoreResult;
 use crate::domain::{
-    Direction, Ingredient, NewIngredient, Recipe, RecipeDetail, RecipeInput, ordering,
+    Category, Direction, Ingredient, NewIngredient, Product, Recipe, RecipeDetail, RecipeInput,
+    SharedRecipe, ordering,
 };
 use crate::error::CoreError;
+use crate::export::{
+    self, Candidate, IngredientProduct, RecipeImport, ReviewAnswers, ReviewReason,
+};
 use crate::repo::RecipeRepo;
 use crate::repo::name_key::name_key;
 
 use super::{
-    INGREDIENT_SELECT, SqlitePool, clean_name, clean_quantity, conflict_on_unique, parse_uuid,
-    row_to_ingredient, unknown_category,
+    CategoryRow, INGREDIENT_SELECT, ProductRow, SqlitePool, clean_name, clean_quantity,
+    conflict_on_unique, parse_uuid, row_to_ingredient, unknown_category,
 };
 
 /// A `recipes` row as the query macros return it (`query_as!`).
@@ -404,4 +408,264 @@ impl RecipeRepo for SqlitePool {
         tx.commit().await?;
         Ok(())
     }
+
+    async fn imported_copy(&self, owner_id: Uuid, source: Uuid) -> CoreResult<Option<Uuid>> {
+        let owner = owner_id.to_string();
+        let source = source.to_string();
+        sqlx::query_scalar!(
+            r"SELECT id FROM recipes WHERE owner_id = ?1 AND imported_from = ?2 LIMIT 1",
+            owner,
+            source
+        )
+        .fetch_optional(&self.inner)
+        .await?
+        .as_deref()
+        .map(parse_uuid)
+        .transpose()
+    }
+
+    async fn import_recipe(
+        &self,
+        owner_id: Uuid,
+        source: &SharedRecipe,
+        review: Option<&ReviewAnswers>,
+    ) -> CoreResult<RecipeImport> {
+        let owner = owner_id.to_string();
+        let source_id = source.recipe.id.to_string();
+        let input = clean_recipe(&RecipeInput {
+            title: source.recipe.title.clone(),
+            instructions: source.recipe.instructions.clone(),
+            servings: source.recipe.servings,
+        })?;
+        // IMMEDIATE: the repeat check, the catalog the plan reads and the
+        // writes see one state (RR-0048 sub-answers 6 and 7).
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        let copy = sqlx::query_scalar!(
+            r"SELECT id FROM recipes WHERE owner_id = ?1 AND imported_from = ?2 LIMIT 1",
+            owner,
+            source_id
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(copy) = copy {
+            return Ok(RecipeImport::AlreadyImported(parse_uuid(&copy)?));
+        }
+
+        let (categories, products) = owner_catalog(&mut tx, &owner).await?;
+
+        let items: Vec<Candidate> = source
+            .ingredients
+            .iter()
+            .map(|i| Candidate {
+                name: i.text.clone(),
+                category: i.category.clone(),
+            })
+            .collect();
+        let plan = export::plan_ingredients(owner_id, &items, &categories, &products);
+        let decisions = match review {
+            None if plan.needs_review() => Err(ReviewReason::Needed),
+            None => Ok(export::Decisions::new()),
+            Some(answers) => export::decide(&plan, &categories, answers)?,
+        };
+        let decisions = match decisions {
+            Ok(decisions) => decisions,
+            Err(reason) => {
+                return Ok(RecipeImport::Review {
+                    plan,
+                    categories,
+                    reason,
+                });
+            }
+        };
+        let resolved = export::ingredient_products(&plan, &decisions)
+            .ok_or(CoreError::Invalid(Invalid::Unknown(Entity::Category)))?;
+
+        let now = Utc::now();
+        // Each row's product, by name key.
+        let mut by_key: Vec<(String, String, String)> = Vec::new();
+        for (row, product) in plan.rows.iter().zip(resolved) {
+            let (id, name) = import_product(&mut tx, &owner, product, now).await?;
+            by_key.push((row.key.clone(), id, name));
+        }
+
+        let recipe_id = insert_copy(&mut tx, &owner, &input, source, &by_key, now).await?;
+        tx.commit().await?;
+        Ok(RecipeImport::Saved(recipe_id))
+    }
+}
+
+/// Resolve one ingredient row to a product of `owner`'s inside `tx`: link,
+/// categorize (it had no category) or create hidden. Every category is
+/// checked as the owner's in the same statement (RR-0001 constraint 9).
+async fn import_product(
+    tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    owner: &str,
+    product: IngredientProduct,
+    now: DateTime<Utc>,
+) -> CoreResult<(String, String)> {
+    match product {
+        IngredientProduct::Link(id) => {
+            let id = id.to_string();
+            let name = sqlx::query_scalar!(
+                r"SELECT name FROM products WHERE id = ?1 AND owner_id = ?2",
+                id,
+                owner
+            )
+            .fetch_optional(&mut **tx)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+            Ok((id, name))
+        }
+        IngredientProduct::Categorize { id, category } => {
+            let id = id.to_string();
+            let category = category.to_string();
+            let name = sqlx::query_scalar!(
+                r"UPDATE products
+                    SET category_id = ?1,
+                        position = (SELECT COALESCE(MAX(p.position), -1) + 1
+                                      FROM products p
+                                      WHERE p.owner_id = ?2 AND p.category_id = ?1),
+                        updated_at = ?3
+                  WHERE id = ?4 AND owner_id = ?2 AND category_id IS NULL
+                    AND EXISTS (SELECT 1 FROM categories c WHERE c.id = ?1 AND c.owner_id = ?2)
+                  RETURNING name",
+                category,
+                owner,
+                now,
+                id
+            )
+            .fetch_optional(&mut **tx)
+            .await?
+            .ok_or_else(unknown_category)?;
+            Ok((id, name))
+        }
+        IngredientProduct::Create { name, category } => {
+            let name = clean_name(Entity::Product, &name)?.to_owned();
+            let key = name_key(&name);
+            let id = Uuid::new_v4().to_string();
+            let category = category.to_string();
+            let created = sqlx::query_scalar!(
+                r"INSERT INTO products
+                      (id, owner_id, name, name_key, category_id, position, is_favorite,
+                       created_at, updated_at)
+                  SELECT ?1, ?2, ?3, ?4, c.id,
+                         (SELECT COALESCE(MAX(p.position), -1) + 1
+                            FROM products p
+                            WHERE p.owner_id = ?2 AND p.category_id = c.id),
+                         0, ?5, ?5
+                    FROM categories c
+                    WHERE c.id = ?6 AND c.owner_id = ?2
+                  RETURNING id",
+                id,
+                owner,
+                name,
+                key,
+                now,
+                category
+            )
+            .fetch_optional(&mut **tx)
+            .await
+            .map_err(|e| {
+                conflict_on_unique(e, || Conflict::Exists {
+                    entity: Entity::Product,
+                    name: name.clone(),
+                })
+            })?
+            .ok_or_else(unknown_category)?;
+            Ok((created, name))
+        }
+    }
+}
+
+/// The owner's categories and products, inside `tx`.
+async fn owner_catalog(
+    tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    owner: &str,
+) -> CoreResult<(Vec<Category>, Vec<Product>)> {
+    let categories = sqlx::query_as!(
+        CategoryRow,
+        r#"SELECT id, owner_id, name, position, created_at AS "created_at: DateTime<Utc>"
+                FROM categories
+                WHERE owner_id = ?1
+                ORDER BY position ASC, name ASC"#,
+        owner
+    )
+    .fetch_all(&mut **tx)
+    .await?
+    .into_iter()
+    .map(CategoryRow::into_category)
+    .collect::<CoreResult<Vec<Category>>>()?;
+    let products = sqlx::query_as!(
+            ProductRow,
+            r#"SELECT id, owner_id, name, category_id, position, is_favorite AS "is_favorite: bool",
+                      created_at AS "created_at: DateTime<Utc>", updated_at AS "updated_at: DateTime<Utc>"
+                FROM products
+                WHERE owner_id = ?1"#,
+            owner
+        )
+        .fetch_all(&mut **tx)
+        .await?
+        .into_iter()
+        .map(ProductRow::into_product)
+        .collect::<CoreResult<Vec<Product>>>()?;
+
+    Ok((categories, products))
+}
+
+/// Insert the copy and its ingredients, each linked to its row's product
+/// (`by_key`: name key, product id, product name), with `imported_from`.
+async fn insert_copy(
+    tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    owner: &str,
+    input: &RecipeInput,
+    source: &SharedRecipe,
+    by_key: &[(String, String, String)],
+    now: DateTime<Utc>,
+) -> CoreResult<Uuid> {
+    let source_id = source.recipe.id.to_string();
+    let recipe_id = Uuid::new_v4();
+    let recipe = recipe_id.to_string();
+    sqlx::query!(
+            r"INSERT INTO recipes
+                  (id, owner_id, title, instructions, servings, created_at, updated_at, imported_from)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7)",
+            recipe,
+            owner,
+            input.title,
+            input.instructions,
+            input.servings,
+            now,
+            source_id
+        )
+        .execute(&mut **tx)
+        .await?;
+    for (position, ingredient) in source.ingredients.iter().enumerate() {
+        let key = name_key(&ingredient.text);
+        let Some((_, product_id, product_name)) = by_key.iter().find(|(k, ..)| *k == key) else {
+            continue;
+        };
+        let id = Uuid::new_v4().to_string();
+        let position = i64::try_from(position)
+            .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Ingredient)))?;
+        let quantity = clean_quantity(ingredient.quantity.as_deref());
+        sqlx::query!(
+            r"INSERT INTO ingredients (id, recipe_id, product_id, text, quantity, position)
+                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            id,
+            recipe,
+            product_id,
+            product_name,
+            quantity,
+            position
+        )
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| {
+            conflict_on_unique(e, || Conflict::Exists {
+                entity: Entity::Ingredient,
+                name: product_name.clone(),
+            })
+        })?;
+    }
+    Ok(recipe_id)
 }
