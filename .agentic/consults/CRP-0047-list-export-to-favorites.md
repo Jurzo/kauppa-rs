@@ -264,3 +264,10 @@ Rollback plan:
     joins the owner's categories).
 - **`sha2`:** in `crates/kauppa-core/Cargo.toml` and
   `crates/kauppa-web/Cargo.toml`.
+
+## Owner's answer (2026-11-15)
+
+As recommended: Q1 A, Q2 A, Q3 A, Q4 A, Q5 A, Q6 A, Q7 A, and Q8 (export
+offered on archived lists).
+
+Recorded in RR-0047 (scaffold; the owner signs).
