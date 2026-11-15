@@ -1,0 +1,19 @@
+{{!-- MB-0059 (RR-0044): one favorites group, closed unless an action touched it. Actions inside target the group; the server retargets to #favorites when they leave it. --}}
+<details id="{{dom_id}}" class="product-group catalog-unit"{{#if open}} open{{/if}}>
+  <summary><span class="group-name">{{#if name}}{{name}}{{else}}{{t "common.uncategorized"}}{{/if}}</span> <span class="group-count">{{t "products.group_count" count=count}}</span></summary>
+  <ul class="product-list">
+    {{#each products}}
+      <li class="product-row">
+        <span class="product-name">{{this.name}}</span>
+        <form class="row-actions" method="post" action="/favorites/{{this.id}}/move"
+              hx-post="/favorites/{{this.id}}/move" hx-target="closest .catalog-unit" hx-swap="outerHTML">
+          <button id="product-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
+                  aria-label="{{t "common.move_up" name=this.name}}"{{#if @first}} disabled{{/if}}>↑</button>
+          <button id="product-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
+                  aria-label="{{t "common.move_down" name=this.name}}"{{#if @last}} disabled{{/if}}>↓</button>
+        </form>
+        {{> products/_product_edit this }}
+      </li>
+    {{/each}}
+  </ul>
+</details>

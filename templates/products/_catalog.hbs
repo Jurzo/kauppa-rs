@@ -21,56 +21,14 @@
   {{/if}}
 
   {{#each groups}}
-    <section class="product-group">
-      <h2>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</h2>
-      <ul class="product-list">
-        {{#each this.products}}
-          <li class="product-row">
-            <span class="product-name">{{this.name}}</span>
-            <form class="row-actions" method="post" action="/favorites/{{this.id}}/move"
-                  hx-post="/favorites/{{this.id}}/move" hx-target="#favorites" hx-swap="outerHTML">
-              <button id="product-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
-                      aria-label="{{t "common.move_up" name=this.name}}"{{#if @first}} disabled{{/if}}>↑</button>
-              <button id="product-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
-                      aria-label="{{t "common.move_down" name=this.name}}"{{#if @last}} disabled{{/if}}>↓</button>
-            </form>
-            {{> products/_product_edit this }}
-          </li>
-        {{/each}}
-      </ul>
-    </section>
+    {{> products/_group this }}
   {{else}}
     {{#if has_categories}}
       <p class="empty">{{t "products.empty"}}</p>
     {{/if}}
   {{/each}}
 
-  {{#if has_hidden}}
-    <section id="recipe-products" class="recipe-products" aria-labelledby="recipe-products-heading">
-      <h2 id="recipe-products-heading">{{t "products.from_recipes"}}</h2>
-      <p class="muted">{{t "products.from_recipes_intro"}}</p>
-      {{#each hidden}}
-        <section class="product-group">
-          <h3>{{#if this.name}}{{this.name}}{{else}}{{t "common.uncategorized"}}{{/if}}</h3>
-          <ul class="product-list">
-            {{#each this.products}}
-              <li id="recipe-product-{{this.id}}" class="product-row">
-                <span class="product-name">{{this.name}}</span>
-                <span class="product-usage muted">{{#if this.recipe_count}}{{t "products.usage" count=this.recipe_count}}{{else}}{{t "products.unused"}}{{/if}}</span>
-                {{#if this.can_favorite}}
-                  <form class="row-actions" method="post" action="/favorites/{{this.id}}/favorite"
-                        hx-post="/favorites/{{this.id}}/favorite" hx-target="#favorites" hx-swap="outerHTML">
-                    <button type="submit" class="link make-favorite">{{t "products.make_favorite"}}<span class="visually-hidden"> {{this.name}}</span></button>
-                  </form>
-                {{else}}
-                  <span class="product-usage error">{{t "products.no_category"}}</span>
-                {{/if}}
-                {{> products/_product_edit this }}
-              </li>
-            {{/each}}
-          </ul>
-        </section>
-      {{/each}}
-    </section>
+  {{#if recipes}}
+    {{> products/_recipe_products recipes }}
   {{/if}}
 </div>
