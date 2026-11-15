@@ -31,10 +31,12 @@ missing_panics_doc = "allow"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 
 # Web
-# Default features minus `compress-zstd` (RUSTSEC-2026-0391/0398/0403 via zstd)
-# and `http2` (actix-http pins to h2 0.3 which has RUSTSEC-2026-0258;
-# h2 0.4 is a breaking migration for actix). Deploy behind a reverse proxy
-# that terminates HTTP/2 if you need it. `ws` dropped — not using websockets.
+# Default features minus `compress-zstd` (it was off for
+# RUSTSEC-2026-0391/0398/0403; fixed in zstd 0.14.3 / zstd-safe 8.2.0, so
+# enabling it is now a dependency-bump decision, not a security one) and
+# `http2` (actix-http 3.x needs h2 0.3; RUSTSEC-2026-0258 is fixed only in
+# h2 0.4.16). Deploy behind a reverse proxy that terminates HTTP/2.
+# `ws` dropped — not using websockets.
 actix-web = { version = "4", default-features = false, features = [
     "macros",
     "cookies",

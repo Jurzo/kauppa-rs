@@ -89,11 +89,15 @@ jobs:
           python-version: "3.12"
 
       - name: Install deps
-        run: pip install pyyaml
+        run: pip install jsonschema pyyaml
 
       # check_triggers.py against throwaway repositories (MB-0033, MB-0043).
       - name: test_check_triggers.sh
         run: scripts/agentic/test_check_triggers.sh
+
+      # scaffold-mission.sh creates the brief and its pack (MB-0050 P6, RR-0042).
+      - name: test_scaffold_mission.sh
+        run: scripts/agentic/test_scaffold_mission.sh
 
       # Action pins, permissions, one Rust version (MB-0045 P1, P2).
       - name: check_workflows.sh
