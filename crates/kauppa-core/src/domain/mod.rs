@@ -11,7 +11,9 @@ pub mod share;
 pub mod shopping_list;
 pub mod user;
 
-pub use catalog_share::{CatalogShare, SharedCatalog, SharedFavorites};
+pub use catalog_share::{
+    CatalogShare, SharedCatalog, SharedFavorites, SharedRecipe, SharedRecipes,
+};
 pub use category::Category;
 pub use invitation::{CreatedInvitation, Invitation, InvitationState, InvitationUser, Registered};
 pub use language::Language;

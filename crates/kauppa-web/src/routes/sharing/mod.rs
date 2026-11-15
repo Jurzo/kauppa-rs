@@ -11,6 +11,13 @@
 //! ticked favorites, or all, goes through MB-0060's plan and review
 //! (`routes::review`); the chosen ids ride along in the review form.
 //!
+//! `/sharing/from/{owner}/recipes` lists `owner`'s recipes if they share
+//! them, and `…/recipes/{recipe}` shows one read-only with "Import". The
+//! import copies it with `imported_from` (a repeat is refused with a link
+//! to the copy) and links its ingredients to the importer's products,
+//! asking only for missing categories through the same review (RR-0048
+//! sub-answers 6 and 7).
+//!
 //! Plain forms (boosted by the layout): every write answers 303. Tests are
 //! in `tests/<area>.rs`.
 
@@ -21,9 +28,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use kauppa_core::CoreError;
-use kauppa_core::domain::SharedFavorites;
-use kauppa_core::export::{Candidate, ExportOutcome};
-use kauppa_core::repo::{CatalogShareRepo, ProductRepo};
+use kauppa_core::domain::{SharedFavorites, SharedRecipe};
+use kauppa_core::export::{Candidate, ExportOutcome, RecipeImport};
+use kauppa_core::repo::{CatalogShareRepo, ProductRepo, RecipeRepo};
 
 use crate::error::WebResult;
 use crate::i18n::{Ui, VARY};
@@ -89,6 +96,41 @@ struct SharedView {
     owner_id: Uuid,
     owner_name: String,
     favorites: bool,
+    recipes: bool,
+}
+
+/// `/sharing/from/{owner}/recipes` (`sharing/recipes`).
+#[derive(Debug, Serialize)]
+struct RecipesView {
+    owner_id: Uuid,
+    owner_name: String,
+    recipes: Vec<RecipeLink>,
+}
+
+#[derive(Debug, Serialize)]
+struct RecipeLink {
+    id: Uuid,
+    title: String,
+}
+
+/// `/sharing/from/{owner}/recipes/{recipe}` (`sharing/recipe`).
+#[derive(Debug, Serialize)]
+struct RecipeView {
+    owner_id: Uuid,
+    owner_name: String,
+    id: Uuid,
+    title: String,
+    instructions: String,
+    servings: Option<i64>,
+    ingredients: Vec<IngredientLine>,
+    /// The viewer's copy, if they already imported it (RR-0048 sub-answer 7).
+    copy: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize)]
+struct IngredientLine {
+    text: String,
+    quantity: String,
 }
 
 /// `/sharing/from/{owner}/favorites` (`sharing/favorites`).
@@ -153,6 +195,7 @@ async fn render_index(
             owner_id: s.owner_id,
             owner_name: s.owner_name,
             favorites: s.favorites,
+            recipes: s.recipes,
         })
         .collect();
     let view = IndexView {
@@ -429,4 +472,142 @@ pub async fn import_done(
         &source,
         query.into_inner(),
     )
+}
+
+/// Browse `owner`'s recipes, if shared with the viewer (else 404).
+#[get("/from/{owner}/recipes")]
+pub async fn browse_recipes(
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    path: web::Path<Uuid>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let shared = CatalogShareRepo::shared_recipes(&state.pool, user, path.into_inner()).await?;
+    let view = RecipesView {
+        owner_id: shared.owner_id,
+        owner_name: shared.owner_name,
+        recipes: shared
+            .recipes
+            .into_iter()
+            .map(|r| RecipeLink {
+                id: r.id,
+                title: r.title,
+            })
+            .collect(),
+    };
+    Ok(html(
+        actix_web::http::StatusCode::OK,
+        ui.render(&state, "sharing/recipes", &view)?,
+    ))
+}
+
+/// One shared recipe, read-only, with "Import" or a link to the copy.
+#[get("/from/{owner}/recipes/{recipe}")]
+pub async fn show_recipe(
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (owner, recipe_id) = path.into_inner();
+    let shared = CatalogShareRepo::shared_recipe(&state.pool, user, owner, recipe_id).await?;
+    let copy = RecipeRepo::imported_copy(&state.pool, user, recipe_id).await?;
+    let view = RecipeView {
+        owner_id: shared.owner_id,
+        owner_name: shared.owner_name,
+        id: shared.recipe.id,
+        title: shared.recipe.title,
+        instructions: shared.recipe.instructions,
+        servings: shared.recipe.servings,
+        ingredients: shared
+            .ingredients
+            .into_iter()
+            .map(|i| IngredientLine {
+                text: i.text,
+                quantity: i.quantity.unwrap_or_default(),
+            })
+            .collect(),
+        copy,
+    };
+    Ok(html(
+        actix_web::http::StatusCode::OK,
+        ui.render(&state, "sharing/recipe", &view)?,
+    ))
+}
+
+fn recipe_page(shared: &SharedRecipe) -> Page {
+    let back = format!(
+        "/sharing/from/{}/recipes/{}",
+        shared.owner_id, shared.recipe.id
+    );
+    Page {
+        action: format!("{back}/import/confirm"),
+        base: format!("{back}/import"),
+        back,
+        source: Source::SharedRecipe {
+            name: shared.owner_name.clone(),
+            title: shared.recipe.title.clone(),
+        },
+        hidden: Vec::new(),
+    }
+}
+
+async fn import_recipe_from(
+    state: &AppState,
+    ui: &Ui,
+    req: &HttpRequest,
+    user: Uuid,
+    (owner, recipe_id): (Uuid, Uuid),
+    answers: Option<&kauppa_core::export::ReviewAnswers>,
+) -> WebResult<HttpResponse> {
+    let shared = CatalogShareRepo::shared_recipe(&state.pool, user, owner, recipe_id).await?;
+    let page = recipe_page(&shared);
+    match RecipeRepo::import_recipe(&state.pool, user, &shared, answers).await? {
+        RecipeImport::Saved(copy) => {
+            tracing::info!(user_id = %user, owner_id = %owner, recipe_id = %copy, "recipe imported");
+            Ok(see_other(format!("/recipes/{copy}")))
+        }
+        // Refused (RR-0048 sub-answer 7): the recipe's page names the copy.
+        RecipeImport::AlreadyImported(_) => Ok(see_other(page.back)),
+        RecipeImport::Review {
+            plan,
+            categories,
+            reason,
+        } => review::review_page(state, ui, req, &page, &plan, &categories, reason),
+    }
+}
+
+/// Import a shared recipe: saved (to the copy), refused (back to the
+/// recipe, which links the copy), or the review.
+#[post("/from/{owner}/recipes/{recipe}/import")]
+pub async fn import_recipe(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    import_recipe_from(&state, &ui, &req, user, path.into_inner(), None).await
+}
+
+/// Confirm a recipe import's review.
+#[post("/from/{owner}/recipes/{recipe}/import/confirm")]
+pub async fn import_recipe_confirm(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    path: web::Path<(Uuid, Uuid)>,
+    form: web::Form<Vec<(String, String)>>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let (mut answers, _) = review::answers(form.into_inner());
+    if answers.fingerprint.is_empty() {
+        // A confirmation always carries one; a missing one never matches.
+        "-".clone_into(&mut answers.fingerprint);
+    }
+    import_recipe_from(&state, &ui, &req, user, path.into_inner(), Some(&answers)).await
 }

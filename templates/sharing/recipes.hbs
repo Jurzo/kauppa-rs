@@ -1,0 +1,19 @@
+{{#> layout page_title=(t "import.recipes_title" name=owner_name) page_signed_in=true}}
+<section>
+  <header class="section-header">
+    <h1>{{t "import.recipes_title" name=owner_name}}</h1>
+    <a href="/sharing">{{t "catalog_sharing.title"}}</a>
+  </header>
+  <p class="muted">{{t "import.recipes_intro"}}</p>
+
+  <ul class="product-list">
+    {{#each recipes}}
+      <li class="product-row">
+        <a class="product-name" href="/sharing/from/{{../owner_id}}/recipes/{{this.id}}">{{this.title}}</a>
+      </li>
+    {{else}}
+      <li class="product-row empty">{{t "import.no_recipes" name=owner_name}}</li>
+    {{/each}}
+  </ul>
+</section>
+{{/layout}}

@@ -31,6 +31,9 @@ pub enum Source {
     List(String),
     /// Another user's shared favorites, by their display name (MB-0061).
     Shared(String),
+    /// Another user's shared recipe: their display name and its title
+    /// (MB-0061).
+    SharedRecipe { name: String, title: String },
 }
 
 /// What a review or summary page needs besides the plan.
@@ -56,7 +59,9 @@ struct HiddenView {
 #[derive(Debug, Serialize)]
 struct SourceView {
     from_list: bool,
+    from_recipe: bool,
     name: String,
+    title: String,
 }
 
 impl From<&Source> for SourceView {
@@ -64,11 +69,21 @@ impl From<&Source> for SourceView {
         match source {
             Source::List(name) => Self {
                 from_list: true,
+                from_recipe: false,
                 name: name.clone(),
+                title: String::new(),
             },
             Source::Shared(name) => Self {
                 from_list: false,
+                from_recipe: false,
                 name: name.clone(),
+                title: String::new(),
+            },
+            Source::SharedRecipe { name, title } => Self {
+                from_list: false,
+                from_recipe: true,
+                name: name.clone(),
+                title: title.clone(),
             },
         }
     }
@@ -108,8 +123,14 @@ struct RowView {
     from_recipes: bool,
     mine: String,
     choices: Vec<ChoiceView>,
-    /// A category picker (an item without a category).
-    picker: bool,
+    /// A category picker, for an item without a category.
+    picker: Option<PickerView>,
+}
+
+#[derive(Debug, Serialize)]
+struct PickerView {
+    /// Whether "Skip" is offered (an ingredient needs a category).
+    skippable: bool,
     options: Vec<OptionView>,
 }
 
@@ -220,8 +241,10 @@ fn row_view(ui: &Ui, categories: &[Category], index: usize, row: &PlanRow) -> We
         None => String::new(),
     };
     let mut choices = Vec::new();
-    let mut picker = false;
+    let mut any = false;
+    let mut skippable = false;
     if let Some(offered) = row.choices() {
+        skippable = offered.skip;
         let label = |is_keep: bool| match existing {
             Some(e) if e.is_favorite && is_keep => Label::Keep,
             Some(e) if e.is_favorite => Label::Move,
@@ -237,8 +260,8 @@ fn row_view(ui: &Ui, categories: &[Category], index: usize, row: &PlanRow) -> We
             let name = category_name(categories, id);
             choices.push(choice(index, id.to_string(), name, label(is_keep)));
         }
-        picker = offered.any;
-        if offered.skip && !picker {
+        any = offered.any;
+        if offered.skip && !any {
             choices.push(choice(index, SKIP.to_owned(), String::new(), Label::Skip));
         }
     }
@@ -251,14 +274,16 @@ fn row_view(ui: &Ui, categories: &[Category], index: usize, row: &PlanRow) -> We
         from_recipes: existing.is_some() && !is_favorite,
         mine,
         choices,
-        picker,
-        options: categories
-            .iter()
-            .map(|c| OptionView {
-                id: c.id,
-                name: c.name.clone(),
-            })
-            .collect(),
+        picker: any.then(|| PickerView {
+            skippable,
+            options: categories
+                .iter()
+                .map(|c| OptionView {
+                    id: c.id,
+                    name: c.name.clone(),
+                })
+                .collect(),
+        }),
     })
 }
 
@@ -338,19 +363,31 @@ pub fn respond(
             plan,
             categories,
             reason,
-        } => {
-            let view = review_view(ui, page, &plan, &categories, reason)?;
-            let status = if reason == ReviewReason::Unanswered && !is_hx(req) {
-                StatusCode::BAD_REQUEST
-            } else {
-                StatusCode::OK
-            };
-            Ok(HttpResponse::build(status)
-                .content_type("text/html")
-                .insert_header(VARY)
-                .body(ui.render(state, "review/page", &view)?))
-        }
+        } => review_page(state, ui, req, page, &plan, &categories, reason),
     }
+}
+
+/// The review page for `plan` — 200, or 400 for a missing answer without
+/// htmx. Also used by the recipe import (MB-0061).
+pub fn review_page(
+    state: &AppState,
+    ui: &Ui,
+    req: &HttpRequest,
+    page: &Page,
+    plan: &ExportPlan,
+    categories: &[Category],
+    reason: ReviewReason,
+) -> WebResult<HttpResponse> {
+    let view = review_view(ui, page, plan, categories, reason)?;
+    let status = if reason == ReviewReason::Unanswered && !is_hx(req) {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::OK
+    };
+    Ok(HttpResponse::build(status)
+        .content_type("text/html")
+        .insert_header(VARY)
+        .body(ui.render(state, "review/page", &view)?))
 }
 
 /// The summary page after a save.

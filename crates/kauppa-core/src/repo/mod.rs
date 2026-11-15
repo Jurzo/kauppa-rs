@@ -42,7 +42,7 @@ use crate::domain::{
     ArchivedList, CatalogShare, Category, CreatedInvitation, Direction, HiddenProductGroup,
     Ingredient, Invitation, Language, ListAccess, ListGroup, ListItem, ListShare, NewIngredient,
     Product, ProductGroup, Recipe, RecipeDetail, RecipeInput, Registered, ShareRole, SharedCatalog,
-    SharedFavorites, SharedList, ShoppingList, User,
+    SharedFavorites, SharedList, SharedRecipe, SharedRecipes, ShoppingList, User,
 };
 
 #[async_trait]
@@ -522,6 +522,26 @@ pub trait RecipeRepo: Send + Sync {
         direction: Direction,
     ) -> CoreResult<()>;
 
+    /// The owner's copy of recipe `source` (`imported_from`, MB-0061), if
+    /// they have one.
+    async fn imported_copy(&self, owner_id: Uuid, source: Uuid) -> CoreResult<Option<Uuid>>;
+
+    /// Copy a recipe shared with `owner_id` (read by the caller through
+    /// `CatalogShareRepo::shared_recipe`) into their recipes, with
+    /// `imported_from` set, in one transaction with its products (MB-0061,
+    /// RR-0048 sub-answers 6 and 7). A repeat import is `AlreadyImported`.
+    /// Ingredients are planned with `export::plan_ingredients`: existing
+    /// products are linked as they are; new ones are created hidden; a
+    /// missing category needs the review's answer (as `apply_export`: a
+    /// changed fingerprint or a missing answer saves nothing and returns the
+    /// review; a tampered answer is `Invalid`).
+    async fn import_recipe(
+        &self,
+        owner_id: Uuid,
+        source: &crate::domain::SharedRecipe,
+        review: Option<&crate::export::ReviewAnswers>,
+    ) -> CoreResult<crate::export::RecipeImport>;
+
     /// Remove an ingredient. Its product stays in the catalog.
     async fn remove_ingredient(
         &self,
@@ -575,4 +595,17 @@ pub trait CatalogShareRepo: Send + Sync {
     /// `owner_id`'s favorites, if they share them with `user_id`, grouped by
     /// the owner's categories (uncategorized last). `NotFound` otherwise.
     async fn shared_favorites(&self, user_id: Uuid, owner_id: Uuid) -> CoreResult<SharedFavorites>;
+
+    /// `owner_id`'s recipes, if they share them with `user_id`, most recently
+    /// updated first. `NotFound` otherwise.
+    async fn shared_recipes(&self, user_id: Uuid, owner_id: Uuid) -> CoreResult<SharedRecipes>;
+
+    /// One of `owner_id`'s recipes with its ingredients, if they share their
+    /// recipes with `user_id`. `NotFound` otherwise, or if it isn't theirs.
+    async fn shared_recipe(
+        &self,
+        user_id: Uuid,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+    ) -> CoreResult<SharedRecipe>;
 }
