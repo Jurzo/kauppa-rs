@@ -258,6 +258,20 @@ async fn archived_list_pages() {
                     assert!(!body.contains(&control), "{at}: {control}");
                 }
                 assert!(!body.contains("Shared with you to view"), "{at}");
+                // Restore is the page's primary action; the store view's
+                // boxes are drawn disabled.
+                if who == "owner" {
+                    assert!(
+                        body.contains(r#"<button type="submit" class="button primary">Restore"#),
+                        "{at}"
+                    );
+                }
+                if back == "shop" {
+                    assert!(
+                        body.contains(r#"<span class="shop-toggle is-disabled">"#),
+                        "{at}"
+                    );
+                }
             }
         }
     }
@@ -362,6 +376,7 @@ async fn archived_list_pages() {
     .await;
     assert!(body.contains(&format!(r#"hx-post="{base}/shop/items/{}/check""#, s.bread)));
     assert!(!body.contains("Archived on"));
+    assert!(!body.contains("is-disabled"), "active again");
 
     // Delete is allowed on an archived list.
     ShoppingListRepo::archive(&state.pool, s.owner, s.list)

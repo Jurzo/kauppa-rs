@@ -618,6 +618,13 @@ select {
   border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 .shop-row.found .product-name { text-decoration: line-through; color: var(--ink-subtle); }
+/* MB-0062: on an archived list the boxes are drawn disabled, as the store
+   view is read-only: a faint edge on the sunken fill, and a found item's box
+   filled in ink-subtle instead of the brand colour, its tick in the surface
+   colour. */
+.shop-toggle.is-disabled { cursor: default; }
+.shop-toggle.is-disabled .shop-box { background: var(--surface-sunken); border-color: var(--border); }
+.shop-row.found .shop-toggle.is-disabled .shop-box { background: var(--ink-subtle); border-color: var(--ink-subtle); color: var(--surface); }
 .shop-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; }
 
 /* Admin portal (MB-0023) */

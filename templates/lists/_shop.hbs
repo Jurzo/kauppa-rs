@@ -10,7 +10,7 @@
     {{#if archived.can_restore}}
     <form method="post" action="/lists/{{id}}/unarchive">
       <input type="hidden" name="back" value="shop" />
-      <button type="submit" class="button">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
+      <button type="submit" class="button primary">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
     </form>
     {{/if}}
   </div>
@@ -39,7 +39,7 @@
               <button type="submit" class="link" aria-label="{{t "shop.remove" item=this.text}}">✕</button>
             </form>
             {{else}}
-            <span class="shop-toggle">
+            <span class="shop-toggle{{#if ../../archived}} is-disabled{{/if}}">
               <span class="shop-box" aria-hidden="true"></span>
               <span class="product-name">{{this.text}}{{#if this.quantity}} <span class="shop-quantity">({{this.quantity}})</span>{{/if}}</span>
               {{#if this.checked}}<span class="visually-hidden">{{t "shop.found_hidden"}}</span>{{/if}}

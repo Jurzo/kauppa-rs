@@ -3,19 +3,6 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
 
-  {{#if archived}}
-  {{!-- MB-0062 (RR-0045): an archived list is read-only; its owner can restore it here. --}}
-  <div class="archived-notice">
-    <p>{{t "lists.archived_on" date=archived.date}}</p>
-    {{#if archived.can_restore}}
-    <form method="post" action="/lists/{{id}}/unarchive">
-      <input type="hidden" name="back" value="list" />
-      <button type="submit" class="button">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
-    </form>
-    {{/if}}
-  </div>
-  {{/if}}
-
   {{#if can_edit}}
   <form class="add-product" method="post" action="/lists/{{id}}/items"
         hx-post="/lists/{{id}}/items" hx-target="#list-{{id}}" hx-swap="outerHTML">
@@ -30,8 +17,19 @@
     </label>
     <button type="submit" class="button primary">{{t "common.add"}}</button>
   </form>
+  {{else if archived}}
+  {{!-- MB-0062 (RR-0045): an archived list is read-only (can_edit is false); its owner can restore it here. Restore takes the add form's place as the page's one primary button. --}}
+  <div class="archived-notice">
+    <p>{{t "lists.archived_on" date=archived.date}}</p>
+    {{#if archived.can_restore}}
+    <form method="post" action="/lists/{{id}}/unarchive">
+      <input type="hidden" name="back" value="list" />
+      <button type="submit" class="button primary">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
+    </form>
+    {{/if}}
+  </div>
   {{else}}
-    {{#unless archived}}<p class="muted">{{t "lists.view_shared"}}</p>{{/unless}}
+    <p class="muted">{{t "lists.view_shared"}}</p>
   {{/if}}
 
   {{#if is_owner}}{{#unless archived}}
