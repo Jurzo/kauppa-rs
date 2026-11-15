@@ -139,11 +139,8 @@ async fn crud_and_auth() {
             .uri("/favorites")
             .set_form([("name", "Maito"), ("category_id", any_id.as_str())]),
         TestRequest::post()
-            .uri(&format!("/favorites/{any}/rename"))
-            .set_form([("name", "Maito")]),
-        TestRequest::post()
-            .uri(&format!("/favorites/{any}/category"))
-            .set_form([("category_id", any_id.as_str())]),
+            .uri(&format!("/favorites/{any}"))
+            .set_form([("name", "Maito"), ("category_id", any_id.as_str())]),
         TestRequest::post()
             .uri(&format!("/favorites/{any}/move"))
             .set_form([("dir", "up")]),
@@ -237,12 +234,12 @@ async fn crud_and_auth() {
     let banaani = product_id(&state, user, "Banaani").await;
     let maito = product_id(&state, user, "Maito").await;
 
-    // Rename, reposition, and recategorize over htmx.
+    // Rename, reposition, and recategorize over htmx (one Save, MB-0058).
     let resp = call_service(
         &app,
         hx(post(
-            &format!("/favorites/{omena}/rename"),
-            &[("name", "Vihreä omena")],
+            &format!("/favorites/{omena}"),
+            &[("name", "Vihreä omena"), ("category_id", hevi)],
         )),
     )
     .await;
@@ -268,8 +265,8 @@ async fn crud_and_auth() {
     let resp = call_service(
         &app,
         hx(post(
-            &format!("/favorites/{banaani}/category"),
-            &[("category_id", kylma)],
+            &format!("/favorites/{banaani}"),
+            &[("name", "Banaani"), ("category_id", kylma)],
         )),
     )
     .await;

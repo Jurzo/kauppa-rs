@@ -142,12 +142,13 @@ async fn hidden_products_section() {
     let voi = any_product_id(&state, user, "Voi").await;
     let (hevi_s, kylma_s) = (hevi.to_string(), kylma.to_string());
 
-    // Rename: over htmx, then without it. They stay recipe-created.
+    // Rename (one Save, MB-0058): over htmx, then without it. They stay
+    // recipe-created.
     let resp = call_service(
         &app,
         hx(post(
-            &format!("/favorites/{kurkku}/rename"),
-            &[("name", "Kurkut")],
+            &format!("/favorites/{kurkku}"),
+            &[("name", "Kurkut"), ("category_id", hevi_s.as_str())],
         )),
     )
     .await;
@@ -160,20 +161,23 @@ async fn hidden_products_section() {
     let resp = call_service(
         &app,
         post(
-            &format!("/favorites/{voi}/rename"),
-            &[("name", "Voi (suolaton)")],
+            &format!("/favorites/{voi}"),
+            &[
+                ("name", "Voi (suolaton)"),
+                ("category_id", kylma_s.as_str()),
+            ],
         )
         .to_request(),
     )
     .await;
     assert_eq!(resp.status(), StatusCode::SEE_OTHER);
 
-    // Change category: over htmx, then without it.
+    // Change category (one Save): over htmx, then without it.
     let resp = call_service(
         &app,
         hx(post(
-            &format!("/favorites/{maito}/category"),
-            &[("category_id", hevi_s.as_str())],
+            &format!("/favorites/{maito}"),
+            &[("name", "Maito"), ("category_id", hevi_s.as_str())],
         )),
     )
     .await;
@@ -181,8 +185,8 @@ async fn hidden_products_section() {
     let resp = call_service(
         &app,
         post(
-            &format!("/favorites/{tomaatti}/category"),
-            &[("category_id", kylma_s.as_str())],
+            &format!("/favorites/{tomaatti}"),
+            &[("name", "Tomaatti"), ("category_id", kylma_s.as_str())],
         )
         .to_request(),
     )
@@ -261,10 +265,9 @@ async fn hidden_products_section() {
     let secret_s = secret.to_string();
     let attempts = [
         post(&format!("/favorites/{secret}/favorite"), &[]),
-        post(&format!("/favorites/{secret}/rename"), &[("name", "Minun")]),
         post(
-            &format!("/favorites/{secret}/category"),
-            &[("category_id", hevi_s.as_str())],
+            &format!("/favorites/{secret}"),
+            &[("name", "Minun"), ("category_id", hevi_s.as_str())],
         ),
         post(&format!("/favorites/{secret}/delete"), &[]),
     ];
@@ -366,8 +369,8 @@ async fn hidden_uncategorized_fixable() {
     let resp = call_service(
         &app,
         post(
-            &format!("/favorites/{mehu}/category"),
-            &[("category_id", hevi.to_string().as_str())],
+            &format!("/favorites/{mehu}"),
+            &[("name", "Mehu"), ("category_id", hevi.to_string().as_str())],
         )
         .insert_header(("HX-Request", "true"))
         .to_request(),
@@ -451,8 +454,11 @@ async fn delete_used_product_warns() {
     call_service(
         &app,
         hx_post(
-            &format!("/favorites/{kurkku}/rename"),
-            &[("name", "Kurkut")],
+            &format!("/favorites/{kurkku}"),
+            &[
+                ("name", "Kurkut"),
+                ("category_id", hevi.to_string().as_str()),
+            ],
         ),
     )
     .await;

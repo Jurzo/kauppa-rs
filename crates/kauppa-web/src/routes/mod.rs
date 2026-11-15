@@ -98,8 +98,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
             web::scope("/favorites")
                 .service(products::index)
                 .service(products::create)
-                .service(products::rename)
-                .service(products::recategorize)
+                .service(products::save)
                 .service(products::move_product)
                 .service(products::make_favorite)
                 .service(products::delete),
