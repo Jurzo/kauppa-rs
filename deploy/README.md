@@ -71,10 +71,10 @@ because they are yours.
 
 ### 3.1 Before you start
 
-- **The app-side gate.** Public DNS points at the droplet only after
-  **MB-0023** (invite-only registration), **MB-0025** (SQLite WAL) and
-  **MB-0026** (login rate limiting) have merged *and the image you run contains
-  them* (RR-0014 constraint 6). Everything up to §3.9 can happen before that.
+- **The app-side gate.** Public DNS points at the droplet only when *the
+  image you run contains* invite-only registration (MB-0023), SQLite WAL
+  (MB-0025) and login rate limiting (MB-0026) (RR-0014 constraint 6). Every
+  image built from `main` at or after a359fda does.
 - Tools on your laptop: Terraform ≥ 1.10, Docker with buildx, `ssh`, `scp`,
   `openssl`.
 - A domain whose DNS you control, e.g. `kauppa.example`.
@@ -165,12 +165,12 @@ exist, and turns off SSH password logins.
 
 The droplet pulls `ghcr.io/jurzo/kauppa-rs:sha-<commit>` anonymously.
 
-- **With the CI workflow** (RR-0014 Q7, its own PR): every push to `main`
-  builds and pushes `sha-<7-char commit>` and `:main`. Use the `sha-` tag of
-  the commit you want, never `:main`.
-- **Until the workflow has merged** (RR-0014 Q1 fallback), build on your
-  laptop and push with a personal access token scoped to `write:packages`,
-  kept on your machine only:
+- **With the CI workflow** (`.github/workflows/deploy.yml`, RR-0014 Q7):
+  every push to `main` builds and pushes `sha-<7-char commit>` and `:main`.
+  Use the `sha-` tag of the commit you want, never `:main`.
+- **Fallback, when the workflow can't build the image** (RR-0014 Q1): build
+  on your laptop and push with a personal access token scoped to
+  `write:packages`, kept on your machine only:
 
   ```bash
   # (laptop) from the repository root, at the commit to deploy
@@ -242,20 +242,14 @@ docker compose exec backup kauppa-backup list
 Until the DNS record exists Caddy can't get a certificate and logs ACME
 errors; that is expected. All commands below assume `cd /opt/kauppa/deploy`.
 
-### 3.9 Settings from the sibling missions
+### 3.9 Settings and the first administrator
 
-These land with their own missions; set them when the image contains them.
-
-- **MB-0026 (rate limiting): on by default since MB-0028.** `compose.yaml`
+- **Login rate limiting (MB-0026): on by default.** `compose.yaml`
   sets `KAUPPA_TRUSTED_PROXIES: 172.30.53.0/24`, which must equal the
   `internal` network's subnet; there is nothing to set. The app keys login
   limits by the real client address that Caddy puts in `X-Forwarded-For`;
   Caddy has no `trusted_proxies`, so it overwrites any address a client
-  sends, and `smoke_compose.sh` checks both (§9). The image must contain
-  MB-0026 (built from `main` at or after a359fda); an older image ignores
-  the setting. A droplet started before MB-0028 gets the setting with the
-  next update (§8.1: pre-update backup, `git pull`, new image,
-  `docker compose up -d`).
+  sends, and `smoke_compose.sh` checks both (§9).
 
   **Shared-bucket fallback.** If you change the `internal` subnet, change
   `KAUPPA_TRUSTED_PROXIES` with it, and never widen it beyond that subnet.
@@ -265,8 +259,8 @@ These land with their own missions; set them when the image contains them.
   usable `X-Forwarded-For` is limited the same way, as one client, and the
   app logs one WARN `forwarded-for missing from a trusted proxy` per
   process (§13).
-- **After MB-0023 (invite-only registration):** bootstrap the first admin
-  from the droplet (RR-0012):
+- **The first administrator (MB-0023, RR-0012):** registration is
+  invite-only; bootstrap the first admin from the droplet:
 
   ```bash
   docker compose exec kauppa kauppa-web admin invite --note "owner"
@@ -276,16 +270,16 @@ These land with their own missions; set them when the image contains them.
 
   The invitation link carries a token in `?invite=`; Caddy has no access log
   and strips query strings from its own (error) logs, and the app logs paths
-  only after MB-0023, so it isn't written to a log.
+  only, so it isn't written to a log.
 - **Image contents:** the runtime image holds only the binary (MB-0032,
   RR-0020).
-- **After MB-0027 (vendored htmx):** nothing to do here; until then browsers
-  load htmx from unpkg, and the site works without it, more slowly.
+- **htmx** is vendored and served by the app (MB-0027, RR-0015): browsers
+  load nothing from another origin, and there is nothing to set.
 
 ### 3.10 DNS (the deliberate step)
 
-Only when §3.1's gate holds (MB-0023, MB-0025 and MB-0026 merged and in the
-running image), at your DNS provider:
+Only when §3.1's gate holds (the running image contains MB-0023, MB-0025 and
+MB-0026), at your DNS provider:
 
 ```text
 kauppa.example.   A   <reserved_ip>     (TTL 300 to start)
@@ -304,10 +298,10 @@ KAUPPA_SMOKE_EMAIL=you@example.com KAUPPA_SMOKE_PASSWORD='...' \
     scripts/deploy/smoke_compose.sh https://kauppa.example
 ```
 
-Then §4's droplet checks. Paste both outputs into
-`.agentic/continuity/MB-0028.md` (Evidence pointers; MB-0022 closed and
-moved this check to MB-0028's P4). Live mode sends no failing logins, so
-it never throttles the account you test with.
+Then §4's droplet checks. Keep both outputs: paste them into the
+Continuity Pack of the mission the deploy belongs to (MB-0028 recorded the
+first deploy's checks). Live mode sends no failing logins, so it never
+throttles the account you test with.
 
 ## 4. Checks after a deploy
 
@@ -322,7 +316,7 @@ docker compose exec backup kauppa-backup list 6h/  # newest object < 6 h old
 
 ## 5. The database (SQLite, WAL)
 
-From MB-0025 the app opens SQLite in WAL mode (`synchronous=NORMAL`, a 10 s
+The app opens SQLite in WAL mode (MB-0025) (`synchronous=NORMAL`, a 10 s
 busy timeout). What that means for the operator:
 
 - **The database is three files**: `kauppa.db`, `kauppa.db-wal` and

@@ -8,11 +8,20 @@ repository and its crates.
 
 ## Status
 
-Scaffold. The runnable baseline (health check, login, register, empty list and
-recipe pages) is in place; feature work is tracked as Mission Briefs under
+In use. Signed-in users keep shopping lists (with a shopping mode that ticks
+items off by category), share lists with other users, keep recipes and add
+their ingredients to a list, and keep favorites, products and categories.
+Accounts are invite-only. Feature work is tracked as Mission Briefs under
 `.agentic/missions/`.
 
+**Languages:** English and Finnish. The language follows the browser
+(`Accept-Language`) until the user picks one from the language menu; every
+user-facing string lives in `locales/<tag>.json`.
+
 ## Running locally
+
+Needs Rust (the version in `rust-toolchain.toml`; `rustup` installs it on
+the first build).
 
 ```bash
 cp .env.example .env
@@ -22,7 +31,32 @@ cargo run -p kauppa-web
 ```
 
 The server creates `data/kauppa.db` on first run and applies the migrations in
-`migrations/`.
+`migrations/`. The `.env.example` values are for a loopback address only.
+
+### The first account
+
+Registration is invite-only, and a fresh database has no accounts. Create the
+first one from a shell, with the server running or not:
+
+```bash
+cargo run -p kauppa-web -- admin invite --note "me"
+# prints: /auth/register?invite=<token>
+```
+
+Open `http://127.0.0.1:8080` followed by the printed path, register, and you
+are signed in. To make that account an administrator (it can then invite
+others at `/admin/invitations`):
+
+```bash
+cargo run -p kauppa-web -- admin grant you@example.com
+```
+
+## Deployment
+
+`deploy/README.md` is the operator guide: a container image, a Compose
+stack with Caddy for HTTPS, backups to object storage and Terraform for a
+DigitalOcean droplet. The same `admin invite` and `admin grant` commands
+bootstrap the first account there.
 
 ## Testing
 
@@ -45,17 +79,23 @@ kauppa-rs/
 │   └── kauppa-web/          # actix-web binary, handlebars, htmx
 ├── migrations/              # append-only SQL, applied on startup
 ├── templates/               # handlebars page templates
-├── assets/                  # static files served at /assets
+├── locales/                 # translations, one JSON catalog per language
+├── assets/                  # static files served at /assets (htmx vendored)
+├── deploy/                  # image, Compose stack, Terraform, operator guide
+├── docs/                    # the Agentic SE baseline this repo follows
 ├── scripts/agentic/         # fast-gate, scaffolds, CI validators
+├── scripts/deploy/          # deployment checks and drills
 └── .agentic/                # Mission Briefs, Runbooks, Mentorship Packs, …
 ```
 
 ## Agentic workflow
 
-Development follows the baseline in `../Agentic SE Implementation Baseline.md`.
+Development follows the baseline in
+[`docs/agentic-se-baseline.md`](docs/agentic-se-baseline.md); where it and
+this repository's runbooks or packs differ, the repository wins.
 
 - **Starting work:** `scripts/agentic/scaffold-mission.sh <slug>` creates a
-  Mission Brief. Fill it in. The feature runbook
+  Mission Brief and its Continuity Pack. Fill them in. The feature runbook
   (`.agentic/runbooks/feature.md`) governs execution.
 - **Hitting a decision boundary:**
   `scripts/agentic/scaffold-consult.sh <slug>` opens a Consultation Request
