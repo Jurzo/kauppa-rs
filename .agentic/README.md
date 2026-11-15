@@ -1,7 +1,7 @@
 # `.agentic/` — Agentic SE artifacts
 
 This directory holds the governance and evidence artifacts for `kauppa-rs`,
-per the [baseline](../../Agentic%20SE%20Implementation%20Baseline.md).
+per the [baseline](../docs/agentic-se-baseline.md).
 
 | Subdir | What goes here | Owner |
 | --- | --- | --- |

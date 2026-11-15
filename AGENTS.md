@@ -1,9 +1,11 @@
 # AGENTS.md — Root Mentorship Pack
 
-Version: v1 · Owner: @juuso-kalliomaki · Last reviewed: 2026-10-28
+Version: v1 · Owner: @juuso-kalliomaki · Last reviewed: 2026-11-15
 
 This is the root Mentorship Pack for `kauppa-rs`, following the baseline in
-[`Agentic SE Implementation Baseline`](../Agentic%20SE%20Implementation%20Baseline.md).
+[`Agentic SE Implementation Baseline`](docs/agentic-se-baseline.md). It was
+written for a Java and TypeScript team; where it and this repository's
+runbooks or packs differ, the repository wins.
 It conditions judgment; it does **not** enforce. Enforcement lives in
 `.agentic/runbooks/` and in CI (`.github/workflows/agentic-gate.yml`).
 
@@ -15,9 +17,10 @@ etc.) must point at this file rather than diverging from it.
 ## Map
 
 **What the system is.** `kauppa-rs` is a self-hosted web app for creating and
-managing shopping lists and recipes on mobile and desktop. Multi-user with
-server-side sessions. Server-rendered HTML with progressive enhancement via
-htmx — no SPA.
+managing shopping lists and recipes on mobile and desktop. Multi-user, with
+signed-in sessions kept in an encrypted, signed cookie (actix-session's
+cookie store). Server-rendered HTML with progressive enhancement via htmx —
+no SPA.
 
 **Where changes belong.**
 
@@ -28,6 +31,8 @@ htmx — no SPA.
 | Auth primitives | `crates/kauppa-core/src/password.rs` | Argon2id. Never roll your own in handlers. |
 | HTTP handlers | `crates/kauppa-web/src/routes/` | Thin: parse → call core → render. |
 | Templates | `templates/*.hbs` | Handlebars partial-block layout. |
+| Translations | `locales/<tag>.json`, `crates/kauppa-web/src/i18n/` | Every user-facing string; the `{{t}}` helper and the `Ui` extractor (RR-0023). |
+| Deployment | `deploy/`, `scripts/deploy/` | Image, Compose stack, Terraform; `deploy/README.md` is the operator guide (RR-0014). |
 | Client interactivity | `assets/*` + `hx-*` attrs | htmx first (vendored at `assets/vendor/`, RR-0015); add JS only when htmx can't. |
 | Schema | `migrations/*.sql` | Append-only. New file per change. |
 | Agentic artifacts | `.agentic/` | Human-owned governance. |
@@ -110,8 +115,9 @@ consult.
   a consult (Table 4) with the invariant you can't prove locally.
 - **Logging.** Use `tracing` macros with structured fields
   (`tracing::info!(user_id = %id, "...")`), never `println!` or `eprintln!`.
-- **DB access.** Only via repo traits (`UserRepo`, `ShoppingListRepo`,
-  `RecipeRepo`). Hand-rolled `sqlx` calls in handlers are a red flag.
+- **DB access.** Only via the repo traits in `kauppa_core::repo` (`UserRepo`,
+  `InvitationRepo`, `AdminRepo`, `CategoryRepo`, `ProductRepo`,
+  `ShoppingListRepo`, `RecipeRepo`). Hand-rolled `sqlx` calls in handlers are a red flag.
 - **Templates.** Each page is `{{#> layout page_title="..."}}...{{/layout}}`.
   Keep layout markup in one place. Layout parameters are prefixed `page_`
   (RR-0006).
