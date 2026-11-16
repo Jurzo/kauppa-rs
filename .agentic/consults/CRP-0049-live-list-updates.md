@@ -642,3 +642,10 @@ Rollback plan:
 - **Not verified, and said so above:** Caddy's flushing of event
   streams (P7's check); focus on browsers without `moveBefore` (Q7 A);
   idiomorph's defaults (Q7 D). No code was run for this consult.
+
+## Owner's answer (2026-11-16)
+
+As recommended: Q1 A, Q2 A, Q3 A, Q4 A, Q5 A, Q6 A, Q7 A, Q8 A, Q9 A, and
+Q10 as listed.
+
+Recorded in RR-0049 (scaffold; the owner signs).
