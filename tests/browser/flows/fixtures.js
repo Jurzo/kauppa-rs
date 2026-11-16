@@ -10,6 +10,15 @@
 // A flow that expects an error status declares it with
 // `failedLoads.allow(status, path)`, which accepts only Chromium's
 // "Failed to load resource" console line for that exact response.
+//
+// `second` is a page of the second account, in its own browser context,
+// under the same watch (MB-0057: one user sees another's changes).
+//
+// The one exception to the htmx rule (RR-0049 sub-answer 9, amending
+// RR-0041 constraint 2): the reconnect flow drops its own event stream and
+// calls `sseErrors.allowAfterDrop()` first. From then on that flow accepts
+// `htmx:sseError`, the `htmx:error` htmx sends with it, and the console
+// line htmx logs for it. No other flow may.
 import { readFileSync } from 'node:fs';
 import { test as base, expect } from 'playwright/test';
 
@@ -30,6 +39,13 @@ export function t(key, vars = {}) {
 export const user = {
   name: 'Browser Test',
   email: 'browser-test@example.invalid',
+  password: 'correct horse battery staple',
+};
+
+/** The second account (the setup project registers both). */
+export const secondUser = {
+  name: 'Second Tester',
+  email: 'browser-test-2@example.invalid',
   password: 'correct horse battery staple',
 };
 
@@ -60,7 +76,67 @@ export function htmxRequest(method, path) {
     req.headers()['hx-request'] === 'true';
 }
 
+// What htmx dispatches when an event stream fails: the error event in both
+// spellings, and the general `htmx:error` that accompanies an error event.
+const SSE_ERROR_EVENTS = ['htmx:sseError', 'htmx:sse-error', 'htmx:error'];
+
+/**
+ * Watch `page` for the problems P2 names; each is pushed to `problems`.
+ */
+async function watch(page, origin, problems, failedLoads, sseErrors) {
+  await page.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== origin) {
+      problems.push(`request to another origin: ${url.href}`);
+      return route.abort('blockedbyclient');
+    }
+    return route.continue();
+  });
+
+  await page.exposeFunction('__kauppaReport', (kind, detail) => {
+    if (kind === 'htmx error event' && sseErrors.allows(detail)) return;
+    problems.push(`${kind}: ${detail}`);
+  });
+  await page.addInitScript(() => {
+    document.addEventListener(
+      'securitypolicyviolation',
+      (e) => {
+        window.__kauppaReport(
+          'CSP violation',
+          `${e.violatedDirective} blocked ${e.blockedURI || '(inline)'} in ${e.sourceFile || e.documentURI}:${e.lineNumber}`,
+        );
+      },
+      true,
+    );
+    // htmx dispatches its events with dispatchEvent; catch every error
+    // event, both spellings (htmx:responseError, htmx:response-error).
+    const dispatch = EventTarget.prototype.dispatchEvent;
+    EventTarget.prototype.dispatchEvent = function (event) {
+      if (/^htmx:.*error/i.test(event.type)) {
+        window.__kauppaReport('htmx error event', event.type);
+      }
+      return dispatch.call(this, event);
+    };
+  });
+
+  page.on('console', (msg) => {
+    if (msg.type() !== 'error') return;
+    const url = msg.location().url;
+    if (failedLoads.allows(msg.text(), url)) return;
+    if (sseErrors.allowsConsole(msg.text(), url)) return;
+    problems.push(`console error: ${msg.text()}${url ? ` (${url})` : ''}`);
+  });
+  page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
+}
+
 export const test = base.extend({
+  // Everything the watched pages reported; the test fails if any is left.
+  problems: async ({}, use) => {
+    const problems = [];
+    await use(problems);
+    expect(problems, 'CSP violations, console errors, htmx errors, other origins').toEqual([]);
+  },
+
   failedLoads: async ({}, use) => {
     const allowed = [];
     await use({
@@ -77,55 +153,43 @@ export const test = base.extend({
     });
   },
 
-  page: async ({ page, baseURL, failedLoads }, use) => {
-    const problems = [];
-    const origin = new URL(baseURL).origin;
-
-    await page.route('**/*', (route) => {
-      const url = new URL(route.request().url());
-      if (url.origin !== origin) {
-        problems.push(`request to another origin: ${url.href}`);
-        return route.abort('blockedbyclient');
-      }
-      return route.continue();
+  // RR-0049 sub-answer 9: only the reconnect flow calls `allowAfterDrop`.
+  sseErrors: async ({}, use) => {
+    let allowed = false;
+    const seen = [];
+    await use({
+      allowAfterDrop() {
+        allowed = true;
+      },
+      /** The allowed events and console lines seen, for the flow to check. */
+      seen,
+      allows(eventType) {
+        if (!allowed || !SSE_ERROR_EVENTS.includes(eventType)) return false;
+        seen.push(eventType);
+        return true;
+      },
+      // htmx logs the error event it was given: the console shows an Event
+      // object, from the vendored htmx file.
+      allowsConsole(text, url) {
+        const fromHtmx = url && /\/assets\/vendor\/htmx-[\d.]+\.min\.js$/.test(new URL(url).pathname);
+        if (!allowed || !fromHtmx || text !== '[object Event]') return false;
+        seen.push(`console: ${text}`);
+        return true;
+      },
     });
+  },
 
-    await page.exposeFunction('__kauppaReport', (kind, detail) => {
-      problems.push(`${kind}: ${detail}`);
-    });
-    await page.addInitScript(() => {
-      document.addEventListener(
-        'securitypolicyviolation',
-        (e) => {
-          window.__kauppaReport(
-            'CSP violation',
-            `${e.violatedDirective} blocked ${e.blockedURI || '(inline)'} in ${e.sourceFile || e.documentURI}:${e.lineNumber}`,
-          );
-        },
-        true,
-      );
-      // htmx dispatches its events with dispatchEvent; catch every error
-      // event, both spellings (htmx:responseError, htmx:response-error).
-      const dispatch = EventTarget.prototype.dispatchEvent;
-      EventTarget.prototype.dispatchEvent = function (event) {
-        if (/^htmx:.*error/i.test(event.type)) {
-          window.__kauppaReport('htmx error event', event.type);
-        }
-        return dispatch.call(this, event);
-      };
-    });
-
-    page.on('console', (msg) => {
-      if (msg.type() !== 'error') return;
-      const url = msg.location().url;
-      if (failedLoads.allows(msg.text(), url)) return;
-      problems.push(`console error: ${msg.text()}${url ? ` (${url})` : ''}`);
-    });
-    page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
-
+  page: async ({ page, baseURL, problems, failedLoads, sseErrors }, use) => {
+    await watch(page, new URL(baseURL).origin, problems, failedLoads, sseErrors);
     await use(page);
+  },
 
-    expect(problems, 'CSP violations, console errors, htmx errors, other origins').toEqual([]);
+  second: async ({ browser, baseURL, problems, failedLoads, sseErrors }, use) => {
+    const context = await browser.newContext({ baseURL, locale: 'en-US', storageState: '.auth/second.json' });
+    const page = await context.newPage();
+    await watch(page, new URL(baseURL).origin, problems, failedLoads, sseErrors);
+    await use(page);
+    await context.close();
   },
 });
 

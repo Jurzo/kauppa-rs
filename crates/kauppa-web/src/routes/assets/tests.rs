@@ -26,6 +26,8 @@ const SERVED_AS: &[(&str, &str)] = &[
     ("vendor/htmx-2.0.11.min.js", "text/javascript"),
     // MB-0029 (RR-0018): the response-targets extension.
     ("vendor/response-targets-2.0.4.min.js", "text/javascript"),
+    // MB-0057 (RR-0049): the SSE extension.
+    ("vendor/sse-2.2.4.min.js", "text/javascript"),
     // MB-0051 (RR-0031 sub-answer 6): the language selector's flags. No
     // charset: `actix-files` 0.7.4 added one only to text types.
     ("flags/en.svg", "image/svg+xml"),

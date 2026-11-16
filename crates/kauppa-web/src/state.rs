@@ -3,6 +3,7 @@ use std::sync::Arc;
 use kauppa_core::repo::SqlitePool;
 
 use crate::csrf::OriginPolicy;
+use crate::live::LiveHub;
 use crate::routes::auth::limiter::AuthLimiter;
 use crate::templates::Templates;
 
@@ -18,6 +19,9 @@ pub struct AppState {
     /// `KAUPPA_COOKIE_SECURE`, for the `kauppa_lang` cookie's `Secure`
     /// attribute (RR-0023 sub-answer 4).
     pub cookie_secure: bool,
+    /// Announces list changes to the open list pages (MB-0057, RR-0049
+    /// sub-answer 4).
+    pub live: Arc<LiveHub>,
 }
 
 impl std::fmt::Debug for AppState {

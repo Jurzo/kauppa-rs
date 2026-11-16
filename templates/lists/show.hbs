@@ -1,7 +1,15 @@
 {{#> layout page_title=list.name page_signed_in=true page_nav="lists"}}
-<section>
+{{!-- MB-0057 (RR-0049): the page listens on the list's event stream. The
+stream carries only "changed" (and "stop" when access ends); the element
+below then re-fetches the list (answered by lists/_live) and swaps only
+its items part, so a live update doesn't touch what is being typed in the
+add forms (sub-answer 7). The tab id rides
+on this page's own writes (hx-headers), so they aren't announced back to
+it (sub-answer 8); it authorizes nothing. --}}
+<section sse-connect="/lists/{{list.id}}/events?tab={{live.tab}}&amp;since={{live.since}}" sse-close="stop" hx-headers='{"X-Live-Tab":"{{live.tab}}"}'>
+  <div hidden hx-get="/lists/{{list.id}}" hx-trigger="sse:changed" hx-target="#list-items-{{list.id}}" hx-swap="outerHTML" hx-include="#list-shown-{{list.id}}"></div>
   <header class="section-header">
-    <h1>{{list.name}}</h1>
+    <h1 id="list-name-{{list.id}}">{{list.name}}</h1>
     <a href="/lists">{{t "lists.all"}}</a>
     {{#if list.is_owner}}<a href="/lists/{{list.id}}/sharing">{{t "sharing.share"}}</a>{{/if}}
     {{!-- MB-0060 (RR-0047): anyone who can open the list adds its items to their own favorites. --}}

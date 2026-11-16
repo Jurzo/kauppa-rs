@@ -173,6 +173,9 @@ pub async fn share(
             .map(|granted| (role, granted)),
         Err(e) => Err(e),
     };
+    // A new grant or a changed role: the grantee's open pages re-fetch and
+    // show what the role allows (MB-0057, RR-0049 sub-answer 6).
+    super::announce(&state, &req, user, list_id, &outcome);
     let error = match outcome {
         Ok((role, granted)) => {
             // Audit (RR-0002 constraint 5): grantor and list, never the
@@ -248,7 +251,11 @@ pub async fn revoke(
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let (list_id, share_id) = path.into_inner();
-    let revoked = ShoppingListRepo::revoke(&state.pool, user, list_id, share_id).await?;
+    let revoked = ShoppingListRepo::revoke(&state.pool, user, list_id, share_id).await;
+    // The grantee's streams re-check, fail, and get `changed` then `stop`
+    // (MB-0057, RR-0049 sub-answer 3).
+    super::announce(&state, &req, user, list_id, &revoked);
+    let revoked = revoked?;
     tracing::info!(
         grantor_id = %user,
         list_id = %list_id,

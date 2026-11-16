@@ -66,6 +66,11 @@ pub async fn add_recipe_to_list(
         }
         (Err(e), _) | (_, Err(e)) => Err(e),
     };
+    // Tell the list's open pages (MB-0057, RR-0049 sub-answer 6). This page
+    // isn't one of them, so there is no tab to skip.
+    if let Ok((list_id, _)) = &outcome {
+        state.live.changed(*list_id, None);
+    }
     let fragment = wants_fragment(&req);
     let (status, feedback) = match outcome {
         Ok((list_id, _)) if !fragment => {

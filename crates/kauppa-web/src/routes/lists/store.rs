@@ -35,6 +35,9 @@ struct ShopView {
     can_edit: bool,
     /// Set when the list is archived (MB-0062): read-only, with a notice.
     archived: Option<super::ArchivedNotice>,
+    /// The page's connection to the event stream (MB-0057); the fragment
+    /// doesn't use it.
+    live: super::LivePage,
     error: Option<String>,
 }
 
@@ -53,17 +56,29 @@ struct ShopItem {
     checked: bool,
 }
 
-/// Render the store view as the full page or, for htmx, the `#shop-{id}`
-/// fragment.
+/// Which part of the store view to render.
+#[derive(Debug, Clone, Copy)]
+enum ShopPart {
+    /// The full page.
+    Page,
+    /// `#shop-{id}`, for the viewer's own htmx requests.
+    Fragment,
+    /// A live re-fetch (MB-0057): `#shop-{id}` with the title and heading.
+    Live,
+}
+
+/// Render the store view: the full page, the `#shop-{id}` fragment, or the
+/// answer to a live re-fetch.
 async fn render_shop(
     state: &AppState,
     ui: &Ui,
     user: Uuid,
     list_id: Uuid,
-    fragment: bool,
+    part: ShopPart,
     status: StatusCode,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
+    let live = super::LivePage::new(state);
     let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let groups = ShoppingListRepo::store_view(&state.pool, user, list_id).await?;
@@ -92,12 +107,13 @@ async fn render_shop(
         groups,
         can_edit: access >= ListAccess::Edit && archived.is_none(),
         archived,
+        live,
         error,
     };
-    let template = if fragment {
-        "lists/_shop"
-    } else {
-        "lists/shop"
+    let template = match part {
+        ShopPart::Page => "lists/shop",
+        ShopPart::Fragment => "lists/_shop",
+        ShopPart::Live => "lists/_shop_live",
     };
     let body = ui.render(state, template, &view)?;
     Ok(HttpResponse::build(status)
@@ -123,7 +139,16 @@ async fn respond_shop<T>(
         Err(e) => return Err(e.into()),
     };
     if is_hx(req) {
-        render_shop(state, ui, user, list_id, true, StatusCode::OK, error).await
+        render_shop(
+            state,
+            ui,
+            user,
+            list_id,
+            ShopPart::Fragment,
+            StatusCode::OK,
+            error,
+        )
+        .await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, format!("/lists/{list_id}/shop")))
@@ -134,7 +159,7 @@ async fn respond_shop<T>(
             ui,
             user,
             list_id,
-            false,
+            ShopPart::Page,
             StatusCode::BAD_REQUEST,
             error,
         )
@@ -160,17 +185,15 @@ pub async fn shop(
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let fragment = wants_fragment(&req);
-    render_shop(
-        &state,
-        &ui,
-        user,
-        path.into_inner(),
-        fragment,
-        StatusCode::OK,
-        None,
-    )
-    .await
+    let list_id = path.into_inner();
+    let part = if super::is_live_refetch(&req, &format!("shop-{list_id}")) {
+        ShopPart::Live
+    } else if wants_fragment(&req) {
+        ShopPart::Fragment
+    } else {
+        ShopPart::Page
+    };
+    render_shop(&state, &ui, user, list_id, part, StatusCode::OK, None).await
 }
 
 /// Mark an item found or not found. The form sends the state to set, so a
@@ -192,6 +215,7 @@ pub async fn check_item(
         }
         Err(e) => Err(e),
     };
+    super::announce(&state, &req, user, list_id, &outcome);
     respond_shop(&state, &ui, &req, user, list_id, outcome).await
 }
 
@@ -208,5 +232,6 @@ pub async fn remove_from_shop(
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::remove_item(&state.pool, user, list_id, item_id).await;
+    super::announce(&state, &req, user, list_id, &outcome);
     respond_shop(&state, &ui, &req, user, list_id, outcome).await
 }

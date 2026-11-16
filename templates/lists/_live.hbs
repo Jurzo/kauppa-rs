@@ -1,0 +1,10 @@
+{{!-- MB-0057 (RR-0049): the answer to a list page's live re-fetch. The
+items part is swapped into its place. htmx sets the page title from the
+<title>, and the heading is swapped out of band, so a rename shows. The
+forms part comes along only when the page's no longer fits (lists/_forms). --}}
+<title>{{list.name}} — kauppalista.app</title>
+<h1 id="list-name-{{list.id}}" hx-swap-oob="true">{{list.name}}</h1>
+{{> lists/_items list}}
+{{#if forms_changed}}
+{{> lists/_forms list oob=true}}
+{{/if}}

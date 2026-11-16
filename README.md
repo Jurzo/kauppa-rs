@@ -14,6 +14,12 @@ their ingredients to a list, and keep favorites, products and categories.
 Accounts are invite-only. Feature work is tracked as Mission Briefs under
 `.agentic/missions/`.
 
+**Live updates:** an open list page and its shopping view show other
+people's changes as they happen, over one event stream per open page (at most
+eight per user). Browsers allow about six HTTP/1.1 connections per origin, so
+with many list tabs open serve the app over HTTP/2, as the Compose stack's
+Caddy does. Without JavaScript the pages work, without live updates.
+
 **Languages:** English and Finnish. The language follows the browser
 (`Accept-Language`) until the user picks one from the language menu; every
 user-facing string lives in `locales/<tag>.json`.

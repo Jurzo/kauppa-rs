@@ -1,0 +1,66 @@
+{{!-- The list page's forms: the add field, the recipe form, or the notice
+that takes their place. MB-0057 (RR-0049 sub-answer 7): a live update leaves
+this part alone, unless what it shows no longer fits the viewer's access or
+the list's archived state. The hidden field says which state this markup is
+for; the live re-fetch sends it (hx-include), and the answer carries this
+part again (oob=true: an out-of-band swap) only when the state differs. --}}
+<div id="list-forms-{{id}}" class="list-forms"{{#if oob}} hx-swap-oob="true"{{/if}}>
+  <input type="hidden" id="list-shown-{{id}}" name="shown" value="{{shown}}" />
+  {{#if error}}
+    <p class="error" role="alert">{{error}}</p>
+  {{/if}}
+
+  {{#if can_edit}}
+  <form class="add-product" method="post" action="/lists/{{id}}/items"
+        hx-post="/lists/{{id}}/items" hx-target="#list-{{id}}" hx-swap="outerHTML">
+    <label>{{t "lists.item"}}
+      <input id="new-item" name="text" type="text" required autocomplete="off"
+             {{#if is_owner}}list="favorite-suggestions" {{/if}}placeholder="{{t "lists.item_placeholder"}}"
+             value="{{draft.text}}" />
+    </label>
+    <label>{{t "common.quantity"}}
+      <input name="quantity" type="text" autocomplete="off" placeholder="{{t "common.optional"}}"
+             value="{{draft.quantity}}" />
+    </label>
+    <button type="submit" class="button primary">{{t "common.add"}}</button>
+  </form>
+  {{else if archived}}
+  {{!-- MB-0062 (RR-0045): an archived list is read-only (can_edit is false); its owner can restore it here. Restore takes the add form's place as the page's one primary button. --}}
+  <div class="archived-notice">
+    <p>{{t "lists.archived_on" date=archived.date}}</p>
+    {{#if archived.can_restore}}
+    <form method="post" action="/lists/{{id}}/unarchive">
+      <input type="hidden" name="back" value="list" />
+      <button type="submit" class="button primary">{{t "lists.restore"}}<span class="visually-hidden"> {{name}}</span></button>
+    </form>
+    {{/if}}
+  </div>
+  {{else}}
+    <p class="muted">{{t "lists.view_shared"}}</p>
+  {{/if}}
+
+  {{#if is_owner}}{{#unless archived}}
+  {{#unless favorite_count}}
+    <p class="muted">{{t "lists.favorites_hint_before"}} <a href="/favorites">{{t "lists.favorites_hint_link"}}</a>{{t "lists.favorites_hint_after"}}</p>
+  {{/unless}}
+
+  {{#if recipes}}
+    <form class="add-product" method="post" action="/lists/{{id}}/recipes"
+          hx-post="/lists/{{id}}/recipes" hx-target="#list-{{id}}" hx-swap="outerHTML">
+      <label>{{t "lists.recipe"}}
+        <select name="recipe_id" required>
+          <option value="" disabled selected>{{t "lists.choose_recipe"}}</option>
+          {{#each recipes}}
+            <option value="{{this.id}}">{{this.title}}</option>
+          {{/each}}
+        </select>
+      </label>
+      <label>{{t "common.times"}}
+        <input name="multiplier" type="text" inputmode="decimal" autocomplete="off"
+               value="{{#if draft.multiplier}}{{draft.multiplier}}{{else}}1{{/if}}" />
+      </label>
+      <button type="submit" class="button">{{t "common.add_ingredients"}}</button>
+    </form>
+  {{/if}}
+  {{/unless}}{{/if}}
+</div>

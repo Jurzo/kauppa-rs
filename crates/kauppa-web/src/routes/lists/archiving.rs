@@ -20,7 +20,7 @@ use crate::i18n::Ui;
 use crate::routes::request::current_user;
 use crate::state::AppState;
 
-use super::{index_location, respond};
+use super::{announce, index_location, respond};
 
 /// Where Restore returns to when it isn't the index: the list's page
 /// (`list`) or its store view (`shop`).
@@ -43,6 +43,7 @@ pub async fn archive(
     let user = current_user(&id)?;
     let list = path.into_inner();
     let outcome = ShoppingListRepo::archive(&state.pool, user, list).await;
+    announce(&state, &req, user, list, &outcome);
     if outcome.is_ok() {
         tracing::info!(user_id = %user, list_id = %list, "list archived");
     }
@@ -73,6 +74,7 @@ pub async fn unarchive(
     let user = current_user(&id)?;
     let list = path.into_inner();
     let outcome = ShoppingListRepo::unarchive(&state.pool, user, list).await;
+    announce(&state, &req, user, list, &outcome);
     if outcome.is_ok() {
         tracing::info!(user_id = %user, list_id = %list, "list restored from the archive");
     }

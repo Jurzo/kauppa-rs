@@ -44,10 +44,22 @@
 //! changes (`Conflict::Archived`, the 409 page), and their controls aren't
 //! rendered. Rename, delete and sharing stay the owner's as before.
 //!
+//! Open list pages update live (MB-0057, RR-0049). `/lists/{id}/events`
+//! (`live`) is an event stream that says only "changed"; the page then
+//! re-fetches through `show` or `shop`, so everything it shows passes the
+//! same predicate, role, language and theme as a page load. Every handler
+//! that changes what a list shows calls [`announce`] after its repo call
+//! succeeded (`tests::live_guard` checks), with the page's tab id
+//! (`X-Live-Tab`) so the page that made the change isn't told. A live
+//! re-fetch of the list page (`ListPart::Live`) answers the items part
+//! alone, so the add forms keep what is being typed, plus the title and
+//! heading (a rename) and, when the viewer's role or the archived state no
+//! longer fits what the page shows, the forms part out of band.
+//!
 //! Split by area (MB-0019, RR-0009): this file has the shared views and
 //! rendering, and the list index and lifecycle handlers; `items` (MB-0004,
-//! MB-0005), `store` (MB-0006), `shares` (MB-0008), `archiving` (MB-0062) and
-//! `exporting` (MB-0060) have the rest. Tests are in `tests/<area>.rs`.
+//! MB-0005), `store` (MB-0006), `shares` (MB-0008), `archiving` (MB-0062),
+//! `exporting` (MB-0060) and `live` (MB-0057) have the rest. Tests are in `tests/<area>.rs`.
 
 use actix_identity::Identity;
 use actix_web::http::{StatusCode, header};
@@ -71,6 +83,7 @@ use crate::state::AppState;
 mod archiving;
 mod exporting;
 mod items;
+mod live;
 mod shares;
 mod store;
 #[cfg(test)]
@@ -79,6 +92,7 @@ mod tests;
 pub use archiving::{archive, unarchive};
 pub use exporting::{export, export_confirm, export_done};
 pub use items::{add_item, add_recipe, remove_item, restore_item, update_item};
+pub use live::events;
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};
 
@@ -199,6 +213,8 @@ struct ListCard {
 #[derive(Debug, Serialize)]
 struct ShowView {
     list: ListView,
+    /// This page's connection to the list's event stream (MB-0057).
+    live: LivePage,
     /// The owner's favorite names for the add field's `<datalist>`
     /// (MB-0036). On the page, outside `#list-{id}`, so fragments don't
     /// resend them; empty for grantees.
@@ -226,8 +242,55 @@ struct ListView {
     can_edit: bool,
     /// Set when the list is archived (MB-0062): read-only, with a notice.
     archived: Option<ArchivedNotice>,
+    /// Which forms this rendering shows ([`shown_state`]), in the forms
+    /// part's hidden field (MB-0057).
+    shown: String,
     draft: ItemDraft,
     error: Option<String>,
+}
+
+/// The answer to a list page's live re-fetch (`lists/_live`, MB-0057).
+#[derive(Debug, Serialize)]
+struct LiveListView {
+    list: ListView,
+    /// The page's forms part no longer fits (the viewer's role or the
+    /// archived state changed): send it again, out of band.
+    forms_changed: bool,
+}
+
+/// Which part of an open list to render.
+#[derive(Debug)]
+enum ListPart {
+    /// The full page.
+    Page,
+    /// `#list-{id}`, for the viewer's own htmx requests.
+    Fragment,
+    /// A live re-fetch (MB-0057, RR-0049 sub-answer 7): the items part,
+    /// and the forms part only if the page's (`shown`, as the page sent
+    /// it) no longer fits.
+    Live { shown: Option<String> },
+}
+
+/// What decides which forms a list page shows: the viewer's role and the
+/// archived state. A live re-fetch compares the page's value with the
+/// current one.
+fn shown_state(can_edit: bool, is_owner: bool, archived: bool) -> String {
+    format!(
+        "{}-{}-{}",
+        if can_edit { "edit" } else { "read" },
+        if is_owner { "owner" } else { "shared" },
+        if archived { "archived" } else { "active" },
+    )
+}
+
+/// Whether `req` is a list page's live re-fetch: an htmx request whose
+/// target is `target` (`list-items-{id}` or `shop-{id}`).
+fn is_live_refetch(req: &HttpRequest, target: &str) -> bool {
+    wants_fragment(req)
+        && req
+            .headers()
+            .get("HX-Target")
+            .is_some_and(|v| v.as_bytes() == target.as_bytes())
 }
 
 #[derive(Debug, Serialize)]
@@ -237,6 +300,68 @@ struct ItemRow {
     quantity: String,
     category: Option<String>,
     picker: Picker,
+    /// Part of the edit section's element id (MB-0057, RR-0049 sub-answer
+    /// 7): it changes when the item's saved quantity or category does, so
+    /// a live update keeps an open section (`hx-preserve`) unless its own
+    /// item changed.
+    edit_key: String,
+}
+
+/// What a list page needs to listen for changes (MB-0057, RR-0049
+/// sub-answers 4 and 8), made per page render.
+#[derive(Debug, Serialize)]
+struct LivePage {
+    /// A random id for this page: its writes carry it (`hx-headers`) and
+    /// its stream names it, so the page isn't told about its own changes.
+    /// It authorizes nothing.
+    tab: Uuid,
+    /// Where the render started, for the stream's catch-up.
+    since: String,
+}
+
+impl LivePage {
+    /// Call before reading the list, so a change during the render is
+    /// caught up.
+    fn new(state: &AppState) -> Self {
+        Self {
+            tab: Uuid::new_v4(),
+            since: state.live.mark(),
+        }
+    }
+}
+
+/// The request header a list page's writes carry its tab id in.
+const LIVE_TAB: &str = "X-Live-Tab";
+
+/// Announce a successful write to everyone viewing `list` (MB-0057,
+/// RR-0049 sub-answer 4), except the page that made it (sub-answer 8). A
+/// rejected write announces nothing.
+fn announce<T>(
+    state: &AppState,
+    req: &HttpRequest,
+    user: Uuid,
+    list: Uuid,
+    outcome: &CoreResult<T>,
+) {
+    if outcome.is_ok() {
+        let tab = req
+            .headers()
+            .get(LIVE_TAB)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| Uuid::parse_str(v).ok());
+        let writer = tab.map(|tab| crate::live::Writer { user, tab });
+        state.live.changed(list, writer);
+    }
+}
+
+/// The edit section's key: a digest of the saved quantity and category.
+fn edit_key(quantity: &str, category: Option<Uuid>) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    quantity.hash(&mut hasher);
+    category.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 #[derive(Debug, Serialize)]
@@ -256,10 +381,12 @@ struct ItemDraft {
 
 fn item_row(item: ListItem, categories: &[Category]) -> ItemRow {
     let category_id = item.category.as_ref().map(|c| c.id);
+    let quantity = item.quantity.unwrap_or_default();
     ItemRow {
         id: item.id,
         text: item.text,
-        quantity: item.quantity.unwrap_or_default(),
+        edit_key: edit_key(&quantity, category_id),
+        quantity,
         category: item.category.map(|c| c.name),
         picker: Picker::optional(categories, category_id),
     }
@@ -274,18 +401,19 @@ fn favorite_names(groups: Vec<ProductGroup>) -> Vec<String> {
         .collect()
 }
 
-/// Render an open list as the full page or, for htmx, its `#list-{id}`
-/// fragment.
+/// Render an open list: the full page, its `#list-{id}` fragment for the
+/// viewer's own htmx requests, or the answer to a live re-fetch.
 async fn render_list(
     ui: &Ui,
     user: Uuid,
     list_id: Uuid,
-    fragment: bool,
+    part: ListPart,
     status: StatusCode,
     draft: ItemDraft,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
     let state = ui.state();
+    let live = LivePage::new(state);
     let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let items = ShoppingListRepo::items(&state.pool, user, list_id, false).await?;
@@ -304,6 +432,7 @@ async fn render_list(
     };
     let archived = ArchivedNotice::new(&list, access, state, ui)?;
     let active = archived.is_none();
+    let can_edit = access >= ListAccess::Edit && active;
     let card = ListCard::new(list, state, ui)?;
     let removed_count = removed.len();
     let suggestions = favorite_names(favorites);
@@ -330,22 +459,31 @@ async fn render_list(
             .collect(),
         has_categories: !categories.is_empty(),
         is_owner,
-        can_edit: access >= ListAccess::Edit && active,
+        can_edit,
+        shown: shown_state(can_edit, is_owner, !active),
         archived,
         draft,
         error,
     };
-    let body = if fragment {
-        ui.render(state, "lists/_list", &view)?
-    } else {
-        ui.render(
+    let body = match part {
+        ListPart::Fragment => ui.render(state, "lists/_list", &view)?,
+        ListPart::Live { shown } => {
+            let forms_changed = shown.as_deref() != Some(view.shown.as_str());
+            let view = LiveListView {
+                list: view,
+                forms_changed,
+            };
+            ui.render(state, "lists/_live", &view)?
+        }
+        ListPart::Page => ui.render(
             state,
             "lists/show",
             &ShowView {
                 list: view,
+                live,
                 suggestions,
             },
-        )?
+        )?,
     };
     Ok(HttpResponse::build(status)
         .content_type("text/html")
@@ -374,14 +512,15 @@ async fn respond_item<T>(
     };
 
     if is_hx(req) {
-        render_list(ui, user, list_id, true, StatusCode::OK, draft, error).await
+        let part = ListPart::Fragment;
+        render_list(ui, user, list_id, part, StatusCode::OK, draft, error).await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, format!("/lists/{list_id}")))
             .finish())
     } else {
         let status = StatusCode::BAD_REQUEST;
-        render_list(ui, user, list_id, false, status, draft, error).await
+        render_list(ui, user, list_id, ListPart::Page, status, draft, error).await
     }
 }
 
@@ -569,27 +708,36 @@ pub async fn create(
     .await
 }
 
-/// Open a list to continue it.
+/// `GET /lists/{id}?shown=…`: the forms state a live re-fetch's page shows
+/// ([`shown_state`]), from the forms part's hidden field.
+#[derive(Debug, Deserialize)]
+struct ShowQuery {
+    shown: Option<String>,
+}
+
+/// Open a list to continue it. Also answers the page's live re-fetch
+/// (MB-0057): an htmx request that targets the items part.
 #[get("/{id}")]
 pub async fn show(
     req: HttpRequest,
     ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
+    query: web::Query<ShowQuery>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let fragment = wants_fragment(&req);
+    let list_id = path.into_inner();
+    let part = if is_live_refetch(&req, &format!("list-items-{list_id}")) {
+        ListPart::Live {
+            shown: query.into_inner().shown,
+        }
+    } else if wants_fragment(&req) {
+        ListPart::Fragment
+    } else {
+        ListPart::Page
+    };
     let draft = ItemDraft::default();
-    render_list(
-        &ui,
-        user,
-        path.into_inner(),
-        fragment,
-        StatusCode::OK,
-        draft,
-        None,
-    )
-    .await
+    render_list(&ui, user, list_id, part, StatusCode::OK, draft, None).await
 }
 
 #[post("/{id}/rename")]
@@ -605,6 +753,7 @@ pub async fn rename(
     let list = path.into_inner();
     let in_archive = is_archived(&state, user, list).await;
     let outcome = ShoppingListRepo::rename(&state.pool, user, list, &form.name).await;
+    announce(&state, &req, user, list, &outcome);
     respond(
         &state,
         &ui,
@@ -630,6 +779,8 @@ pub async fn delete(
     let list = path.into_inner();
     let in_archive = is_archived(&state, user, list).await;
     let outcome = ShoppingListRepo::delete(&state.pool, user, list).await;
+    // Every viewer's re-check now fails: a last `changed`, then `stop`.
+    announce(&state, &req, user, list, &outcome);
     respond(
         &state,
         &ui,
