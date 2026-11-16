@@ -36,8 +36,12 @@
     boosted form's target is <body>); only those forms carry
     hx-target-4xx="body", so nothing else changes. --}}
     <script src="/assets/vendor/response-targets-2.0.4.min.js" integrity="sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg" defer></script>
+    {{!-- MB-0057 (RR-0049): htmx's SSE extension, for live list updates.
+    <body> declares it, like response-targets (RR-0025); only the list page
+    and the shopping view connect (sse-connect). --}}
+    <script src="/assets/vendor/sse-2.2.4.min.js" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" defer></script>
   </head>
-  <body hx-boost="true" hx-ext="response-targets">
+  <body hx-boost="true" hx-ext="response-targets,sse">
     <header class="topbar">
       <a class="brand" href="/"><img class="brand-icon" src="/assets/icons/favicon.svg" alt="" width="28" height="28" />kauppalista.app</a>
       {{!-- MB-0040: on phones the nav is a native popover panel opened by

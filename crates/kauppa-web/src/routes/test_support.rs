@@ -55,6 +55,7 @@ pub async fn test_state_with_clock() -> (web::Data<AppState>, String, Arc<FakeCl
         // As `main.rs` with `KAUPPA_TRUSTED_PROXIES` unset.
         limiter: Arc::new(AuthLimiter::new(clock.clone(), TrustedProxies::default())),
         cookie_secure: false,
+        live: Arc::new(crate::live::LiveHub::new(crate::live::Limits::default())),
     });
     (state, url, clock)
 }

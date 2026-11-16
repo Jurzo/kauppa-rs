@@ -65,10 +65,27 @@ const RESPONSE_TARGETS_SHA256: &str =
 /// Its Subresource Integrity value, as `layout.hbs` carries it.
 const RESPONSE_TARGETS_SRI_SHA384: &str =
     "sha384-T41oglUPvXLGBVyRdZsVRxNWnOOqCynaPubjUVjxhsjFTKrFJGEMm3/0KGmNQ+Pg";
+/// The vendored htmx SSE extension (MB-0057, RR-0049 sub-answer 1): 2.2.4,
+/// 0BSD, byte-for-byte `package/dist/sse.min.js` from the npm registry
+/// tarball <https://registry.npmjs.org/htmx-ext-sse/-/htmx-ext-sse-2.2.4.tgz>,
+/// whose npm `dist.integrity` is
+/// `sha512-LJmxVhykyflBWgh5PvbRidcyuqMHlgfajmmzumvKctv9puvsufeH6OaejSMZTNTnEI8O2wXXn4ZZtBdpEMqmEQ==`.
+/// Never edit the file; upgrading or replacing it is a platform decision
+/// (RR-0049 constraint 4).
+const SSE_PATH: &str = "/assets/vendor/sse-2.2.4.min.js";
+/// SHA-256 of the file at [`SSE_PATH`] (2,853 bytes), hex.
+const SSE_SHA256: &str = "98a46496de0c3605fbffdce9167ba427bdd9553184f83f149c261891a92c0136";
+/// Its Subresource Integrity value, as `layout.hbs` carries it.
+const SSE_SRI_SHA384: &str =
+    "sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N";
+/// The extensions `<body>` declares, the only `hx-ext` in the templates
+/// (RR-0025 constraint 1, amended by RR-0049 sub-answer 1).
+const BODY_EXTENSIONS: &str = "response-targets,sse";
 /// The layout's scripts, in load order: `(src, integrity)`.
-const LAYOUT_SCRIPTS: [(&str, &str); 2] = [
+const LAYOUT_SCRIPTS: [(&str, &str); 3] = [
     (HTMX_PATH, HTMX_SRI_SHA384),
     (RESPONSE_TARGETS_PATH, RESPONSE_TARGETS_SRI_SHA384),
+    (SSE_PATH, SSE_SRI_SHA384),
 ];
 
 /// The workspace's `templates/` folder, for comparison only.
@@ -525,6 +542,13 @@ fn vendored_response_targets_checksum() {
     );
 }
 
+/// MB-0057 (RR-0049 constraint 4): the vendored SSE extension is exactly the
+/// published 2.2.4.
+#[test]
+fn vendored_sse_checksum() {
+    assert_vendored(SSE_PATH, 2_853, SSE_SHA256, SSE_SRI_SHA384);
+}
+
 /// The boosted full-page forms whose handler answers a 4xx with a rendered
 /// page (MB-0029's inventory, RR-0018 sub-answer 3): `(template, action)`.
 /// The sign-in form is a partial since MB-0056, shared by the login page
@@ -582,7 +606,7 @@ fn boosted_error_pages_swap() {
     let body = tags(&page, "body");
     assert_eq!(body.len(), 1, "{page}");
     assert_eq!(attr(body[0], "hx-boost"), Some("true"));
-    assert_eq!(attr(body[0], "hx-ext"), Some("response-targets"));
+    assert_eq!(attr(body[0], "hx-ext"), Some(BODY_EXTENSIONS));
 }
 
 /// MB-0029 P2 (RR-0025 constraints 1 and 2): `hx-ext` appears only on the
@@ -617,7 +641,7 @@ fn fragment_errors_not_swapped() {
     let (name, tag) = declarations[0];
     assert_eq!(name, "layout");
     assert!(tag.starts_with("<body "), "{tag}");
-    assert_eq!(attr(tag, "hx-ext"), Some("response-targets"));
+    assert_eq!(attr(tag, "hx-ext"), Some(BODY_EXTENSIONS));
 
     carriers.sort_unstable();
     let mut expected = ERROR_PAGE_FORMS.to_vec();

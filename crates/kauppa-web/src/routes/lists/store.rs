@@ -35,6 +35,9 @@ struct ShopView {
     can_edit: bool,
     /// Set when the list is archived (MB-0062): read-only, with a notice.
     archived: Option<super::ArchivedNotice>,
+    /// The page's connection to the event stream (MB-0057); the fragment
+    /// doesn't use it.
+    live: super::LivePage,
     error: Option<String>,
 }
 
@@ -64,6 +67,7 @@ async fn render_shop(
     status: StatusCode,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
+    let live = super::LivePage::new(state);
     let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let groups = ShoppingListRepo::store_view(&state.pool, user, list_id).await?;
@@ -92,6 +96,7 @@ async fn render_shop(
         groups,
         can_edit: access >= ListAccess::Edit && archived.is_none(),
         archived,
+        live,
         error,
     };
     let template = if fragment {
@@ -192,6 +197,7 @@ pub async fn check_item(
         }
         Err(e) => Err(e),
     };
+    super::announce(&state, &req, user, list_id, &outcome);
     respond_shop(&state, &ui, &req, user, list_id, outcome).await
 }
 
@@ -208,5 +214,6 @@ pub async fn remove_from_shop(
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::remove_item(&state.pool, user, list_id, item_id).await;
+    super::announce(&state, &req, user, list_id, &outcome);
     respond_shop(&state, &ui, &req, user, list_id, outcome).await
 }

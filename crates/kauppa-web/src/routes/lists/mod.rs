@@ -71,6 +71,7 @@ use crate::state::AppState;
 mod archiving;
 mod exporting;
 mod items;
+mod live;
 mod shares;
 mod store;
 #[cfg(test)]
@@ -79,6 +80,7 @@ mod tests;
 pub use archiving::{archive, unarchive};
 pub use exporting::{export, export_confirm, export_done};
 pub use items::{add_item, add_recipe, remove_item, restore_item, update_item};
+pub use live::events;
 pub use shares::{revoke, share, sharing};
 pub use store::{check_item, remove_from_shop, shop};
 
@@ -199,6 +201,8 @@ struct ListCard {
 #[derive(Debug, Serialize)]
 struct ShowView {
     list: ListView,
+    /// This page's connection to the list's event stream (MB-0057).
+    live: LivePage,
     /// The owner's favorite names for the add field's `<datalist>`
     /// (MB-0036). On the page, outside `#list-{id}`, so fragments don't
     /// resend them; empty for grantees.
@@ -237,6 +241,68 @@ struct ItemRow {
     quantity: String,
     category: Option<String>,
     picker: Picker,
+    /// Part of the edit section's element id (MB-0057, RR-0049 sub-answer
+    /// 7): it changes when the item's saved quantity or category does, so
+    /// a live update keeps an open section (`hx-preserve`) unless its own
+    /// item changed.
+    edit_key: String,
+}
+
+/// What a list page needs to listen for changes (MB-0057, RR-0049
+/// sub-answers 4 and 8), made per page render.
+#[derive(Debug, Serialize)]
+struct LivePage {
+    /// A random id for this page: its writes carry it (`hx-headers`) and
+    /// its stream names it, so the page isn't told about its own changes.
+    /// It authorizes nothing.
+    tab: Uuid,
+    /// Where the render started, for the stream's catch-up.
+    since: String,
+}
+
+impl LivePage {
+    /// Call before reading the list, so a change during the render is
+    /// caught up.
+    fn new(state: &AppState) -> Self {
+        Self {
+            tab: Uuid::new_v4(),
+            since: state.live.mark(),
+        }
+    }
+}
+
+/// The request header a list page's writes carry its tab id in.
+const LIVE_TAB: &str = "X-Live-Tab";
+
+/// Announce a successful write to everyone viewing `list` (MB-0057,
+/// RR-0049 sub-answer 4), except the page that made it (sub-answer 8). A
+/// rejected write announces nothing.
+fn announce<T>(
+    state: &AppState,
+    req: &HttpRequest,
+    user: Uuid,
+    list: Uuid,
+    outcome: &CoreResult<T>,
+) {
+    if outcome.is_ok() {
+        let tab = req
+            .headers()
+            .get(LIVE_TAB)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| Uuid::parse_str(v).ok());
+        let writer = tab.map(|tab| crate::live::Writer { user, tab });
+        state.live.changed(list, writer);
+    }
+}
+
+/// The edit section's key: a digest of the saved quantity and category.
+fn edit_key(quantity: &str, category: Option<Uuid>) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    quantity.hash(&mut hasher);
+    category.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 #[derive(Debug, Serialize)]
@@ -256,10 +322,12 @@ struct ItemDraft {
 
 fn item_row(item: ListItem, categories: &[Category]) -> ItemRow {
     let category_id = item.category.as_ref().map(|c| c.id);
+    let quantity = item.quantity.unwrap_or_default();
     ItemRow {
         id: item.id,
         text: item.text,
-        quantity: item.quantity.unwrap_or_default(),
+        edit_key: edit_key(&quantity, category_id),
+        quantity,
         category: item.category.map(|c| c.name),
         picker: Picker::optional(categories, category_id),
     }
@@ -286,6 +354,7 @@ async fn render_list(
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
     let state = ui.state();
+    let live = LivePage::new(state);
     let access = ShoppingListRepo::access(&state.pool, user, list_id).await?;
     let list = ShoppingListRepo::get(&state.pool, user, list_id).await?;
     let items = ShoppingListRepo::items(&state.pool, user, list_id, false).await?;
@@ -343,6 +412,7 @@ async fn render_list(
             "lists/show",
             &ShowView {
                 list: view,
+                live,
                 suggestions,
             },
         )?

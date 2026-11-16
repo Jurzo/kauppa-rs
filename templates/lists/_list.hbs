@@ -57,6 +57,12 @@
   {{/if}}
   {{/unless}}{{/if}}
 
+  {{!-- MB-0057 (RR-0049 sub-answer 7): the part a live update swaps. The
+  forms above stay out of it, so typed text and focus survive. An item's
+  edit section is kept as it is (hx-preserve: open, with its typed text)
+  while its id is unchanged; the id's last part changes when the item's
+  saved quantity or category does, and then the new section replaces it. --}}
+  <div id="list-items-{{id}}" class="list-items">
   <ul class="product-list">
     {{#each items}}
       <li class="product-row">
@@ -65,7 +71,7 @@
           <span class="muted">· {{#if this.category}}{{this.category}}{{else}}{{t "common.uncategorized"}}{{/if}}</span>
         </span>
         {{#if ../can_edit}}
-        <details class="product-edit">
+        <details class="product-edit" id="edit-{{this.id}}-{{this.edit_key}}" hx-preserve>
           <summary>{{#if ../is_owner}}{{#if this.category}}{{t "common.edit"}}{{else}}{{t "lists.choose_category"}}{{/if}}{{else}}{{t "common.edit"}}{{/if}}<span class="visually-hidden"> {{this.text}}</span></summary>
           {{#if ../is_owner}}{{#unless ../has_categories}}
             <p class="muted"><a href="/categories">{{t "lists.create_category_link"}}</a>{{t "lists.create_category_after"}}</p>
@@ -115,4 +121,5 @@
   {{/if}}
 
   <p class="muted">{{t "lists.updated" date=updated}}</p>
+  </div>
 </div>

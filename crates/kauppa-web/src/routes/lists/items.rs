@@ -16,7 +16,7 @@ use crate::routes::products::parse_category;
 use crate::routes::request::current_user;
 use crate::state::AppState;
 
-use super::{ItemDraft, parse_multiplier, respond_item};
+use super::{ItemDraft, announce, parse_multiplier, respond_item};
 
 #[derive(Debug, Deserialize)]
 struct ItemForm {
@@ -100,6 +100,7 @@ pub async fn add_item(
         }
         Err(e) => Err(e),
     };
+    announce(&state, &req, user, list_id, &outcome);
     let draft = if outcome.is_ok() {
         ItemDraft::default()
     } else {
@@ -134,6 +135,7 @@ pub async fn add_recipe(
         }
         (Err(e), _) | (_, Err(e)) => Err(e),
     };
+    announce(&state, &req, user, list_id, &outcome);
     let draft = ItemDraft {
         multiplier: if outcome.is_ok() {
             String::new()
@@ -180,6 +182,7 @@ pub async fn update_item(
         }
         Err(e) => Err(e),
     };
+    announce(&state, &req, user, list_id, &outcome);
     respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
@@ -195,6 +198,7 @@ pub async fn remove_item(
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::remove_item(&state.pool, user, list_id, item_id).await;
+    announce(&state, &req, user, list_id, &outcome);
     respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 
@@ -209,6 +213,7 @@ pub async fn restore_item(
     let user = current_user(&id)?;
     let (list_id, item_id) = path.into_inner();
     let outcome = ShoppingListRepo::restore_item(&state.pool, user, list_id, item_id).await;
+    announce(&state, &req, user, list_id, &outcome);
     respond_item(&ui, &req, user, list_id, outcome, ItemDraft::default()).await
 }
 

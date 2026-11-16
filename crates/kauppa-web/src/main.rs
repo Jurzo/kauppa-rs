@@ -24,6 +24,7 @@ mod csp;
 mod csrf;
 mod error;
 mod i18n;
+mod live;
 mod routes;
 mod state;
 mod telemetry;
@@ -50,6 +51,25 @@ pub fn identity_middleware(idle: Duration, max: Duration) -> IdentityMiddleware 
         .visit_deadline(Some(idle))
         .login_deadline(Some(max))
         .build()
+}
+
+/// Wait for SIGTERM or SIGINT, then close every live stream.
+async fn close_streams_on_shutdown(hub: Arc<live::LiveHub>) {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    match signal(SignalKind::terminate()) {
+        Ok(mut terminate) => {
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = tokio::signal::ctrl_c() => {}
+            }
+        }
+        Err(error) => {
+            tracing::warn!(%error, "no SIGTERM listener for live streams; waiting for SIGINT only");
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    }
+    hub.close_all();
 }
 
 #[actix_web::main]
@@ -101,7 +121,12 @@ async fn main() -> anyhow::Result<()> {
         origin,
         limiter: Arc::new(limiter),
         cookie_secure: cfg.cookie_secure,
+        live: Arc::new(live::LiveHub::new(live::Limits::default())),
     });
+    // Open event streams would hold the graceful shutdown for its whole
+    // grace period; close them when the stop signal arrives (MB-0057,
+    // RR-0049 sub-answer 5). actix-web's own signal handling is unchanged.
+    tokio::spawn(close_streams_on_shutdown(Arc::clone(&state.live)));
 
     let session_key = Key::from(cfg.session_secret.as_bytes());
     let bind = cfg.bind.clone();

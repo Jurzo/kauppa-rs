@@ -60,6 +60,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(lists::index)
                 .service(lists::create)
                 .service(lists::show)
+                .service(lists::events)
                 .service(lists::rename)
                 .service(lists::delete)
                 .service(lists::archive)

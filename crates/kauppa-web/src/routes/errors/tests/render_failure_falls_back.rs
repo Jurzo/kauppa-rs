@@ -30,6 +30,7 @@ async fn broken_state() -> web::Data<AppState> {
         origin: state.origin.clone(),
         limiter: state.limiter.clone(),
         cookie_secure: false,
+        live: state.live.clone(),
     })
 }
 

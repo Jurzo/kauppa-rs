@@ -545,9 +545,13 @@ async fn edit_sections_start_closed() {
                 "{email} {what}: an edit section per item"
             );
             for tag in tags {
-                assert_eq!(
-                    tag, r#"<details class="product-edit">"#,
-                    "{email} {what}: edit section starts closed"
+                // MB-0057 (RR-0049 sub-answer 7): each carries its
+                // `hx-preserve` id; none is rendered open.
+                assert!(
+                    tag.starts_with(r#"<details class="product-edit" id="edit-"#)
+                        && tag.ends_with(" hx-preserve>")
+                        && !tag.contains(" open"),
+                    "{email} {what}: edit section starts closed: {tag}"
                 );
             }
         }

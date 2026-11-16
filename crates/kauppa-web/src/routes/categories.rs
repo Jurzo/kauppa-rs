@@ -147,6 +147,11 @@ pub async fn rename(
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = state.pool.rename(user, path.into_inner(), &form.name).await;
+    // Lists show their categories' live names and order: tell the open
+    // list pages (MB-0057, RR-0049 sub-answer 6).
+    if outcome.is_ok() {
+        state.live.owner_changed(user);
+    }
     respond(&state, &ui, &req, user, outcome, String::new()).await
 }
 
@@ -160,6 +165,9 @@ pub async fn delete(
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     let outcome = state.pool.delete(user, path.into_inner()).await;
+    if outcome.is_ok() {
+        state.live.owner_changed(user);
+    }
     respond(&state, &ui, &req, user, outcome, String::new()).await
 }
 
@@ -189,6 +197,7 @@ pub async fn move_category(
         .ok_or(CoreError::NotFound)?;
     if ordering::step(&mut ids, at, form.dir) {
         state.pool.reorder(user, &ids).await?;
+        state.live.owner_changed(user);
     }
 
     respond(&state, &ui, &req, user, Ok(()), String::new()).await
