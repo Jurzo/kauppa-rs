@@ -158,8 +158,8 @@ consult.
 - `assets/` is served directly; nothing executable may be committed there
   except under `assets/vendor/`: pinned third-party JS from a reviewed
   source, byte-for-byte, with its checksum checked in the test suite (htmx
-  2.0.11, RR-0017, and its response-targets extension 2.0.4, RR-0018, both
-  from the npm registry). Adding, upgrading or modifying a vendored file is
+  2.0.11, RR-0017, its response-targets extension 2.0.4, RR-0018, and its
+  SSE extension 2.2.4, RR-0049, all from the npm registry). Adding, upgrading or modifying a vendored file is
   a platform decision. SVG images under `assets/flags/` are not executable:
   they are shown through `<img>`, pinned by checksum, and a test keeps them
   free of script, links and styles (RR-0031). The app icons under

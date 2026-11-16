@@ -13,25 +13,25 @@ non_goals:
   - "Changing who may see or change a list (RR-0002, RR-0024, RR-0033)."
 acceptance:
   - id: P1
-    property: "A viewer of `/lists/{id}` sees, without reloading, any change another session makes to that list: an item added, edited (quantity, category), removed or restored, recipe ingredients added, an item checked or unchecked in shopping mode, the list renamed."
+    property: "A viewer of `/lists/{id}` sees, without reloading, any change another session makes to that list: an item added, edited (quantity, category), removed or restored, recipe ingredients added, an item checked or unchecked in shopping mode, the list renamed (the new name reaches the page's heading and title, which sit outside the fragment), the list archived or restored, a share's role changed, and the owner's category renamed, moved or deleted (RR-0049 sub-answer 6)."
     check: "scripts/browser/run.sh (a new flow: two browser contexts, a change in one appears in the other)"
   - id: P2
     property: "A viewer of `/lists/{id}/shop` sees the same changes reflected in the shopping view (items, categories, the found count), without reloading."
     check: "scripts/browser/run.sh (the same flow in shopping mode)"
   - id: P3
-    property: "The update stream for a list is refused (403/404, as the list's pages are) to anyone who can't view the list, and a viewer whose access ends (share revoked, list deleted, signed out or session expired) stops receiving updates and is shown the list's error page or sign-in on the next refresh; no update ever carries list content to a session that can't view it."
+    property: "The update stream for a list is refused at connect with 401 (not signed in) or 404 (can't view the list); after a share is revoked or the list is deleted the stream stops at once (one last `changed`, then `stop`) and the viewer is shown the list's error page; after a sign-out or session expiry signals stop within `STREAM_MAX_AGE` (15 minutes) and the next action shows the sign-in page; a stream never carries list content, only `changed`, `stop` and keep-alive comments (RR-0049 sub-answers 2 and 3)."
     check: cargo test -p kauppa-web routes::lists::tests::live::stream_requires_view_access
   - id: P4
     property: "Each viewer's update is rendered for that viewer: their own permissions (owner, `edit`, `view` grantee), language and theme, exactly as a reload would show it."
     check: cargo test -p kauppa-web routes::lists::tests::live::update_renders_per_viewer
   - id: P5
-    property: "A change made while a viewer is typing into a form on the list (the add field, an open edit section) doesn't discard what they typed or close what they opened, as the RR decides."
+    property: "A live update never touches the add field or the recipe form: what a viewer typed there, its focus and the form's error message stay, and submitting then works. An item's open edit section stays open with its typed text across a live update unless that same item changed; then the new section replaces it (last write wins). The shopping view is swapped whole. Proven in a browser before the implementation PR opens (RR-0049 sub-answer 7)."
     check: "scripts/browser/run.sh (a flow that types, receives an update, and submits)"
   - id: P6
-    property: "Without JavaScript, or when the stream can't connect, the pages work exactly as today (no live updates); a dropped connection reconnects and catches up without a reload; the CSP is unchanged or changed only as the RR approves, and no request leaves the app's origin."
+    property: "Without JavaScript, or when the stream can't connect, the pages work exactly as today (no live updates); a dropped connection reconnects and catches up without a reload, checked by one reconnect flow, the only flow that may see `htmx:sseError` and its console line, after it drops the connection itself (RR-0049 sub-answer 9); the CSP is unchanged, and no request leaves the app's origin."
     check: "scripts/browser/run.sh (CSP, console and htmx error assertions) plus cargo test -p kauppa-web --all-targets"
   - id: P7
-    property: "Open streams are bounded per user and in total, are closed on server shutdown without delaying it beyond the existing grace period, and work behind the deployment's Caddy proxy (`deploy/`)."
+    property: "Open streams are bounded by the constants in `live.rs`: `STREAMS_PER_USER` = 8, `STREAMS_TOTAL` = 200, `KEEP_ALIVE` = 20 s, `STREAM_MAX_AGE` = 15 min. At a cap the connect answers 503 with `Retry-After`, before the predicate query, and open streams are never evicted. One task in `main.rs` closes every stream on SIGTERM or SIGINT, so shutdown isn't delayed beyond the existing grace period. Streams work behind the deployment's Caddy proxy with no `deploy/` change (RR-0049 sub-answer 5)."
     check: "cargo test -p kauppa-web routes::lists::tests::live::stream_limits, plus manual: the live check through Caddy recorded in MB-0057's Continuity Pack"
   - id: P8
     property: "Two phones (or a phone and a desktop) on the deployed site, one in shopping mode and one editing, see each other's changes."
@@ -43,30 +43,43 @@ context:
   - templates/lists/_shop.hbs
   - templates/layout.hbs
   - crates/kauppa-web/src/routes/lists/
+  - crates/kauppa-web/src/routes/recipes/add_to_list.rs
+  - crates/kauppa-web/src/routes/categories.rs
+  - crates/kauppa-web/src/routes/errors.rs
+  - crates/kauppa-web/src/templates/tests.rs
   - crates/kauppa-core/src/repo/sqlite/list_access.rs
   - crates/kauppa-web/src/csp.rs
   - crates/kauppa-web/src/main.rs
   - assets/vendor/
   - deploy/Caddyfile
+  - deploy/compose.yaml
   - tests/browser/
   - .agentic/resolutions/RR-0002-list-sharing-authz.md
+  - .agentic/resolutions/RR-0010-csrf-mechanism.md
   - .agentic/resolutions/RR-0015-vendor-htmx.md
+  - .agentic/resolutions/RR-0017-htmx-2-0-11-upgrade.md
+  - .agentic/resolutions/RR-0018-boosted-form-errors.md
   - .agentic/resolutions/RR-0019-content-security-policy.md
+  - .agentic/resolutions/RR-0025-response-targets-on-body.md
   - .agentic/resolutions/RR-0026-session-lifetime-and-dev-secret.md
+  - .agentic/resolutions/RR-0029-request-handling.md
+  - .agentic/resolutions/RR-0036-code-cleanup-after-audit.md
+  - .agentic/resolutions/RR-0038-translated-error-pages.md
   - .agentic/resolutions/RR-0041-browser-level-test.md
+  - .agentic/resolutions/RR-0045-archive-lists.md
   - .agentic/mentorship/security.md
 autonomy:
   may_decide:
     - "event names, the stream's URL under `/lists/{id}/`, and test names inside `routes::lists::tests::live` (record renames here)"
     - "the browser flows added to `tests/browser/` for P1, P2, P5, P6"
   escalate:
-    - { when: "the transport and client: Server-Sent Events with htmx's SSE extension (a new vendored file under `assets/vendor/`, RR-0015: platform), versus plain `EventSource` code (new JavaScript), versus htmx polling (`hx-trigger=\"every Ns\"`) as a no-new-code fallback", to: platform-owner }
-    - { when: "what an event carries: a bare 'list changed' signal after which each viewer re-fetches its own fragment through the normal, authorized route (recommended), or rendered HTML pushed in the stream (must be rendered per viewer's access, language and theme)", to: security }
-    - { when: "how a stream learns that access ended (re-check on every event, or a revocation signal), and what a long-lived stream does to the session's visit deadline (RR-0026)", to: security }
-    - { when: "the in-process change notification: a broadcast channel in `AppState` fed by the list routes (one process, RR-0014), or polling the database's `updated_at`", to: platform-owner }
-    - { when: "limits: streams per user and in total; what happens at the limit; keep-alive interval; Caddy and the Compose stack (deploy/ is a trigger path, RR-0014)", to: platform-owner }
-    - { when: "P5's behaviour: skip an update while a form on the list has focus or unsent input and apply it after, or preserve the inputs across the swap, or update only the items and never the forms", to: owner }
-    - { when: "whether the viewer's own change also arrives as an event (double swap) or is filtered out", to: owner }
+    - { when: "the transport and client: Server-Sent Events with htmx's SSE extension (a new vendored file under `assets/vendor/`, RR-0015: platform), versus plain `EventSource` code (new JavaScript), versus htmx polling (`hx-trigger=\"every Ns\"`) as a no-new-code fallback (decided: RR-0049, SSE with `htmx-ext-sse` 2.2.4 vendored)", to: platform-owner }
+    - { when: "what an event carries: a bare 'list changed' signal after which each viewer re-fetches its own fragment through the normal, authorized route (recommended), or rendered HTML pushed in the stream (must be rendered per viewer's access, language and theme) (decided: RR-0049, a bare `changed` signal and a re-fetch)", to: security }
+    - { when: "how a stream learns that access ended (re-check on every event, or a revocation signal), and what a long-lived stream does to the session's visit deadline (RR-0026) (decided: RR-0049, the predicate before every event, `stop` when access ends, a 15-minute maximum age; an open page counts as a visit)", to: security }
+    - { when: "the in-process change notification: a broadcast channel in `AppState` fed by the list routes (one process, RR-0014), or polling the database's `updated_at` (decided: RR-0049, a `LiveHub` in `AppState` fed by the routes, with a guard test)", to: platform-owner }
+    - { when: "limits: streams per user and in total; what happens at the limit; keep-alive interval; Caddy and the Compose stack (deploy/ is a trigger path, RR-0014) (decided: RR-0049, 8 per user, 200 in total, 503 at a cap, 20 s keep-alive, no `deploy/` change)", to: platform-owner }
+    - { when: "P5's behaviour: skip an update while a form on the list has focus or unsent input and apply it after, or preserve the inputs across the swap, or update only the items and never the forms (decided: RR-0049, add forms outside live updates; open edit sections kept with `hx-preserve`)", to: owner }
+    - { when: "whether the viewer's own change also arrives as an event (double swap) or is filtered out (decided: RR-0049, the tab that made the change is skipped)", to: owner }
   forbidden:
     - "send list content to a session that can't view the list"
     - "a query on the list tables outside the central access predicate (`list_access.rs`, RR-0036)"
@@ -78,7 +91,7 @@ mentorship:
   - .agentic/mentorship/actix-web.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0049]
 ---
 ```
 
@@ -128,8 +141,11 @@ lands second covers the other's events.
 
 1. **Clarify (S1).** One CRP: transport and client (platform), event
    content and access (security), notification and limits (platform), P5
-   and own-change behaviour (owner).
-2. Change notification in `AppState`, fed by every list write route.
+   and own-change behaviour (owner). Done: CRP-0049 answered, RR-0049
+   signed (2026-11-16).
+2. Change notification in `AppState`, fed by every route that changes
+   what a list shows (one is in `routes/recipes/`, three are in
+   `routes/categories.rs`; RR-0049 sub-answer 6).
 3. The stream route behind the access predicate, with limits and
    keep-alive; route tests (P3, P4, P7).
 4. Templates subscribe the edit page and shopping view; browser flows (P1,

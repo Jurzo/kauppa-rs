@@ -45,6 +45,8 @@ TRIGGERS = [
     ("crates/kauppa-core/src/repo/sqlite/list.rs", "security:shared-lists"),
     # The central predicate's own file (RR-0036 sub-answer 5).
     ("crates/kauppa-core/src/repo/sqlite/list_access.rs", "security:shared-lists"),
+    # The live-update hub and stream re-check (RR-0049 sub-answer 3).
+    ("crates/kauppa-web/src/live.rs", "security:shared-lists"),
     # Cross-site check, security headers, settings, the language cookie
     # (RR-0010, RR-0019, RR-0023; RR-0027 sub-answer 2).
     ("crates/kauppa-web/src/csrf/", "security:csrf"),

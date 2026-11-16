@@ -25,6 +25,7 @@
 /crates/kauppa-web/src/routes/lists/          @Jurzo
 /crates/kauppa-core/src/repo/sqlite/list.rs   @Jurzo
 /crates/kauppa-core/src/repo/sqlite/list_access.rs @Jurzo
+/crates/kauppa-web/src/live.rs                @Jurzo
 
 # Security: cross-site check, headers, settings, language cookie (RR-0027).
 /crates/kauppa-web/src/csrf/                  @Jurzo

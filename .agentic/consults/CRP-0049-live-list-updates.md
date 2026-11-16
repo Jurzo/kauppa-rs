@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: security
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0057 autonomy.escalate (transport and client, notification, limits → platform; event content, access ending and the visit deadline → security; typing and own-change behaviour → owner); feature.md escalation trigger `crates/kauppa-web/src/routes/lists/` (RR-0027); a new vendored file under `assets/vendor/` (RR-0015 constraint 1, RR-0018 constraint 1); a second `hx-ext` value (RR-0025 constraint 1); a new `AppState` field (actix-web.md → State)"
 ---
 ```
