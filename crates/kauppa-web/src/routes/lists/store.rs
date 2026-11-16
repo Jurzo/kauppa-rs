@@ -56,14 +56,25 @@ struct ShopItem {
     checked: bool,
 }
 
-/// Render the store view as the full page or, for htmx, the `#shop-{id}`
-/// fragment.
+/// Which part of the store view to render.
+#[derive(Debug, Clone, Copy)]
+enum ShopPart {
+    /// The full page.
+    Page,
+    /// `#shop-{id}`, for the viewer's own htmx requests.
+    Fragment,
+    /// A live re-fetch (MB-0057): `#shop-{id}` with the title and heading.
+    Live,
+}
+
+/// Render the store view: the full page, the `#shop-{id}` fragment, or the
+/// answer to a live re-fetch.
 async fn render_shop(
     state: &AppState,
     ui: &Ui,
     user: Uuid,
     list_id: Uuid,
-    fragment: bool,
+    part: ShopPart,
     status: StatusCode,
     error: Option<String>,
 ) -> WebResult<HttpResponse> {
@@ -99,10 +110,10 @@ async fn render_shop(
         live,
         error,
     };
-    let template = if fragment {
-        "lists/_shop"
-    } else {
-        "lists/shop"
+    let template = match part {
+        ShopPart::Page => "lists/shop",
+        ShopPart::Fragment => "lists/_shop",
+        ShopPart::Live => "lists/_shop_live",
     };
     let body = ui.render(state, template, &view)?;
     Ok(HttpResponse::build(status)
@@ -128,7 +139,16 @@ async fn respond_shop<T>(
         Err(e) => return Err(e.into()),
     };
     if is_hx(req) {
-        render_shop(state, ui, user, list_id, true, StatusCode::OK, error).await
+        render_shop(
+            state,
+            ui,
+            user,
+            list_id,
+            ShopPart::Fragment,
+            StatusCode::OK,
+            error,
+        )
+        .await
     } else if error.is_none() {
         Ok(HttpResponse::SeeOther()
             .append_header((header::LOCATION, format!("/lists/{list_id}/shop")))
@@ -139,7 +159,7 @@ async fn respond_shop<T>(
             ui,
             user,
             list_id,
-            false,
+            ShopPart::Page,
             StatusCode::BAD_REQUEST,
             error,
         )
@@ -165,17 +185,15 @@ pub async fn shop(
     path: web::Path<Uuid>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
-    let fragment = wants_fragment(&req);
-    render_shop(
-        &state,
-        &ui,
-        user,
-        path.into_inner(),
-        fragment,
-        StatusCode::OK,
-        None,
-    )
-    .await
+    let list_id = path.into_inner();
+    let part = if super::is_live_refetch(&req, &format!("shop-{list_id}")) {
+        ShopPart::Live
+    } else if wants_fragment(&req) {
+        ShopPart::Fragment
+    } else {
+        ShopPart::Page
+    };
+    render_shop(&state, &ui, user, list_id, part, StatusCode::OK, None).await
 }
 
 /// Mark an item found or not found. The form sends the state to set, so a

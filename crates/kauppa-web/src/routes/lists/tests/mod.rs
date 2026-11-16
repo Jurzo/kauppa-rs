@@ -7,6 +7,8 @@ mod export;
 mod item_edit;
 mod items;
 mod lifecycle;
+mod live;
+mod live_guard;
 mod recipes;
 mod sharing_invites;
 mod sharing_roles;

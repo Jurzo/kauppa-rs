@@ -1,0 +1,6 @@
+{{!-- MB-0057 (RR-0049): the answer to the shopping view's live re-fetch:
+the whole view (it has no text fields), with the title and the heading as
+in lists/_live. --}}
+<title>{{name}} — kauppalista.app</title>
+<h1 id="list-name-{{id}}" hx-swap-oob="true">{{name}}</h1>
+{{> lists/_shop}}

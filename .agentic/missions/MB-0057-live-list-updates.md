@@ -145,11 +145,12 @@ lands second covers the other's events.
    signed (2026-11-16).
 2. Change notification in `AppState`, fed by every route that changes
    what a list shows (one is in `routes/recipes/`, three are in
-   `routes/categories.rs`; RR-0049 sub-answer 6).
+   `routes/categories.rs`; RR-0049 sub-answer 6). Done: `live.rs`, with
+   the guard test.
 3. The stream route behind the access predicate, with limits and
-   keep-alive; route tests (P3, P4, P7).
+   keep-alive; route tests (P3, P4, P7). Done.
 4. Templates subscribe the edit page and shopping view; browser flows (P1,
-   P2, P5, P6).
+   P2, P5, P6). Done.
 5. Deploy check through Caddy (P7) and the owner's two-device check (P8).
 
 ## Validation plan

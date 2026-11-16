@@ -11,6 +11,10 @@
 //!   grant is kept between events (constraint 2, RR-0002 constraint 4). When
 //!   it fails the viewer gets one last `changed`, then `stop`, and the
 //!   stream ends.
+//! - **Gone clients.** The server learns that a client left only when a
+//!   write to its stream fails: a keep-alive comment, at the latest. A
+//!   user's streams also write one whenever that user connects again
+//!   ([`LiveHub::reserve`]).
 //! - **Bounded.** [`STREAMS_PER_USER`], [`STREAMS_TOTAL`], [`KEEP_ALIVE`]
 //!   and [`STREAM_MAX_AGE`] change only through a consult (constraint 5).
 //! - **The lock** is a `std::sync::Mutex`, never held across `.await`; a
@@ -104,6 +108,8 @@ pub struct Writer {
 struct Signal {
     changed: AtomicBool,
     closed: AtomicBool,
+    /// Write a keep-alive comment now ([`LiveHub::reserve`]).
+    probe: AtomicBool,
     notify: Notify,
 }
 
@@ -115,6 +121,11 @@ impl Signal {
 
     fn close(&self) {
         self.closed.store(true, Ordering::Release);
+        self.notify.notify_one();
+    }
+
+    fn probe(&self) {
+        self.probe.store(true, Ordering::Release);
         self.notify.notify_one();
     }
 }
@@ -233,10 +244,29 @@ impl LiveHub {
         }
     }
 
+    /// How many streams are open or reserved.
+    #[cfg(test)]
+    pub fn open_streams(&self) -> usize {
+        self.lock().total
+    }
+
     /// Take a stream slot for `user`, before the access predicate runs.
     /// Open streams are never evicted.
+    ///
+    /// Whatever the answer, the user's other streams write a keep-alive
+    /// comment now instead of waiting for [`KEEP_ALIVE`]. The server only
+    /// learns that a client is gone when a write to it fails, and a page
+    /// that navigates closes its stream just before the next page opens
+    /// one; without this, the streams of pages already left would hold the
+    /// user's slots for up to two keep-alive intervals, and a few quick
+    /// page changes would reach [`STREAMS_PER_USER`].
     pub fn reserve(self: &Arc<Self>, user: Uuid) -> Result<Slot, Refused> {
         let mut inner = self.lock();
+        for sub in inner.subscribers.values().flatten() {
+            if sub.user == user {
+                sub.signal.probe();
+            }
+        }
         if inner.closed {
             return Err(Refused::ShuttingDown);
         }
@@ -431,6 +461,11 @@ async fn run(
                 {
                     return end;
                 }
+                if slot.signal.probe.swap(false, Ordering::AcqRel)
+                    && let Err(end) = send(tx, KEEP_ALIVE_COMMENT).await
+                {
+                    return end;
+                }
             }
             () = tokio::time::sleep(limits.keep_alive) => {
                 if let Err(end) = send(tx, KEEP_ALIVE_COMMENT).await {
@@ -465,3 +500,6 @@ async fn announce(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

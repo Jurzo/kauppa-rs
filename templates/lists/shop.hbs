@@ -4,7 +4,7 @@ fields and is swapped whole. --}}
 <section sse-connect="/lists/{{id}}/events?tab={{live.tab}}&amp;since={{live.since}}" sse-close="stop" hx-headers='{"X-Live-Tab":"{{live.tab}}"}'>
   <div hidden hx-get="/lists/{{id}}/shop" hx-trigger="sse:changed" hx-target="#shop-{{id}}" hx-swap="outerHTML"></div>
   <header class="section-header">
-    <h1>{{name}}</h1>
+    <h1 id="list-name-{{id}}">{{name}}</h1>
     <a href="/lists/{{id}}">{{t "shop.edit_list"}}</a>
   </header>
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run.sh: the browser-level test (MB-0047 P1, P2; RR-0041).
 #
-# Builds the release binary, creates an invitation in a throwaway database,
+# Builds the release binary, creates two invitations in a throwaway database,
 # serves the app on a free loopback port, runs the Playwright flows in
 # tests/browser/ against it with the pinned Chromium, and stops the app.
 # Nothing outside a temporary directory is written except the build and
@@ -55,7 +55,10 @@ cd "$TMP"
 
 # `admin invite` prints the link once; with no public origin it is a path.
 INVITE_PATH=$("$BIN" admin invite --note "browser test" | grep -oE '/auth/register\?invite=[A-Za-z0-9_-]+' | head -1)
-if [[ -z "$INVITE_PATH" ]]; then
+# A second account, for the flows where one user sees another's changes
+# (MB-0057).
+INVITE_PATH_2=$("$BIN" admin invite --note "browser test 2" | grep -oE '/auth/register\?invite=[A-Za-z0-9_-]+' | head -1)
+if [[ -z "$INVITE_PATH" || -z "$INVITE_PATH_2" ]]; then
     echo "run.sh: kauppa-web admin invite printed no invitation link" >&2
     exit 1
 fi
@@ -79,7 +82,7 @@ curl -fsS "$BASE_URL/healthz" >/dev/null
 
 cd "$BROWSER_DIR"
 status=0
-KAUPPA_BASE_URL="$BASE_URL" KAUPPA_INVITE_PATH="$INVITE_PATH" \
+KAUPPA_BASE_URL="$BASE_URL" KAUPPA_INVITE_PATH="$INVITE_PATH" KAUPPA_INVITE_PATH_2="$INVITE_PATH_2" \
     ./node_modules/.bin/playwright test "$@" || status=$?
 
 if [[ "$status" -ne 0 ]]; then
