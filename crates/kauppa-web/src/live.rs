@@ -254,12 +254,14 @@ impl LiveHub {
     /// Open streams are never evicted.
     ///
     /// Whatever the answer, the user's other streams write a keep-alive
-    /// comment now instead of waiting for [`KEEP_ALIVE`]. The server only
-    /// learns that a client is gone when a write to it fails, and a page
-    /// that navigates closes its stream just before the next page opens
-    /// one; without this, the streams of pages already left would hold the
-    /// user's slots for up to two keep-alive intervals, and a few quick
-    /// page changes would reach [`STREAMS_PER_USER`].
+    /// comment now instead of waiting for [`KEEP_ALIVE`]. The server ends a
+    /// stream as soon as its client's close reaches it (`main.rs` turns
+    /// half-closed connections off, RR-0050). This write is the safety net
+    /// for a proxy that doesn't pass the close on: then the server learns
+    /// that a client is gone only when a write to it fails, and the streams
+    /// of pages already left would hold the user's slots for up to two
+    /// keep-alive intervals, so a few quick page changes would reach
+    /// [`STREAMS_PER_USER`].
     pub fn reserve(self: &Arc<Self>, user: Uuid) -> Result<Slot, Refused> {
         let mut inner = self.lock();
         for sub in inner.subscribers.values().flatten() {

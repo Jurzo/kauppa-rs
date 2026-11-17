@@ -155,6 +155,9 @@ async fn main() -> anyhow::Result<()> {
             .service(routes::assets::Assets)
             .configure(routes::configure)
     })
+    // A closed page ends its live stream at once: without this, the server
+    // notices a gone client only when a write fails (MB-0057, RR-0050).
+    .h1_allow_half_closed(false)
     .bind(&bind)?
     .run()
     .await?;
