@@ -8,6 +8,9 @@ ignore = [
     # RR-0016 (MB-0041): interim, until an sqlx release accepts libsqlite3-sys
     # >= 0.39 (SQLite >= 3.54.0). Review by 2026-12-31; MB-0041 removes it.
     { id = "RUSTSEC-2026-0459", reason = "SQLite < 3.54.0 crafted -wal read (local, attacker-written db + wal); no sqlx release allows the fixed libsqlite3-sys yet. RR-0016, review by 2026-12-31." },
+    # RR-0051 (MB-0063): interim, until a later mission replaces chrono.
+    # Review by 2027-02-28. Names this one advisory only.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no known vulnerability; a later mission replaces it. RR-0051, review by 2027-02-28." },
 ]
 
 [licenses]
