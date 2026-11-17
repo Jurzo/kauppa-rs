@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: high
-state: open
+state: answered
 runbook_trigger: "dependency-bump.md entry gate (a `Cargo.lock` change outside an in-scope task; any `deny.toml` change); MB-0063 autonomy.escalate (the actix-http version, chrono → platform-owner; the timestamp format → data-owner); feature.md escalation trigger `deny.toml` (platform:lint-config)"
 ---
 ```

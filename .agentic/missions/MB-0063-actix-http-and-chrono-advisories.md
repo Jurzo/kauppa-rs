@@ -38,9 +38,9 @@ autonomy:
   may_decide:
     - "the wording of the `deny.toml` comment, if an ignore is approved"
   escalate:
-    - { when: "the actix-http version: the security release 3.21.3, or the newest 3.22.0 (released 2026-11-17, inside RR-0032's 7-day cooldown and not a security release)", to: platform-owner }
-    - { when: "chrono: an interim `ignore` in `deny.toml` (lint config, a trigger path) and its review date, or replacing it (a `Cargo.toml` change)", to: platform-owner }
-    - { when: "replacing chrono changes the text written for timestamps in SQLite, which SQL compares and sorts as text", to: data-owner }
+    - { when: "the actix-http version: the security release 3.21.3, or the newest 3.22.0 (released 2026-11-17, inside RR-0032's 7-day cooldown and not a security release) (decided: RR-0051, 3.21.3)", to: platform-owner }
+    - { when: "chrono: an interim `ignore` in `deny.toml` (lint config, a trigger path) and its review date, or replacing it (a `Cargo.toml` change) (decided: RR-0051, an interim ignore, review by 2027-02-28; replacement is a later mission)", to: platform-owner }
+    - { when: "replacing chrono changes the text written for timestamps in SQLite, which SQL compares and sorts as text (decided: RR-0051, not in this mission; the replacement mission consults on it)", to: data-owner }
   forbidden:
     - "a `Cargo.toml` change without an approved RR"
     - "ignore an advisory permanently or without an approved RR"
@@ -51,7 +51,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/persistence.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0051]
 ---
 ```
 
@@ -94,7 +94,8 @@ What exists:
 ## Conceptual plan
 
 1. **Clarify (S1).** CRP-0051: the actix-http version and chrono (platform);
-   the timestamp format, only if chrono is replaced (data).
+   the timestamp format, only if chrono is replaced (data). Done: CRP-0051
+   answered, RR-0051 approved (Q1 A, Q2 A, review by 2027-02-28).
 2. The actix-http lockfile update, its own commit (P1).
 3. chrono as decided: the `deny.toml` entry, or a separate mission to
    replace it (P2).
