@@ -182,3 +182,12 @@ the advisories again); revert the `deny.toml` line.
   `Rfc3339` (`Z` for UTC). Text comparisons on `expires_at` (three queries
   in `invitation.rs`, bound at whole seconds for RR-0012 constraint 7) and
   text ordering on `created_at`/`updated_at` (five queries).
+
+## Owner's answer (2026-11-17)
+
+"Brief is ok. Q1 and Q2 as recommended with the recommended review date":
+Q1 A (actix-http 3.21.3, lockfile only); Q2 A (an interim `deny.toml`
+ignore for RUSTSEC-2026-0543, review by 2027-02-28, and a later mission to
+replace chrono).
+
+Recorded in RR-0051 (scaffold; the owner signs).
