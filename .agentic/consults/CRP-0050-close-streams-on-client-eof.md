@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "follow-up named in MB-0057's Continuity Pack (a server-wide HTTP setting is outside RR-0049's Covers → platform); feature.md escalation trigger `crates/kauppa-web/src/main.rs` (security:session-middleware; the session block itself doesn't change); RR-0049 constraint 5 (stream limits and shutdown)"
 ---
 ```
