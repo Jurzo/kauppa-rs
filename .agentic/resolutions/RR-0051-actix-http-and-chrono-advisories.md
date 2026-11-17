@@ -5,11 +5,11 @@
 id: RR-0051
 closes: CRP-0051
 mission: MB-0063
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: platform
 risk_tier: medium
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-17T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-17t13:55:00z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0063-actix-http-and-chrono-advisories.md
@@ -59,7 +59,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as platform.">
+@Jurzo as platform.
 
 ## Linked artifacts and evidence
 
