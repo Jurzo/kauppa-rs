@@ -138,3 +138,12 @@ Rollback plan: remove the one `main.rs` line (and with A, revert the
   doesn't close the sending side before it reads.
 - Not measured: the behaviour through Caddy (2.11.9, `deploy/compose.yaml`);
   Docker didn't answer on this machine.
+
+## Owner's answer (2026-11-17)
+
+As recommended: Option B. The check through Caddy after the deploy (open a
+list page, close it, see "live stream closed" with reason `client_gone`
+within a second in `docker compose logs kauppa`) is enough to record the
+result in MB-0057's pack.
+
+Recorded in RR-0050 (scaffold; the owner signs).
