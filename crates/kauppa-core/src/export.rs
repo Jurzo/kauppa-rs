@@ -20,6 +20,12 @@
 //! - **Fingerprint.** SHA-256 over everything the plan was computed from, so
 //!   a confirmation against a changed list or catalog is caught
 //!   (sub-answer 6).
+//! - **New categories** (MB-0065, RR-0052). A review row whose source
+//!   category names the user doesn't have also offers "Create ‹name›", sent
+//!   as `new:<n>` (the n-th of the row's unmatched names). The name comes
+//!   from the plan, never the form; the repo creates each chosen name once,
+//!   in the same transaction, and [`Decisions::resolve`] maps the rows to
+//!   it.
 
 use std::collections::BTreeMap;
 
@@ -106,15 +112,19 @@ pub struct PlanRow {
     pub ingredient: bool,
 }
 
-/// What a review row offers. `keep` and `list` are category ids; `any` means
-/// any of the user's categories (a picker); `skip` whether skipping is
-/// offered.
+/// What a review row offers.
+///
+/// `keep` and `list` are category ids; `any` means any of the user's
+/// categories (a picker); `skip` whether skipping is offered; `create` the
+/// source category names the user may create (RR-0052), answered as
+/// `new:<index>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Choices {
     pub keep: Option<Uuid>,
     pub list: Vec<Uuid>,
     pub any: bool,
     pub skip: bool,
+    pub create: Vec<String>,
 }
 
 impl PlanRow {
@@ -132,6 +142,7 @@ impl PlanRow {
                 list: Vec::new(),
                 any: true,
                 skip: false,
+                create: self.unmatched.clone(),
             });
         }
         let existing_category = self.existing.as_ref().and_then(|e| e.category_id);
@@ -147,12 +158,14 @@ impl PlanRow {
                 // A favorite with a category is kept by choosing it; anything
                 // else can be left as it is.
                 skip: !favorite_in_place,
+                create: self.unmatched.clone(),
             },
             ReviewKind::Uncategorized => Choices {
                 keep: None,
                 list: Vec::new(),
                 any: true,
                 skip: true,
+                create: self.unmatched.clone(),
             },
         })
     }
@@ -356,6 +369,10 @@ fn hex(bytes: &[u8]) -> String {
 /// The answer that skips a row.
 pub const SKIP: &str = "skip";
 
+/// The prefix of an answer that creates a category: `new:<n>`, the n-th of
+/// the row's [`Choices::create`] (RR-0052 sub-answer 2).
+pub const CREATE: &str = "new:";
+
 /// The review form's answers: the fingerprint it was computed from, and the
 /// raw answer per review row index.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -376,9 +393,50 @@ pub enum ReviewReason {
     Unanswered,
 }
 
-/// The checked answers: for each review row index, the category to use, or
-/// `None` to skip.
-pub type Decisions = BTreeMap<usize, Option<Uuid>>;
+/// The checked answers.
+///
+/// `categories`: for each review row index, the category to use, or `None`
+/// to skip. `create`: rows that chose to create a category, with its name
+/// from the plan (RR-0052); the repo creates them and calls
+/// [`Decisions::resolve`] before [`writes`] or [`ingredient_products`],
+/// which read `categories` only.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Decisions {
+    pub categories: BTreeMap<usize, Option<Uuid>>,
+    pub create: BTreeMap<usize, String>,
+}
+
+impl Decisions {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The category names to create, once each by `name_key` (rows that
+    /// chose the same name share it), in the order they first appear on the
+    /// review (RR-0052 sub-answers 3 and 4).
+    #[must_use]
+    pub fn new_categories(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for name in self.create.values() {
+            if !out.iter().any(|n| name_key(n) == name_key(name)) {
+                out.push(name.clone());
+            }
+        }
+        out
+    }
+
+    /// Map every row that chose to create a category to the created one's
+    /// id; `created` is keyed by `name_key`. A name missing from `created`
+    /// is `Invalid`, so nothing is saved.
+    pub fn resolve(mut self, created: &BTreeMap<String, Uuid>) -> CoreResult<Self> {
+        for (index, name) in std::mem::take(&mut self.create) {
+            let id = created.get(&name_key(&name)).ok_or_else(tampered)?;
+            self.categories.insert(index, Some(*id));
+        }
+        Ok(self)
+    }
+}
 
 /// Check `answers` against `plan`.
 ///
@@ -404,7 +462,17 @@ pub fn decide(
         match answers.answers.get(&index).map(|a| a.trim()) {
             None | Some("") => unanswered = true,
             Some(SKIP) if choices.skip => {
-                decisions.insert(index, None);
+                decisions.categories.insert(index, None);
+            }
+            Some(raw) if raw.starts_with(CREATE) => {
+                // An index into the plan's names: the form never carries a
+                // name (RR-0052 sub-answer 2).
+                let name = raw
+                    .strip_prefix(CREATE)
+                    .and_then(|n| n.parse::<usize>().ok())
+                    .and_then(|n| choices.create.get(n))
+                    .ok_or_else(tampered)?;
+                decisions.create.insert(index, name.clone());
             }
             Some(raw) => {
                 let id = Uuid::parse_str(raw).map_err(|_| tampered())?;
@@ -414,7 +482,7 @@ pub fn decide(
                 if !offered {
                     return Err(tampered());
                 }
-                decisions.insert(index, Some(id));
+                decisions.categories.insert(index, Some(id));
             }
         }
     }
@@ -442,6 +510,8 @@ pub struct ExportSummary {
     pub recategorized: usize,
     /// Rows the user skipped.
     pub skipped: usize,
+    /// Categories created on the review (RR-0052).
+    pub categories_created: usize,
 }
 
 /// The result of `ProductRepo::apply_export`.
@@ -461,8 +531,12 @@ pub enum ExportOutcome {
 /// The result of `RecipeRepo::import_recipe` (MB-0061, RR-0048).
 #[derive(Debug, Clone)]
 pub enum RecipeImport {
-    /// The copy, created in one transaction with its products.
-    Saved(Uuid),
+    /// The copy, created in one transaction with its products, and how many
+    /// categories the review created (RR-0052).
+    Saved {
+        recipe: Uuid,
+        categories_created: usize,
+    },
     /// The user already has a copy of this recipe (`imported_from`):
     /// nothing was saved (sub-answer 7).
     AlreadyImported(Uuid),
@@ -496,7 +570,7 @@ pub fn writes(plan: &ExportPlan, decisions: &Decisions) -> (Vec<Write>, ExportSu
                 continue;
             }
             Action::Add(c) | Action::Promote(c) => Some(c),
-            Action::Review(_) => decisions.get(&index).copied().flatten(),
+            Action::Review(_) => decisions.categories.get(&index).copied().flatten(),
         };
         let Some(category) = target else {
             summary.skipped += 1;
@@ -554,7 +628,7 @@ pub fn ingredient_products(
                 category,
             }),
             (Action::Review(_), existing) => {
-                let category = decisions.get(&index).copied().flatten()?;
+                let category = decisions.categories.get(&index).copied().flatten()?;
                 Some(existing.as_ref().map_or_else(
                     || IngredientProduct::Create {
                         name: row.name.clone(),

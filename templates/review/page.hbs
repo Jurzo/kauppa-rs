@@ -27,7 +27,7 @@
         {{#each this.choices}}
           <label class="export-choice" for="{{this.dom_id}}">
             <input id="{{this.dom_id}}" type="radio" name="{{../field}}" value="{{this.value}}" required />
-            {{#if this.label.keep}}{{t "export.keep" category=this.category}}{{/if}}{{#if this.label.move_to}}{{t "export.move" category=this.category}}{{/if}}{{#if this.label.favorite_in}}{{t "export.favorite_in" category=this.category}}{{/if}}{{#if this.label.add_in}}{{t "export.add_in" category=this.category}}{{/if}}{{#if this.label.skip}}{{t "export.skip"}}{{/if}}
+            {{#if this.label.keep}}{{t "export.keep" category=this.category}}{{/if}}{{#if this.label.move_to}}{{t "export.move" category=this.category}}{{/if}}{{#if this.label.favorite_in}}{{t "export.favorite_in" category=this.category}}{{/if}}{{#if this.label.add_in}}{{t "export.add_in" category=this.category}}{{/if}}{{#if this.label.create}}{{t "export.create" category=this.category}}{{/if}}{{#if this.label.skip}}{{t "export.skip"}}{{/if}}
           </label>
         {{/each}}
         {{#if this.picker}}
@@ -37,6 +37,14 @@
               {{#each this.picker.options}}
                 <option value="{{this.id}}">{{this.name}}</option>
               {{/each}}
+              {{!-- MB-0065 (RR-0052): create the source's category; the value is an index, never the name. --}}
+              {{#if this.picker.create}}
+                <optgroup label="{{t "export.new_category"}}">
+                  {{#each this.picker.create}}
+                    <option value="{{this.value}}">{{t "export.create" category=this.name}}</option>
+                  {{/each}}
+                </optgroup>
+              {{/if}}
               {{#if this.picker.skippable}}<option value="skip">{{t "export.skip"}}</option>{{/if}}
             </select>
           </label>

@@ -732,3 +732,444 @@ async fn repeat_and_stale() {
         5
     );
 }
+
+/// The review's answer fields (`r<index>`), one per row, in order.
+fn answer_fields(body: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in body.split(r#"name="r"#).skip(1) {
+        let field = format!("r{}", part.split('"').next().unwrap_or_default());
+        if !out.contains(&field) {
+            out.push(field);
+        }
+    }
+    out
+}
+
+/// The review page's rows, split at each fieldset.
+fn rows(body: &str) -> Vec<&str> {
+    body.split(r#"<fieldset class="export-row">"#)
+        .skip(1)
+        .collect()
+}
+
+/// MB-0065 P1 (RR-0052): a shared favorite, and a shared recipe's
+/// ingredient, whose category the recipient lacks offer "Create ‹name›" in a
+/// "New category" group, sent as an index and never preselected, beside the
+/// recipient's categories (and "Skip" for a favorite, none for an
+/// ingredient). Choosing it creates the category; a recipe import's page
+/// says so.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn create_missing_category_offered() {
+    use actix_web::test::{TestRequest, call_service};
+    use kauppa_core::repo::RecipeRepo;
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let me = make_user(&state, "me@example.com").await;
+    let friend = make_user(&state, "friend@example.com").await;
+    let hevi = CategoryRepo::create(&state.pool, me, "Hevi")
+        .await
+        .expect("c")
+        .id;
+    let leipa = CategoryRepo::create(&state.pool, me, "Leipä")
+        .await
+        .expect("c")
+        .id;
+    for (name, category) in [("Omena", hevi), ("Ruisleipä", leipa)] {
+        ProductRepo::create(&state.pool, me, name, category)
+            .await
+            .expect("favorite");
+    }
+    CategoryRepo::create(&state.pool, friend, "HEVI")
+        .await
+        .expect("c");
+    let dairy = CategoryRepo::create(&state.pool, friend, "Maitotuotteet")
+        .await
+        .expect("c")
+        .id;
+    ProductRepo::create(&state.pool, friend, "maito", dairy)
+        .await
+        .expect("their Maito");
+    CatalogShareRepo::share_catalog(&state.pool, me, "friend@example.com", true, true)
+        .await
+        .expect("share")
+        .expect("matched");
+    let cookie =
+        session_cookie(&call_service(&app, login_request("friend@example.com").to_request()).await);
+    let post = |uri: String, form: Vec<(String, String)>| {
+        TestRequest::post()
+            .uri(&uri)
+            .cookie(cookie.clone())
+            .set_form(form)
+            .to_request()
+    };
+
+    // Favorites: Omena maps to HEVI; Ruisleipä's Leipä is offered.
+    let base = format!("/sharing/from/{me}/favorites");
+    let body = body_string(
+        call_service(
+            &app,
+            post(
+                format!("{base}/import"),
+                vec![("all".to_owned(), "1".to_owned())],
+            ),
+        )
+        .await,
+    )
+    .await;
+    let found = rows(&body);
+    assert_eq!(found.len(), 1);
+    let row = found[0];
+    assert!(row.contains("<legend>Ruisleipä</legend>"));
+    assert!(row.contains(r#"<optgroup label="New category">"#));
+    assert!(row.contains(r#"<option value="new:0">Create Leipä</option>"#));
+    assert!(row.contains(r#"<option value="skip">Skip</option>"#));
+    let (create_at, skip_at) = (
+        row.find("Create Leipä").expect("create"),
+        row.find(">Skip<").expect("skip"),
+    );
+    assert!(
+        row.find(">HEVI<").expect("theirs") < create_at && create_at < skip_at,
+        "below their categories, above Skip"
+    );
+    let form = &body[body.find(r#"class="export-review""#).expect("form")..];
+    assert!(!form.contains("checked"), "nothing preselected");
+    assert!(!body.contains(&leipa.to_string()), "no sharer category id");
+    let mut answers = vec![
+        ("fingerprint".to_owned(), fingerprint(&body)),
+        ("all".to_owned(), "1".to_owned()),
+    ];
+    answers.extend(
+        answer_fields(&body)
+            .into_iter()
+            .map(|f| (f, "new:0".to_owned())),
+    );
+    let resp = call_service(&app, post(format!("{base}/import/confirm"), answers)).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        location(&resp),
+        format!("{base}/import/done?added=2&already=0&favorite=0&moved=0&skipped=0&categories=1")
+    );
+
+    // A recipe: Suola's Mausteet is offered, with no skip.
+    let recipe = salad(&state, me).await;
+    let page = format!("/sharing/from/{me}/recipes/{recipe}");
+    let body = body_string(call_service(&app, post(format!("{page}/import"), vec![])).await).await;
+    let found = rows(&body);
+    assert_eq!(found.len(), 1);
+    let row = found[0];
+    assert!(row.contains("<legend>Suola</legend>"));
+    assert!(row.contains(r#"<option value="new:0">Create Mausteet</option>"#));
+    assert!(
+        !row.contains(r#"value="skip""#),
+        "an ingredient has no skip"
+    );
+    let mut answers = vec![("fingerprint".to_owned(), fingerprint(&body))];
+    answers.extend(
+        answer_fields(&body)
+            .into_iter()
+            .map(|f| (f, "new:0".to_owned())),
+    );
+    let resp = call_service(&app, post(format!("{page}/import/confirm"), answers)).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let to = location(&resp);
+    let copy: Uuid = to
+        .strip_prefix("/recipes/")
+        .and_then(|rest| rest.strip_suffix("?created=1"))
+        .and_then(|id| id.parse().ok())
+        .expect("the copy, with the count");
+    let shown = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&to)
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(shown.contains("1 new category"));
+    let names: Vec<String> = CategoryRepo::list_for_owner(&state.pool, friend)
+        .await
+        .expect("categories")
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+    assert_eq!(names, ["HEVI", "Maitotuotteet", "Leipä", "Mausteet"]);
+    let ingredients = RecipeRepo::get(&state.pool, friend, copy)
+        .await
+        .expect("copy")
+        .ingredients;
+    let suola = ingredients
+        .iter()
+        .find(|i| i.text == "Suola")
+        .expect("Suola");
+    assert_eq!(
+        suola.category.as_ref().map(|c| c.name.as_str()),
+        Some("Mausteet")
+    );
+}
+
+/// MB-0065 P2 (RR-0052): each chosen name is created once, last in the
+/// recipient's order and in the order the review shows it; rows that chose
+/// the same name share it; the summary counts it; none of the sharer's
+/// ids is used.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn created_category_is_shared_by_rows() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let me = make_user(&state, "me@example.com").await;
+    let friend = make_user(&state, "friend@example.com").await;
+    let leipa = CategoryRepo::create(&state.pool, me, "Leipä")
+        .await
+        .expect("c")
+        .id;
+    let mausteet = CategoryRepo::create(&state.pool, me, "Mausteet")
+        .await
+        .expect("c")
+        .id;
+    for (name, category) in [("Ruisleipä", leipa), ("Kaura", leipa), ("Suola", mausteet)] {
+        ProductRepo::create(&state.pool, me, name, category)
+            .await
+            .expect("favorite");
+    }
+    let my_hevi = CategoryRepo::create(&state.pool, friend, "HEVI")
+        .await
+        .expect("c")
+        .id;
+    CatalogShareRepo::share_catalog(&state.pool, me, "friend@example.com", true, false)
+        .await
+        .expect("share")
+        .expect("matched");
+    let cookie =
+        session_cookie(&call_service(&app, login_request("friend@example.com").to_request()).await);
+    let base = format!("/sharing/from/{me}/favorites");
+    let post = |uri: String, form: Vec<(String, String)>| {
+        TestRequest::post()
+            .uri(&uri)
+            .cookie(cookie.clone())
+            .set_form(form)
+            .to_request()
+    };
+
+    let body = body_string(
+        call_service(
+            &app,
+            post(
+                format!("{base}/import"),
+                vec![("all".to_owned(), "1".to_owned())],
+            ),
+        )
+        .await,
+    )
+    .await;
+    let legends: Vec<&str> = rows(&body)
+        .iter()
+        .filter_map(|r| r.split("<legend>").nth(1)?.split("</legend>").next())
+        .collect();
+    assert_eq!(legends, ["Ruisleipä", "Kaura", "Suola"]);
+    let mut answers = vec![
+        ("fingerprint".to_owned(), fingerprint(&body)),
+        ("all".to_owned(), "1".to_owned()),
+    ];
+    answers.extend(
+        answer_fields(&body)
+            .into_iter()
+            .map(|f| (f, "new:0".to_owned())),
+    );
+    let resp = call_service(&app, post(format!("{base}/import/confirm"), answers)).await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let done = location(&resp);
+    assert_eq!(
+        done,
+        format!("{base}/import/done?added=3&already=0&favorite=0&moved=0&skipped=0&categories=2")
+    );
+    let summary = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&done)
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(summary.contains("2 new categories"));
+
+    let mine = CategoryRepo::list_for_owner(&state.pool, friend)
+        .await
+        .expect("categories");
+    let names: Vec<&str> = mine.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["HEVI", "Leipä", "Mausteet"],
+        "once each, last, in order"
+    );
+    assert_eq!(mine[0].id, my_hevi);
+    for c in &mine[1..] {
+        assert!(c.id != leipa && c.id != mausteet && c.owner_id == friend);
+    }
+    assert_eq!(
+        favorites(&state, friend).await,
+        [
+            (
+                Some("Leipä".to_owned()),
+                vec!["Ruisleipä".to_owned(), "Kaura".to_owned()]
+            ),
+            (Some("Mausteet".to_owned()), vec!["Suola".to_owned()]),
+        ]
+    );
+}
+
+/// MB-0065 P3 (RR-0052): a "Create" answer for a name that isn't in the
+/// plan (an index out of range, not a number, or on a row with nothing to
+/// create) is refused and saves nothing; a category of that name made
+/// between the review and the confirmation shows the review again
+/// ("changed"), and no second category is created.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn create_race_and_unknown_name() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_user, session_cookie, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let me = make_user(&state, "me@example.com").await;
+    let friend = make_user(&state, "friend@example.com").await;
+    let hevi = CategoryRepo::create(&state.pool, me, "Hevi")
+        .await
+        .expect("c")
+        .id;
+    let leipa = CategoryRepo::create(&state.pool, me, "Leipä")
+        .await
+        .expect("c")
+        .id;
+    for (name, category) in [("Omena", hevi), ("Ruisleipä", leipa)] {
+        ProductRepo::create(&state.pool, me, name, category)
+            .await
+            .expect("favorite");
+    }
+    let my_hevi = CategoryRepo::create(&state.pool, friend, "HEVI")
+        .await
+        .expect("c")
+        .id;
+    let fruit = CategoryRepo::create(&state.pool, friend, "Hedelmät")
+        .await
+        .expect("c")
+        .id;
+    ProductRepo::create(&state.pool, friend, "omena", fruit)
+        .await
+        .expect("their Omena");
+    CatalogShareRepo::share_catalog(&state.pool, me, "friend@example.com", true, false)
+        .await
+        .expect("share")
+        .expect("matched");
+    let cookie =
+        session_cookie(&call_service(&app, login_request("friend@example.com").to_request()).await);
+    let base = format!("/sharing/from/{me}/favorites");
+    let post = |uri: String, form: Vec<(String, String)>| {
+        TestRequest::post()
+            .uri(&uri)
+            .cookie(cookie.clone())
+            .set_form(form)
+            .to_request()
+    };
+    let before = favorites(&state, friend).await;
+    let categories = || async {
+        CategoryRepo::list_for_owner(&state.pool, friend)
+            .await
+            .expect("categories")
+            .into_iter()
+            .map(|c| c.name)
+            .collect::<Vec<_>>()
+    };
+
+    // Omena: a conflict, nothing to create; Ruisleipä: "Create Leipä".
+    let body = body_string(
+        call_service(
+            &app,
+            post(
+                format!("{base}/import"),
+                vec![("all".to_owned(), "1".to_owned())],
+            ),
+        )
+        .await,
+    )
+    .await;
+    let found = rows(&body);
+    assert!(found[0].contains("<legend>Omena</legend>") && !found[0].contains("new:"));
+    assert!(found[1].contains(r#"value="new:0""#));
+    let fields = answer_fields(&body);
+    let confirm = |omena: String, ruis: &str| {
+        vec![
+            ("fingerprint".to_owned(), fingerprint(&body)),
+            ("all".to_owned(), "1".to_owned()),
+            (fields[0].clone(), omena),
+            (fields[1].clone(), ruis.to_owned()),
+        ]
+    };
+
+    for (omena, ruis) in [
+        (my_hevi.to_string(), "new:1"),
+        (my_hevi.to_string(), "new:x"),
+        (my_hevi.to_string(), "new:"),
+        (my_hevi.to_string(), "new:-1"),
+        ("new:0".to_owned(), "new:0"),
+    ] {
+        let resp = call_service(
+            &app,
+            post(
+                format!("{base}/import/confirm"),
+                confirm(omena.clone(), ruis),
+            ),
+        )
+        .await;
+        assert_eq!(
+            resp.status(),
+            StatusCode::BAD_REQUEST,
+            "{omena} / {ruis} refused"
+        );
+        assert_eq!(favorites(&state, friend).await, before, "nothing saved");
+        assert_eq!(categories().await, ["HEVI", "Hedelmät"], "nothing created");
+    }
+
+    // The race: "LEIPÄ" made meanwhile; the review is shown again.
+    CategoryRepo::create(&state.pool, friend, "LEIPÄ")
+        .await
+        .expect("made meanwhile");
+    let resp = call_service(
+        &app,
+        post(
+            format!("{base}/import/confirm"),
+            confirm(my_hevi.to_string(), "new:0"),
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let again = body_string(resp).await;
+    assert!(again.contains("changed since"));
+    assert!(!again.contains("Create Leipä"), "the name now matches");
+    assert_eq!(favorites(&state, friend).await, before, "nothing saved");
+    assert_eq!(
+        categories().await,
+        ["HEVI", "Hedelmät", "LEIPÄ"],
+        "no second one"
+    );
+}

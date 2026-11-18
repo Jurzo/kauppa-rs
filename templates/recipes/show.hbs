@@ -4,6 +4,8 @@
     <h1>{{title}}</h1>
     <a href="/recipes">{{t "recipes.all"}}</a>
   </header>
+  {{!-- MB-0065 (RR-0052): a recipe import that created categories says so. --}}
+  {{#if categories_created}}<p class="muted" role="status">{{t "export.categories_created" count=categories_created}}</p>{{/if}}
 
   {{> recipes/_details details }}
 

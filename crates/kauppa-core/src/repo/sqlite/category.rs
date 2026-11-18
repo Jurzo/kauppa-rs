@@ -16,52 +16,8 @@ use super::{CategoryRow, SqlitePool, clean_name};
 #[async_trait]
 impl CategoryRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str) -> CoreResult<Category> {
-        let name = clean_name(Entity::Category, name)?;
-        let id = Uuid::new_v4();
-        let id_str = id.to_string();
-        let owner = owner_id.to_string();
-        let now = Utc::now();
-
-        // Append at the end of this owner's ordering.
-        let position = sqlx::query_scalar!(
-            r#"SELECT COALESCE(MAX(position), -1) + 1 AS "next!: i64"
-                FROM categories
-                WHERE owner_id = ?1"#,
-            owner
-        )
-        .fetch_one(&self.inner)
-        .await?;
-
-        let key = name_key(name);
-        sqlx::query!(
-            r"INSERT INTO categories (id, owner_id, name, name_key, position, created_at)
-              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            id_str,
-            owner,
-            name,
-            key,
-            position,
-            now
-        )
-        .execute(&self.inner)
-        .await
-        .map_err(|e| match &e {
-            sqlx::Error::Database(db) if db.is_unique_violation() => {
-                CoreError::Conflict(Conflict::Exists {
-                    entity: Entity::Category,
-                    name: name.to_owned(),
-                })
-            }
-            _ => CoreError::Database(e),
-        })?;
-
-        Ok(Category {
-            id,
-            owner_id,
-            name: name.to_owned(),
-            position,
-            created_at: now,
-        })
+        let mut conn = self.inner.acquire().await?;
+        insert_category(&mut conn, owner_id, name).await
     }
 
     async fn list_for_owner(&self, owner_id: Uuid) -> CoreResult<Vec<Category>> {
@@ -161,4 +117,77 @@ impl CategoryRepo for SqlitePool {
         }
         Ok(())
     }
+}
+
+/// Insert a category for `owner_id`, last in their order: the one insert
+/// path, used by "Add category" and, inside their transaction, by the
+/// review's "Create ‹name›" (MB-0065, RR-0052 constraint 3). A name the
+/// owner already has (ignoring case, RR-0003) is a `Conflict`.
+pub(super) async fn insert_category(
+    conn: &mut sqlx::SqliteConnection,
+    owner_id: Uuid,
+    name: &str,
+) -> CoreResult<Category> {
+    let name = clean_name(Entity::Category, name)?;
+    let id = Uuid::new_v4();
+    let id_str = id.to_string();
+    let owner = owner_id.to_string();
+    let now = Utc::now();
+
+    // Append at the end of this owner's ordering.
+    let position = sqlx::query_scalar!(
+        r#"SELECT COALESCE(MAX(position), -1) + 1 AS "next!: i64"
+                FROM categories
+                WHERE owner_id = ?1"#,
+        owner
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+
+    let key = name_key(name);
+    sqlx::query!(
+        r"INSERT INTO categories (id, owner_id, name, name_key, position, created_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        id_str,
+        owner,
+        name,
+        key,
+        position,
+        now
+    )
+    .execute(&mut *conn)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            CoreError::Conflict(Conflict::Exists {
+                entity: Entity::Category,
+                name: name.to_owned(),
+            })
+        }
+        _ => CoreError::Database(e),
+    })?;
+
+    Ok(Category {
+        id,
+        owner_id,
+        name: name.to_owned(),
+        position,
+        created_at: now,
+    })
+}
+
+/// Create the review's chosen categories inside `tx`, in order, keyed by
+/// `name_key` for [`crate::export::Decisions::resolve`] (RR-0052
+/// sub-answer 4).
+pub(super) async fn create_chosen(
+    tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    owner_id: Uuid,
+    names: &[String],
+) -> CoreResult<std::collections::BTreeMap<String, Uuid>> {
+    let mut created = std::collections::BTreeMap::new();
+    for name in names {
+        let category = insert_category(tx, owner_id, name).await?;
+        created.insert(name_key(&category.name), category.id);
+    }
+    Ok(created)
 }

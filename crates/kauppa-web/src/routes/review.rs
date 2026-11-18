@@ -8,6 +8,7 @@
 //! summary only displays.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 use actix_web::http::{StatusCode, header};
 use actix_web::{HttpRequest, HttpResponse};
@@ -16,7 +17,8 @@ use uuid::Uuid;
 
 use kauppa_core::domain::Category;
 use kauppa_core::export::{
-    Action, ExportOutcome, ExportPlan, ExportSummary, PlanRow, ReviewAnswers, ReviewReason, SKIP,
+    Action, CREATE, ExportOutcome, ExportPlan, ExportSummary, PlanRow, ReviewAnswers, ReviewReason,
+    SKIP,
 };
 
 use crate::error::WebResult;
@@ -132,6 +134,15 @@ struct PickerView {
     /// Whether "Skip" is offered (an ingredient needs a category).
     skippable: bool,
     options: Vec<OptionView>,
+    /// "Create ‹name›" options (RR-0052), in their own group.
+    create: Vec<CreateView>,
+}
+
+/// A "Create ‹name›" option: `value` is `new:<n>`, never the name.
+#[derive(Debug, Serialize)]
+struct CreateView {
+    value: String,
+    name: String,
 }
 
 /// A radio choice.
@@ -156,6 +167,8 @@ enum Label {
     FavoriteIn,
     /// "Add in ‹category›": a new favorite.
     AddIn,
+    /// "Create ‹category›": a new category of the source's name (RR-0052).
+    Create,
     Skip,
 }
 
@@ -167,10 +180,11 @@ impl Serialize for Label {
             Self::Move => "move_to",
             Self::FavoriteIn => "favorite_in",
             Self::AddIn => "add_in",
+            Self::Create => "create",
             Self::Skip => "skip",
         };
         // Every key, so the template's strict mode finds each one.
-        let keys = ["keep", "move_to", "favorite_in", "add_in", "skip"];
+        let keys = ["keep", "move_to", "favorite_in", "add_in", "create", "skip"];
         let mut map = serializer.serialize_map(Some(keys.len()))?;
         for k in keys {
             map.serialize_entry(k, &(k == key))?;
@@ -208,6 +222,8 @@ pub struct DoneQuery {
     moved: usize,
     #[serde(default)]
     skipped: usize,
+    #[serde(default)]
+    categories: usize,
 }
 
 fn category_name(categories: &[Category], id: Uuid) -> String {
@@ -220,7 +236,8 @@ fn category_name(categories: &[Category], id: Uuid) -> String {
 
 fn choice(index: usize, value: String, category: String, label: Label) -> ChoiceView {
     ChoiceView {
-        dom_id: format!("r{index}-{value}"),
+        // `new:0` → `new-0`: an id that needs no escaping in a selector.
+        dom_id: format!("r{index}-{}", value.replace(':', "-")),
         value,
         category,
         label,
@@ -243,6 +260,7 @@ fn row_view(ui: &Ui, categories: &[Category], index: usize, row: &PlanRow) -> We
     let mut choices = Vec::new();
     let mut any = false;
     let mut skippable = false;
+    let mut create = Vec::new();
     if let Some(offered) = row.choices() {
         skippable = offered.skip;
         let label = |is_keep: bool| match existing {
@@ -261,6 +279,21 @@ fn row_view(ui: &Ui, categories: &[Category], index: usize, row: &PlanRow) -> We
             choices.push(choice(index, id.to_string(), name, label(is_keep)));
         }
         any = offered.any;
+        // Below the user's categories, above "Skip" (RR-0052 sub-answer 5).
+        create = offered
+            .create
+            .iter()
+            .enumerate()
+            .map(|(n, name)| CreateView {
+                value: format!("{CREATE}{n}"),
+                name: name.clone(),
+            })
+            .collect();
+        if !any {
+            for c in std::mem::take(&mut create) {
+                choices.push(choice(index, c.value, c.name, Label::Create));
+            }
+        }
         if offered.skip && !any {
             choices.push(choice(index, SKIP.to_owned(), String::new(), Label::Skip));
         }
@@ -283,6 +316,7 @@ fn row_view(ui: &Ui, categories: &[Category], index: usize, row: &PlanRow) -> We
                     name: c.name.clone(),
                 })
                 .collect(),
+            create,
         }),
     })
 }
@@ -351,10 +385,14 @@ pub fn respond(
 ) -> WebResult<HttpResponse> {
     match outcome {
         ExportOutcome::Saved(s) => {
-            let location = format!(
+            let mut location = format!(
                 "{}/done?added={}&already={}&favorite={}&moved={}&skipped={}",
                 page.base, s.added, s.already, s.made_favorite, s.recategorized, s.skipped
             );
+            // Only when the review created categories (RR-0052).
+            if s.categories_created > 0 {
+                let _ = write!(location, "&categories={}", s.categories_created);
+            }
             Ok(HttpResponse::SeeOther()
                 .append_header((header::LOCATION, location))
                 .finish())
@@ -404,6 +442,7 @@ pub fn done(
         made_favorite: query.favorite,
         recategorized: query.moved,
         skipped: query.skipped,
+        categories_created: query.categories,
     };
     let view = DoneView {
         back,

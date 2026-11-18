@@ -131,8 +131,13 @@
   },
   "export.back": "Back to the list",
   "export.button": "Add to favorites",
+  "export.categories_created": {
+    "one": "1 new category",
+    "other": "{count} new categories"
+  },
   "export.changed": "The list or your favorites changed since. Check the choices again.",
   "export.choose": "Choose a category",
+  "export.create": "Create {category}",
   "export.done_title": "Added to favorites",
   "export.favorite_in": "Make it a favorite in {category}",
   "export.from_recipes": "From your recipes: {category}.",
@@ -143,6 +148,7 @@
     "other": "{count} products from recipes made favorites"
   },
   "export.move": "Move to {category}",
+  "export.new_category": "New category",
   "export.nothing": "The list had nothing to add.",
   "export.on_list": "On the list: {list}.",
   "export.on_list_none": "On the list: no category.",

@@ -801,3 +801,138 @@ async fn writes_only_own_catalog() {
         "the owner's catalog is unchanged"
     );
 }
+
+/// MB-0065 P4 (RR-0052): a grantee's item whose list category they don't
+/// have can be created on their review: "Create ‹name›" in a "New category"
+/// group of the picker, sent as an index; rows choosing the same name share
+/// one new category, last in their order, with none of the owner's ids. The
+/// list owner's own export, whose categories all match, offers no creation.
+#[actix_web::test]
+#[allow(clippy::expect_used, clippy::too_many_lines)]
+async fn create_missing_category() {
+    use actix_web::test::{TestRequest, call_service};
+    use kauppa_core::domain::ShareRole;
+
+    use crate::routes::test_support::{
+        body_string, make_category, make_user, test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let owner = make_user(&state, "owner@example.com").await;
+    let editor = make_user(&state, "editor@example.com").await;
+    let hevi = make_category(&state, owner, "Hevi").await;
+    let kylma = make_category(&state, owner, "Kylmä").await;
+    let list = ShoppingListRepo::create(&state.pool, owner, "Kauppa")
+        .await
+        .expect("list")
+        .id;
+    item(&state, owner, list, "Omena", Some(hevi)).await;
+    item(&state, owner, list, "Maito", Some(kylma)).await;
+    item(&state, owner, list, "Jogurtti", Some(kylma)).await;
+    item(&state, owner, list, "Kynttilät", None).await;
+    ShoppingListRepo::share(
+        &state.pool,
+        owner,
+        list,
+        "editor@example.com",
+        ShareRole::Edit,
+    )
+    .await
+    .expect("share")
+    .expect("matched");
+    let my_hevi = make_category(&state, editor, "HEVI").await;
+    let owner_before = catalog(&state, owner).await;
+    let export = |cookie| {
+        TestRequest::post()
+            .uri(&format!("/lists/{list}/export"))
+            .cookie(cookie)
+            .to_request()
+    };
+
+    // The owner: only Kynttilät (no category) is asked, with no creation.
+    let owner_cookie = session!(app, "owner@example.com");
+    let body = body_string(call_service(&app, export(owner_cookie)).await).await;
+    assert_eq!(review_rows(&body), ["Kynttilät"]);
+    assert!(!body.contains("New category") && !body.contains("new:"));
+
+    // The editor: Maito and Jogurtti (Kylmä isn't theirs) offer "Create
+    // Kylmä"; Kynttilät has no source category, so nothing to create.
+    let cookie = session!(app, "editor@example.com");
+    let body = body_string(call_service(&app, export(cookie.clone())).await).await;
+    assert_eq!(review_rows(&body), ["Maito", "Jogurtti", "Kynttilät"]);
+    let rows: Vec<&str> = body
+        .split(r#"<fieldset class="export-row">"#)
+        .skip(1)
+        .collect();
+    for row in &rows[..2] {
+        assert!(row.contains(r#"<optgroup label="New category">"#), "{row}");
+        assert!(row.contains(r#"<option value="new:0">Create Kylmä</option>"#));
+    }
+    assert!(!rows[2].contains("New category"));
+    let form = &body[body.find(r#"class="export-review""#).expect("form")..];
+    assert!(!form.contains("checked"), "nothing preselected");
+    assert!(
+        !body.contains(&kylma.to_string()) && !body.contains(&hevi.to_string()),
+        "no owner category id offered"
+    );
+
+    let resp = call_service(
+        &app,
+        TestRequest::post()
+            .uri(&format!("/lists/{list}/export/confirm"))
+            .cookie(cookie.clone())
+            .set_form([
+                ("fingerprint", fingerprint(&body)),
+                ("r1", "new:0".to_owned()),
+                ("r2", "new:0".to_owned()),
+                ("r3", "skip".to_owned()),
+            ])
+            .to_request(),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+    let done = location(&resp);
+    assert_eq!(
+        done,
+        format!(
+            "/lists/{list}/export/done?added=3&already=0&favorite=0&moved=0&skipped=1&categories=1"
+        )
+    );
+    let summary = body_string(
+        call_service(
+            &app,
+            TestRequest::get()
+                .uri(&done)
+                .cookie(cookie.clone())
+                .to_request(),
+        )
+        .await,
+    )
+    .await;
+    assert!(summary.contains("1 new category") && summary.contains("3 new favorites"));
+
+    let mine = CategoryRepo::list_for_owner(&state.pool, editor)
+        .await
+        .expect("categories");
+    let names: Vec<&str> = mine.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, ["HEVI", "Kylmä"], "created once, last");
+    assert_eq!(mine[0].id, my_hevi);
+    assert_ne!(mine[1].id, kylma, "a new category, not the owner's");
+    assert_eq!(mine[1].owner_id, editor);
+    assert_eq!(
+        favorites(&state, editor).await,
+        [
+            (Some("HEVI".to_owned()), vec!["Omena".to_owned()]),
+            (
+                Some("Kylmä".to_owned()),
+                vec!["Maito".to_owned(), "Jogurtti".to_owned()]
+            ),
+        ]
+    );
+    assert_eq!(
+        catalog(&state, owner).await,
+        owner_before,
+        "the owner's catalog is untouched"
+    );
+}
