@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0066 autonomy.escalate (vendoring Sortable.js, first-party JavaScript → platform-owner; the ↑/↓ buttons and the order routes → owner; any CSP change → security); a new vendored file under `assets/vendor/` (RR-0015 constraint 1, AGENTS.md do-not-touch boundaries); an AGENTS.md and templating.md change (AGENTS.md change procedure); feature.md escalation trigger `csp.rs` (only if Q5 changed the CSP; recommended: no change)"
 ---
 ```
@@ -244,3 +244,9 @@ roll-back commit. No schema change.
 - **htmx 2.0.11** serializes a form with `new FormData(form)`, which
   includes inputs associated through the `form` attribute, in document
   order.
+
+## Owner's answer (2026-11-18)
+
+"as recommended": Q1 A, Q2 A, Q3 A, Q4 A, Q5 A.
+
+Recorded in RR-0053 (scaffold; the owner signs).
