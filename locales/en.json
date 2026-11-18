@@ -45,6 +45,7 @@
   "common.delete": "Delete",
   "common.delete_confirm": "Delete “{name}”?",
   "common.delete_named": "Delete {name}",
+  "common.drag_to_reorder": "Drag to reorder {name}",
   "common.edit": "Edit",
   "common.first": " first.",
   "common.move_down": "Move {name} down",

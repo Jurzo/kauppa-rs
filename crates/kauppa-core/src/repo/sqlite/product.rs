@@ -494,6 +494,74 @@ impl ProductRepo for SqlitePool {
         Ok(())
     }
 
+    async fn set_favorite_order(
+        &self,
+        owner_id: Uuid,
+        category_id: Option<Uuid>,
+        ordered_ids: &[Uuid],
+    ) -> CoreResult<bool> {
+        let owner = owner_id.to_string();
+        let category = category_id.map(|c| c.to_string());
+        // IMMEDIATE: the set checked is the set written.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        if let Some(category) = &category {
+            sqlx::query_scalar!(
+                r#"SELECT 1 AS "found!: i64" FROM categories WHERE id = ?1 AND owner_id = ?2"#,
+                category,
+                owner
+            )
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or(CoreError::NotFound)?;
+        }
+
+        // `IS` so the uncategorized (NULL) group can be ordered too.
+        let siblings = sqlx::query!(
+            r#"SELECT id, is_favorite AS "is_favorite: bool" FROM products
+                WHERE owner_id = ?1 AND category_id IS ?2
+                ORDER BY position ASC, name ASC"#,
+            owner,
+            category
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let mut ids = Vec::with_capacity(siblings.len());
+        let mut slots = Vec::new();
+        for (index, row) in siblings.into_iter().enumerate() {
+            if row.is_favorite {
+                slots.push(index);
+            }
+            ids.push(row.id);
+        }
+        // The favorites take the new order in their own slots; hidden
+        // products in between keep theirs, as `move_within_category` does.
+        let favorites: Vec<String> = slots.iter().map(|&i| ids[i].clone()).collect();
+        let proposed: Vec<String> = ordered_ids.iter().map(Uuid::to_string).collect();
+        if !ordering::is_reordering(&favorites, &proposed) {
+            return Ok(false);
+        }
+        for (&slot, product_id) in slots.iter().zip(proposed) {
+            ids[slot] = product_id;
+        }
+
+        // Rewrite the whole group densely, which also heals any ties or gaps.
+        for (index, product_id) in ids.iter().enumerate() {
+            let position = i64::try_from(index)
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Product)))?;
+            sqlx::query!(
+                r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
+                position,
+                product_id,
+                owner
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {
         let owner = owner_id.to_string();
         let id_str = id.to_string();

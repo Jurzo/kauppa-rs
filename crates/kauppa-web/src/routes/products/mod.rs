@@ -39,7 +39,7 @@ use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
 use crate::i18n::{Ui, VARY};
-use crate::routes::request::{current_user, is_hx};
+use crate::routes::request::{current_user, is_hx, order_ids};
 use crate::state::AppState;
 
 #[cfg(test)]
@@ -128,6 +128,9 @@ enum Touch {
     Add(Option<Uuid>),
     /// An action on an existing product: its id and where it was before.
     Product { id: Uuid, before: Option<Unit> },
+    /// A new order for one group (MB-0066): its category (`None`:
+    /// Uncategorized).
+    Group(Option<Uuid>),
 }
 
 /// How an action is answered (RR-0044).
@@ -194,6 +197,14 @@ fn choose_swap(after: &Catalog, touch: Touch, failed: bool) -> Swap {
     match touch {
         Touch::Add(category) => {
             Swap::Catalog(category.map(|c| Unit::Group(Some(c))).into_iter().collect())
+        }
+        Touch::Group(category) => {
+            let unit = Unit::Group(category);
+            if after.has(unit) && !failed {
+                Swap::Unit(unit)
+            } else {
+                Swap::Catalog(vec![unit])
+            }
         }
         Touch::Product { before, .. } if failed => Swap::Catalog(before.into_iter().collect()),
         Touch::Product { id, before } => match (before, after.locate(id)) {
@@ -266,6 +277,9 @@ struct GroupView {
     open: bool,
     /// `None` for the uncategorized group.
     name: Option<String>,
+    /// The order form's `category` (MB-0066): the category's id, or
+    /// [`NO_CATEGORY`].
+    order_key: String,
     count: usize,
     products: Vec<ProductView>,
 }
@@ -401,6 +415,10 @@ impl CatalogView {
                 GroupView {
                     dom_id: unit.dom_id(),
                     open: open.contains(&unit),
+                    order_key: group
+                        .category
+                        .as_ref()
+                        .map_or_else(|| NO_CATEGORY.to_owned(), |c| c.id.to_string()),
                     name: group.category.map(|c| c.name),
                     count: group.products.len(),
                     products: group
@@ -671,6 +689,48 @@ pub async fn move_product(
         before,
     };
     respond(&state, &ui, &req, user, touch, outcome, Draft::default()).await
+}
+
+/// Save a full new order of one favorites group from a drag (MB-0066,
+/// RR-0053 sub-answer 4). `category` names the group: a category id, or
+/// [`NO_CATEGORY`] for Uncategorized; anything else, or another user's
+/// category, is 404. The order is saved only if it is exactly the group's
+/// favorites; otherwise nothing changes and the group comes back as it is.
+#[post("/order")]
+pub async fn order(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    form: web::Form<Vec<(String, String)>>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let group = match form
+        .iter()
+        .find(|(name, _)| name == "category")
+        .map(|(_, value)| value.trim())
+    {
+        Some(NO_CATEGORY) => None,
+        Some(raw) => Some(Uuid::parse_str(raw).map_err(|_| CoreError::NotFound)?),
+        None => return Err(CoreError::NotFound.into()),
+    };
+    let saved = match order_ids(&form) {
+        Some(ids) => ProductRepo::set_favorite_order(&state.pool, user, group, &ids).await?,
+        None => false,
+    };
+    if !saved {
+        tracing::debug!(user_id = %user, "favorites order stale or not the user's: nothing saved");
+    }
+    respond(
+        &state,
+        &ui,
+        &req,
+        user,
+        Touch::Group(group),
+        Ok(()),
+        Draft::default(),
+    )
+    .await
 }
 
 /// Make a recipe-created product a favorite, in its own category (MB-0014).

@@ -55,7 +55,8 @@ mod tests;
 
 pub use add_to_list::add_recipe_to_list;
 pub use ingredients::{
-    add_ingredient, ingredient_match, move_ingredient, remove_ingredient, set_quantity,
+    add_ingredient, ingredient_match, move_ingredient, order_ingredients, remove_ingredient,
+    set_quantity,
 };
 
 #[derive(Debug, Deserialize)]

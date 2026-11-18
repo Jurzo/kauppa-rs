@@ -3,9 +3,15 @@
     <p class="error" role="alert">{{error}}</p>
   {{/if}}
 
-  <ul class="product-list">
+  {{!-- MB-0066 (RR-0053): dragging a row's handle posts the whole new order. --}}
+  <form id="ingredient-order" class="sortable-order" method="post" action="/recipes/{{recipe_id}}/ingredients/order"
+        hx-post="/recipes/{{recipe_id}}/ingredients/order" hx-target="#ingredients" hx-swap="outerHTML"
+        hx-trigger="end from:#ingredient-list"></form>
+  <ul id="ingredient-list" class="product-list" data-sortable>
     {{#each items}}
       <li class="product-row">
+        <input type="hidden" name="id" value="{{this.id}}" form="ingredient-order" />
+        <span class="drag-handle" role="img" aria-label="{{t "common.drag_to_reorder" name=this.name}}">⠿</span>
         <span class="product-name">
           {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.name}}
           {{#if this.category}}<span class="muted">· {{this.category}}</span>{{/if}}

@@ -28,6 +28,9 @@ const SERVED_AS: &[(&str, &str)] = &[
     ("vendor/response-targets-2.0.4.min.js", "text/javascript"),
     // MB-0057 (RR-0049): the SSE extension.
     ("vendor/sse-2.2.4.min.js", "text/javascript"),
+    // MB-0066 (RR-0053): Sortable, and the first-party file connecting it.
+    ("vendor/Sortable-1.15.7.min.js", "text/javascript"),
+    ("app/sortable.js", "text/javascript"),
     // MB-0051 (RR-0031 sub-answer 6): the language selector's flags. No
     // charset: `actix-files` 0.7.4 added one only to text types.
     ("flags/en.svg", "image/svg+xml"),

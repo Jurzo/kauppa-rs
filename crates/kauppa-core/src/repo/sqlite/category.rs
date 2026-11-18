@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::CoreResult;
-use crate::domain::Category;
+use crate::domain::{Category, ordering};
 use crate::error::CoreError;
 use crate::repo::CategoryRepo;
 use crate::repo::name_key::name_key;
@@ -99,6 +99,34 @@ impl CategoryRepo for SqlitePool {
 
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn set_order(&self, owner_id: Uuid, ordered_ids: &[Uuid]) -> CoreResult<bool> {
+        let owner = owner_id.to_string();
+        // IMMEDIATE: the set checked is the set written.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        let current: Vec<String> =
+            sqlx::query_scalar!(r"SELECT id FROM categories WHERE owner_id = ?1", owner)
+                .fetch_all(&mut *tx)
+                .await?;
+        let proposed: Vec<String> = ordered_ids.iter().map(Uuid::to_string).collect();
+        if !ordering::is_reordering(&current, &proposed) {
+            return Ok(false);
+        }
+        for (index, id) in proposed.iter().enumerate() {
+            let position = i64::try_from(index)
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Category)))?;
+            sqlx::query!(
+                r"UPDATE categories SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
+                position,
+                id,
+                owner
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()> {

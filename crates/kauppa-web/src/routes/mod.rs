@@ -89,6 +89,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
                 .service(recipes::delete)
                 .service(recipes::add_ingredient)
                 .service(recipes::ingredient_match)
+                .service(recipes::order_ingredients)
                 .service(recipes::set_quantity)
                 .service(recipes::move_ingredient)
                 .service(recipes::remove_ingredient)
@@ -97,6 +98,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
         .service(
             web::scope("/categories")
                 .service(categories::index)
+                .service(categories::order)
                 .service(categories::create)
                 .service(categories::rename)
                 .service(categories::move_category)
@@ -120,6 +122,7 @@ fn protected(cfg: &mut web::ServiceConfig) {
         .service(
             web::scope("/favorites")
                 .service(products::index)
+                .service(products::order)
                 .service(products::create)
                 .service(products::save)
                 .service(products::move_product)

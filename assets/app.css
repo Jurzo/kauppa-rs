@@ -553,6 +553,19 @@ select {
 .category-row .row-actions, .product-row .row-actions { display: flex; margin: 0; }
 /* Comfortable touch targets for the one-handed reorder buttons. */
 .category-row .row-actions .link, .product-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.1rem; }
+/* MB-0066 (RR-0053): drag handles, shown only once `assets/app/sortable.js`
+   has run (it marks <html> with .sortable-ready); without JavaScript the
+   ↑/↓ buttons remain. `touch-action: none` lets a touch on the handle drag
+   while a touch elsewhere on the row still scrolls the page. */
+.drag-handle { display: none; }
+.sortable-ready .drag-handle {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.75rem; min-height: 2.75rem; margin-left: calc(-1 * var(--space-2));
+  color: var(--ink-muted); font-size: 1.25rem; cursor: grab; touch-action: none; user-select: none;
+}
+.sortable-order { display: none; }
+.sortable-ghost { opacity: 0.4; }
+.sortable-chosen { background: var(--surface); }
 .product-edit summary { cursor: pointer; color: var(--brand); padding: 0.625rem 0; border-radius: var(--radius-sm); }
 .product-edit[open] { flex-basis: 100%; }
 .product-edit form { margin: 0 0 var(--space-3); }

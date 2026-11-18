@@ -4,8 +4,8 @@
 //! lines). `panel` is shared with the language and theme tests.
 
 use super::{
-    LAYOUT_SCRIPTS, TEMPLATES, accessible_name, attr, element, render_layout, script_tags, tags,
-    text,
+    LAYOUT_SCRIPTS, SORTABLE_SCRIPTS, TEMPLATES, accessible_name, attr, element, render_layout,
+    script_tags, tags, text,
 };
 
 /// The navigation panel of a rendered page: the menu button that opens it,
@@ -176,6 +176,11 @@ pub fn no_script() {
         if name == "layout" || name == "rendered layout" {
             let srcs: Vec<_> = scripts.iter().map(|tag| attr(tag, "src")).collect();
             let expected: Vec<_> = LAYOUT_SCRIPTS.iter().map(|(src, _)| Some(*src)).collect();
+            assert_eq!(srcs, expected, "{name}");
+        } else if name == "sortable/_scripts" {
+            // MB-0066 (RR-0053 constraint 3): the drag pages' own scripts.
+            let srcs: Vec<_> = scripts.iter().map(|tag| attr(tag, "src")).collect();
+            let expected: Vec<_> = SORTABLE_SCRIPTS.iter().map(|(src, _)| Some(*src)).collect();
             assert_eq!(srcs, expected, "{name}");
         } else {
             assert!(scripts.is_empty(), "{name}: {scripts:?}");

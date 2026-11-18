@@ -383,6 +383,46 @@ impl RecipeRepo for SqlitePool {
         Ok(())
     }
 
+    async fn set_ingredient_order(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ordered_ids: &[Uuid],
+    ) -> CoreResult<bool> {
+        let recipe = recipe_id.to_string();
+        // IMMEDIATE: the set checked is the set written. A stale order rolls
+        // back the `updated_at` touch with it.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        touch_owned_recipe(&mut tx, &owner_id.to_string(), &recipe).await?;
+
+        let current: Vec<String> = sqlx::query_scalar!(
+            r"SELECT id FROM ingredients WHERE recipe_id = ?1 ORDER BY position ASC, id ASC",
+            recipe
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let proposed: Vec<String> = ordered_ids.iter().map(Uuid::to_string).collect();
+        if !ordering::is_reordering(&current, &proposed) {
+            return Ok(false);
+        }
+
+        for (index, id) in proposed.iter().enumerate() {
+            let position = i64::try_from(index)
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Ingredient)))?;
+            sqlx::query!(
+                r"UPDATE ingredients SET position = ?1 WHERE id = ?2 AND recipe_id = ?3",
+                position,
+                id,
+                recipe
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(true)
+    }
+
     async fn remove_ingredient(
         &self,
         owner_id: Uuid,

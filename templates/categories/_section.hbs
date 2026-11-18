@@ -12,9 +12,15 @@
     <button type="submit" class="button primary">{{t "common.add"}}</button>
   </form>
 
-  <ul class="category-list">
+  {{!-- MB-0066 (RR-0053): dragging a row's handle posts the whole new order. The rows' hidden ids join this form through their `form` attribute (rows hold forms of their own). --}}
+  <form id="category-order" class="sortable-order" method="post" action="/categories/order"
+        hx-post="/categories/order" hx-target="#categories" hx-swap="outerHTML"
+        hx-trigger="end from:#category-list"></form>
+  <ul id="category-list" class="category-list" data-sortable>
     {{#each categories}}
       <li class="category-row">
+        <input type="hidden" name="id" value="{{this.id}}" form="category-order" />
+        <span class="drag-handle" role="img" aria-label="{{t "common.drag_to_reorder" name=this.name}}">⠿</span>
         <form class="category-rename" method="post" action="/categories/{{this.id}}/rename"
               hx-post="/categories/{{this.id}}/rename" hx-target="#categories" hx-swap="outerHTML">
           <label class="visually-hidden" for="cat-{{this.id}}">{{t "categories.name_of" name=this.name}}</label>

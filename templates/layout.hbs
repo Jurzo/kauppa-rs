@@ -40,6 +40,7 @@
     <body> declares it, like response-targets (RR-0025); only the list page
     and the shopping view connect (sse-connect). --}}
     <script src="/assets/vendor/sse-2.2.4.min.js" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" defer></script>
+    {{#if page_sortable}}{{> sortable/_scripts}}{{/if}}
   </head>
   <body hx-boost="true" hx-ext="response-targets,sse">
     <header class="topbar">

@@ -15,7 +15,7 @@ use kauppa_core::{CoreError, CoreResult};
 use crate::error::WebResult;
 use crate::i18n::{Ui, VARY};
 use crate::routes::products::parse_category;
-use crate::routes::request::{current_user, is_hx, wants_fragment};
+use crate::routes::request::{current_user, is_hx, order_ids, wants_fragment};
 use crate::state::AppState;
 
 use super::{Draft, Feedback, Section, match_hint, render_show, respond};
@@ -242,6 +242,43 @@ pub async fn move_ingredient(
     let (recipe_id, ingredient_id) = path.into_inner();
     let outcome =
         RecipeRepo::move_ingredient(&state.pool, user, recipe_id, ingredient_id, form.dir).await;
+    respond(
+        &ui,
+        &req,
+        user,
+        recipe_id,
+        Section::Ingredients,
+        outcome,
+        Draft::None,
+    )
+    .await
+}
+
+/// Save a full new order of a recipe's ingredients from a drag (MB-0066,
+/// RR-0053 sub-answer 4): only if it is exactly the recipe's ingredients;
+/// otherwise nothing changes and the section comes back as it is. Another
+/// user's recipe is 404.
+#[post("/{id}/ingredients/order")]
+pub async fn order_ingredients(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    path: web::Path<Uuid>,
+    form: web::Form<Vec<(String, String)>>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let recipe_id = path.into_inner();
+    let outcome = match order_ids(&form) {
+        Some(ids) => RecipeRepo::set_ingredient_order(&state.pool, user, recipe_id, &ids).await,
+        // Not ids: still 404 for another user's recipe, before anything else.
+        None => {
+            RecipeRepo::set_ingredient_order(&state.pool, user, recipe_id, &[Uuid::nil()]).await
+        }
+    };
+    if matches!(outcome, Ok(false)) {
+        tracing::debug!(user_id = %user, recipe_id = %recipe_id, "ingredient order stale: nothing saved");
+    }
     respond(
         &ui,
         &req,
