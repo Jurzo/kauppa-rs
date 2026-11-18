@@ -5,11 +5,11 @@
 id: RR-0052
 closes: CRP-0052
 mission: MB-0065
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: product
 risk_tier: medium
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-18T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-18t18:10:00z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0065-create-missing-categories-on-import.md
@@ -87,7 +87,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as product, data-owner and security.">
+@Jurzo as product, data-owner and security.
 
 ## Linked artifacts and evidence
 
