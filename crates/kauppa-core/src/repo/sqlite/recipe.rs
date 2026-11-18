@@ -477,6 +477,9 @@ impl RecipeRepo for SqlitePool {
                 });
             }
         };
+        let names = decisions.new_categories();
+        let created = super::category::create_chosen(&mut tx, owner_id, &names).await?;
+        let decisions = decisions.resolve(&created)?;
         let resolved = export::ingredient_products(&plan, &decisions)
             .ok_or(CoreError::Invalid(Invalid::Unknown(Entity::Category)))?;
 
@@ -490,7 +493,10 @@ impl RecipeRepo for SqlitePool {
 
         let recipe_id = insert_copy(&mut tx, &owner, &input, source, &by_key, now).await?;
         tx.commit().await?;
-        Ok(RecipeImport::Saved(recipe_id))
+        Ok(RecipeImport::Saved {
+            recipe: recipe_id,
+            categories_created: created.len(),
+        })
     }
 }
 

@@ -131,8 +131,13 @@
   },
   "export.back": "Takaisin listaan",
   "export.button": "Lisää suosikkeihin",
+  "export.categories_created": {
+    "one": "1 uusi kategoria",
+    "other": "{count} uutta kategoriaa"
+  },
   "export.changed": "Lista tai suosikkisi ovat muuttuneet. Tarkista valinnat uudelleen.",
   "export.choose": "Valitse kategoria",
+  "export.create": "Luo {category}",
   "export.done_title": "Lisätty suosikkeihin",
   "export.favorite_in": "Tee suosikiksi kategoriaan {category}",
   "export.from_recipes": "Resepteistäsi: {category}.",
@@ -143,6 +148,7 @@
     "other": "{count} tuotetta resepteistä tehtiin suosikeiksi"
   },
   "export.move": "Siirrä kategoriaan {category}",
+  "export.new_category": "Uusi kategoria",
   "export.nothing": "Listalla ei ollut lisättävää.",
   "export.on_list": "Listalla: {list}.",
   "export.on_list_none": "Listalla: ei kategoriaa.",

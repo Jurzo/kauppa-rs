@@ -658,8 +658,9 @@ impl ProductRepo for SqlitePool {
         let owner = owner_id.to_string();
         // IMMEDIATE: the catalog the plan reads is the one the writes change,
         // so a confirmation can't apply answers to a catalog that changed
-        // after its check (RR-0047 sub-answers 6 and 7). Only `products` is
-        // written, and only the owner's rows.
+        // after its check (RR-0047 sub-answers 6 and 7). Only `products`,
+        // and `categories` chosen on the review (RR-0052), are written, and
+        // only the owner's rows.
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
         let categories = sqlx::query_as!(
             CategoryRow,
@@ -705,7 +706,13 @@ impl ProductRepo for SqlitePool {
             }
         };
 
-        let (writes, summary) = export::writes(&plan, &decisions);
+        // Chosen categories first, in this transaction (RR-0052 sub-answer
+        // 4): a failure below rolls them back with everything else.
+        let names = decisions.new_categories();
+        let created = super::category::create_chosen(&mut tx, owner_id, &names).await?;
+        let decisions = decisions.resolve(&created)?;
+        let (writes, mut summary) = export::writes(&plan, &decisions);
+        summary.categories_created = created.len();
         apply_writes(&mut tx, &owner, writes).await?;
         tx.commit().await?;
         Ok(ExportOutcome::Saved(summary))

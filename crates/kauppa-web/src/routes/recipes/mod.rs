@@ -117,6 +117,9 @@ struct ShowView {
     details: DetailsView,
     ingredients: IngredientsView,
     add_to_list: AddToListView,
+    /// Categories a recipe import's review just created (MB-0065, RR-0052):
+    /// shown once, from the import's redirect.
+    categories_created: usize,
 }
 
 /// The details form (`recipes/_details`).
@@ -276,6 +279,7 @@ struct Feedback {
     error: Option<(Section, String)>,
     saved: bool,
     added: Option<(Uuid, usize)>,
+    categories_created: usize,
 }
 
 /// The section of the editor a response is about.
@@ -307,6 +311,7 @@ async fn show_view(
         error,
         saved,
         added,
+        categories_created,
     } = feedback;
     let categories = CategoryRepo::list_for_owner(&state.pool, user).await?;
     let lists = ShoppingListRepo::list_for_owner(&state.pool, user).await?;
@@ -364,6 +369,7 @@ async fn show_view(
         title: recipe.title.clone(),
         // Filled in by `render_show` for the full page only.
         suggestions: Vec::new(),
+        categories_created,
         details,
         ingredients: IngredientsView {
             recipe_id: recipe.id,
@@ -496,6 +502,7 @@ async fn respond<T>(
         saved: error.is_none() && matches!(section, Section::Details),
         error: error.map(|m| (section, m)),
         added: None,
+        categories_created: 0,
     };
 
     if is_hx(req) {
@@ -600,12 +607,21 @@ pub async fn create(
         .body(body))
 }
 
+/// `GET /recipes/{id}`'s query: `created`, the categories a recipe import
+/// just created (RR-0052), only displayed.
+#[derive(Debug, Default, Deserialize)]
+pub struct ShowQuery {
+    #[serde(default)]
+    created: usize,
+}
+
 #[get("/{id}")]
 pub async fn show(
     state: web::Data<AppState>,
     ui: Ui,
     id: Identity,
     path: web::Path<Uuid>,
+    query: web::Query<ShowQuery>,
 ) -> WebResult<HttpResponse> {
     let user = current_user(&id)?;
     render_show(
@@ -615,7 +631,10 @@ pub async fn show(
         path.into_inner(),
         None,
         StatusCode::OK,
-        Feedback::default(),
+        Feedback {
+            categories_created: query.created,
+            ..Feedback::default()
+        },
     )
     .await
 }

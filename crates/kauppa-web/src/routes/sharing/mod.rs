@@ -565,9 +565,16 @@ async fn import_recipe_from(
     let shared = CatalogShareRepo::shared_recipe(&state.pool, user, owner, recipe_id).await?;
     let page = recipe_page(&shared);
     match RecipeRepo::import_recipe(&state.pool, user, &shared, answers).await? {
-        RecipeImport::Saved(copy) => {
-            tracing::info!(user_id = %user, owner_id = %owner, recipe_id = %copy, "recipe imported");
-            Ok(see_other(format!("/recipes/{copy}")))
+        RecipeImport::Saved {
+            recipe: copy,
+            categories_created,
+        } => {
+            tracing::info!(user_id = %user, owner_id = %owner, recipe_id = %copy, categories_created, "recipe imported");
+            Ok(see_other(if categories_created == 0 {
+                format!("/recipes/{copy}")
+            } else {
+                format!("/recipes/{copy}?created={categories_created}")
+            }))
         }
         // Refused (RR-0048 sub-answer 7): the recipe's page names the copy.
         RecipeImport::AlreadyImported(_) => Ok(see_other(page.back)),

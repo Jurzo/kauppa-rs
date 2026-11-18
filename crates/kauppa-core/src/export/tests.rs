@@ -339,3 +339,90 @@ fn ingredients_link_or_create() {
         ]
     );
 }
+
+/// MB-0065 (RR-0052): a row with source category names the user lacks
+/// offers them; `new:<n>` picks one by index; the names to create are
+/// distinct by name key, in review order; resolving maps every such row to
+/// the created id, and a name that wasn't created is `Invalid`.
+#[test]
+fn create_choices_and_resolve() {
+    use std::collections::BTreeMap;
+
+    use super::{CREATE, Decisions};
+
+    let me = Uuid::new_v4();
+    let owner = Uuid::new_v4();
+    let hevi = category(me, "Hevi");
+    let (leipa, mausteet) = (category(owner, "Leipä"), category(owner, "Mausteet"));
+    let cats = [hevi.clone()];
+    let items = [
+        item("Ruisleipä", Some(&leipa)),
+        item("Suola", Some(&mausteet)),
+        item("Kaura", Some(&category(owner, " LEIPÄ"))),
+        item("Omena", Some(&category(owner, "hevi"))),
+    ];
+    let plan = plan(me, &items, &cats, &[]);
+    assert_eq!(plan.rows[3].action, Action::Add(hevi.id));
+    assert_eq!(plan.rows[0].choices().unwrap().create, ["Leipä"]);
+    assert_eq!(plan.rows[2].choices().unwrap().create, [" LEIPÄ"]);
+
+    let answers = |pairs: &[(usize, &str)]| ReviewAnswers {
+        fingerprint: plan.fingerprint.clone(),
+        answers: pairs.iter().map(|(i, a)| (*i, (*a).to_owned())).collect(),
+    };
+    for bad in ["new:1", "new:", "new:x", "new:-1", "new: 0"] {
+        let bad = answers(&[(0, bad), (1, SKIP), (2, SKIP)]);
+        assert!(
+            matches!(decide(&plan, &cats, &bad), Err(CoreError::Invalid(_))),
+            "{bad:?}"
+        );
+    }
+    let new0 = format!("{CREATE}0");
+    let decisions = decide(
+        &plan,
+        &cats,
+        &answers(&[(0, &new0), (1, &new0), (2, &new0)]),
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(decisions.new_categories(), ["Leipä", "Mausteet"]);
+    assert_eq!(Decisions::new().new_categories(), Vec::<String>::new());
+
+    let (l, m) = (Uuid::new_v4(), Uuid::new_v4());
+    assert!(matches!(
+        decisions
+            .clone()
+            .resolve(&BTreeMap::from([("leipä".to_owned(), l)])),
+        Err(CoreError::Invalid(_))
+    ));
+    let resolved = decisions
+        .resolve(&BTreeMap::from([
+            ("leipä".to_owned(), l),
+            ("mausteet".to_owned(), m),
+        ]))
+        .unwrap();
+    assert_eq!(resolved.create.len(), 0);
+    let (writes, summary) = writes(&plan, &resolved);
+    assert_eq!(
+        writes,
+        [
+            Write::Insert {
+                name: "Ruisleipä".to_owned(),
+                category: l
+            },
+            Write::Insert {
+                name: "Suola".to_owned(),
+                category: m
+            },
+            Write::Insert {
+                name: "Kaura".to_owned(),
+                category: l
+            },
+            Write::Insert {
+                name: "Omena".to_owned(),
+                category: hevi.id
+            },
+        ]
+    );
+    assert_eq!(summary.added, 4);
+}
