@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0066 slow-mode trigger (the connecting code doesn't fit the approved loading); RR-0053 sub-answer 2 and constraint 3 (scripts only where `page_sortable` is set) would change; AGENTS.md change procedure if the rule's wording changes"
 ---
 ```

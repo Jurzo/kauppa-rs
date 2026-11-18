@@ -93,5 +93,8 @@ To be applied after this record is signed, with the owner's OK:
 
 ## Supersession and history
 
-Status: active once signed. Amends RR-0053 (sub-answer 2's loading,
-constraint 3); supersedes nothing.
+Status: active. Amends RR-0053 (sub-answer 2's loading, constraint 3);
+supersedes nothing.
+
+- 2026-11-19: roll-back applied to MB-0066, CRP-0054, RR-0053 and
+  AGENTS.md (MB-0066's PR).
