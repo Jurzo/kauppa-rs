@@ -5,11 +5,14 @@
 //   request, and the order holds after a reload.
 // - P4: by keyboard, and without JavaScript, the ↑/↓ buttons still reorder;
 //   without JavaScript the drag handles don't show.
+// - RR-0054: dragging works on a page reached by a boosted (in-app) click,
+//   which keeps only the response's <title>, so the scripts load from the
+//   layout on every page.
 //
 // Every page runs under the fixtures' watch (CSP, console errors, htmx
 // errors, other origins), so Sortable and `assets/app/sortable.js` run
 // under the unchanged CSP (RR-0053 constraint 4).
-import { test, expect, t } from './fixtures.js';
+import { test, expect, t, markDocument, expectSameDocument } from './fixtures.js';
 
 /** A run-unique suffix, since the flows share one account. */
 function unique() {
@@ -129,6 +132,34 @@ test('dragging reorders categories, a favorites group and ingredients', async ({
   await expect.poll(ingredientNames).toEqual([ingredients[2], ingredients[0], ingredients[1]]);
   await page.reload();
   expect(await ingredientNames()).toEqual([ingredients[2], ingredients[0], ingredients[1]]);
+});
+
+test('dragging works after an in-app navigation (RR-0054)', async ({ page, baseURL }) => {
+  const id = unique();
+  const [a, b] = ['A', 'B'].map((x) => `Boost ${x} ${id}`);
+  for (const name of [a, b]) {
+    await postForm(page, baseURL, '/categories', { name });
+  }
+  await page.goto('/lists');
+  const mark = await markDocument(page);
+  const nav = page.getByRole('navigation', { name: t('nav.label') });
+  await nav.getByRole('link', { name: t('nav.categories') }).click();
+  await expect(page).toHaveURL(/\/categories$/);
+  await expectSameDocument(page, mark);
+
+  const row = (name) =>
+    page.locator('#category-list > .category-row').filter({ has: page.locator(`input[value="${name}"]`) });
+  const names = () =>
+    page
+      .locator('#category-list > .category-row input[type="text"]')
+      .evaluateAll((els) => els.map((el) => el.value))
+      .then((all) => all.filter((n) => [a, b].includes(n)));
+  await expect(row(b).locator('.drag-handle')).toBeVisible();
+  const saved = page.waitForResponse((r) => new URL(r.url()).pathname === '/categories/order');
+  await drag(page, row(b).locator('.drag-handle'), row(a));
+  expect((await saved).status()).toBe(200);
+  await expect.poll(names).toEqual([b, a]);
+  await expectSameDocument(page, mark);
 });
 
 test('by keyboard the arrow buttons still reorder', async ({ page, baseURL }) => {

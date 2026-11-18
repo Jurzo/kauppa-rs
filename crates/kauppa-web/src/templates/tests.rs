@@ -81,11 +81,14 @@ const SSE_SRI_SHA384: &str =
 /// The extensions `<body>` declares, the only `hx-ext` in the templates
 /// (RR-0025 constraint 1, amended by RR-0049 sub-answer 1).
 const BODY_EXTENSIONS: &str = "response-targets,sse";
-/// The layout's scripts, in load order: `(src, integrity)`.
-const LAYOUT_SCRIPTS: [(&str, &str); 3] = [
+/// The layout's scripts, in load order: `(src, integrity)`. Sortable and
+/// its connecting file load on every page (MB-0066, RR-0054).
+const LAYOUT_SCRIPTS: [(&str, &str); 5] = [
     (HTMX_PATH, HTMX_SRI_SHA384),
     (RESPONSE_TARGETS_PATH, RESPONSE_TARGETS_SRI_SHA384),
     (SSE_PATH, SSE_SRI_SHA384),
+    (SORTABLE_PATH, SORTABLE_SRI_SHA384),
+    (FIRST_PARTY_SCRIPTS[0], SORTABLE_JS_SRI_SHA384),
 ];
 
 /// The vendored Sortable (MB-0066, RR-0053 sub-answer 1): 1.15.7, MIT,
@@ -103,17 +106,10 @@ const SORTABLE_SRI_SHA384: &str =
 /// The first-party scripts RRs approve, the only files under `assets/app/`
 /// (AGENTS.md, RR-0053 constraint 2): `assets/app/sortable.js` (RR-0053).
 const FIRST_PARTY_SCRIPTS: [&str; 1] = ["/assets/app/sortable.js"];
-/// The drag pages' scripts (`sortable/_scripts`, loaded where
-/// `page_sortable` is set), in load order: `(src, integrity)`. The first-party
-/// file's integrity is its own file's, checked in
-/// [`sortable_scripts_pinned`].
-const SORTABLE_SCRIPTS: [(&str, &str); 2] = [
-    (SORTABLE_PATH, SORTABLE_SRI_SHA384),
-    (
-        FIRST_PARTY_SCRIPTS[0],
-        "sha384-fctvAgCcRfZzru22s3t6fVYSZNWbHwNa+Q9VTWG/JwoTt8LtcfeVt7gfj7ExOt90",
-    ),
-];
+/// The SRI of [`FIRST_PARTY_SCRIPTS`]'s file, as `layout.hbs` carries it;
+/// [`sortable_scripts_pinned`] checks it against the file.
+const SORTABLE_JS_SRI_SHA384: &str =
+    "sha384-fctvAgCcRfZzru22s3t6fVYSZNWbHwNa+Q9VTWG/JwoTt8LtcfeVt7gfj7ExOt90";
 
 /// The workspace's `templates/` folder, for comparison only.
 fn source_dir() -> &'static Path {
@@ -576,12 +572,11 @@ fn vendored_sse_checksum() {
     assert_vendored(SSE_PATH, 2_853, SSE_SHA256, SSE_SRI_SHA384);
 }
 
-/// MB-0066 P5 (RR-0053 constraints 1–3): the vendored Sortable is exactly
-/// the published 1.15.7; `assets/app/` holds only the approved first-party
-/// files, with no `eval`, `new Function`, `innerHTML` or inline handlers;
-/// `sortable/_scripts` loads Sortable and then the connecting file, each
-/// with the SRI of its file; and only a page with `page_sortable` loads them,
-/// after the layout's scripts.
+/// MB-0066 P5 (RR-0053 constraints 1–2, RR-0054): the vendored Sortable is
+/// exactly the published 1.15.7; `assets/app/` holds only the approved
+/// first-party files, with no `eval`, `new Function`, `innerHTML` or inline
+/// handlers, each pinned by the SRI the layout carries. The layout's order
+/// and SRIs are checked by [`no_external_scripts`].
 #[test]
 fn sortable_scripts_pinned() {
     assert_vendored(SORTABLE_PATH, 45_478, SORTABLE_SHA256, SORTABLE_SRI_SHA384);
@@ -616,34 +611,11 @@ fn sortable_scripts_pinned() {
             assert!(!text.contains(banned), "{path}: {banned}");
         }
         let sri = format!("sha384-{}", base64(&Sha384::digest(&bytes)));
-        let (_, pinned) = SORTABLE_SCRIPTS
+        let (_, pinned) = LAYOUT_SCRIPTS
             .iter()
             .find(|(src, _)| *src == path)
-            .expect("loaded by sortable/_scripts");
+            .expect("loaded by the layout");
         assert_eq!(&sri, pinned, "{path}: update its integrity");
-    }
-
-    let (_, partial) = TEMPLATES
-        .iter()
-        .find(|(name, _)| *name == "sortable/_scripts")
-        .expect("sortable/_scripts");
-    let tags = script_tags(partial);
-    assert_eq!(tags.len(), SORTABLE_SCRIPTS.len(), "{tags:?}");
-    for (tag, (src, integrity)) in tags.iter().zip(SORTABLE_SCRIPTS) {
-        assert_eq!(attr(tag, "src"), Some(src));
-        assert_eq!(attr(tag, "integrity"), Some(integrity));
-        assert!(tag.contains(" defer"), "{tag}");
-    }
-
-    let without = render_layout(r#"page_title="Page" page_signed_in=true"#);
-    assert!(!without.contains("Sortable") && !without.contains("/assets/app/"));
-    let with = render_layout(r#"page_title="Page" page_signed_in=true page_sortable=true"#);
-    let mut at = 0;
-    for (src, integrity) in LAYOUT_SCRIPTS.iter().chain(&SORTABLE_SCRIPTS) {
-        let tag = format!(r#"<script src="{src}" integrity="{integrity}" defer>"#);
-        at += with[at..]
-            .find(&tag)
-            .unwrap_or_else(|| panic!("{tag} (in order) in {with}"));
     }
 }
 
