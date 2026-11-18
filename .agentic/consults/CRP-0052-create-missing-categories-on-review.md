@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: product
 risk_tier: medium
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "MB-0065 autonomy.escalate (reversing 'no category is created', which flows, placement and spelling → owner; categories written in the import and export transactions, the name race → data-owner; what a recipient keeps of the source → security); RR-0048 constraint 5 (a change to the review's behaviour needs its own consult); RR-0047 sub-answer 2 and RR-0048 sub-answer 5 amended"
 ---
 ```

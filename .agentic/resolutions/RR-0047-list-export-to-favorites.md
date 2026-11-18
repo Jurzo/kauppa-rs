@@ -31,6 +31,8 @@ Approve CRP-0047 as recommended: Q1–Q7 A, and Q8.
    by name, ignoring case (`name_key`, RR-0003), to the exporting user's
    own category. With no match, the item counts as uncategorized for that
    user (item 4). No category is created.
+   Amended by RR-0052: a category is created when the user chooses
+   'Create ‹name›' on the review.
 3. **Which items (Q3 A, owner).**
    - Every active item, checked or not; removed items never.
    - The same name more than once makes one favorite. If the copies'
@@ -116,6 +118,8 @@ Does not cover:
 1. **Own catalog only.** `apply_export` writes the acting user's
    `products` and nothing else. Every `category_id` it sets is checked as
    the user's in the same transaction.
+   Amended by RR-0052: a category is created when the user chooses
+   'Create ‹name›' on the review.
 2. **The list through the predicate.** The export reads list items only
    through `ShoppingListRepo` (at `view`). A query on the list tables
    anywhere else is a review failure (RR-0002 constraint 1).
@@ -147,4 +151,7 @@ To be applied after this record is signed, with the owner's OK:
 
 ## Supersession and history
 
-Status: active once signed. Supersedes nothing.
+Status: active. Supersedes nothing. Amended by RR-0052 (sub-answer 2,
+constraint 1).
+
+- 2026-11-18: amended by RR-0052 (MB-0065).

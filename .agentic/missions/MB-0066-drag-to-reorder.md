@@ -54,11 +54,11 @@ autonomy:
     - "drag handle styling and wording, through catalog keys in both languages"
     - "test names inside the modules above"
   escalate:
-    - { when: "vendoring Sortable.js: its version, source (the npm registry, byte-for-byte), license (MIT) and checksums (a new vendored file, RR-0015 constraint 1, AGENTS.md do-not-touch boundaries)", to: platform-owner }
-    - { when: "first-party JavaScript: htmx's example connects Sortable with an inline `htmx.onLoad` script, which the CSP blocks; a first-party script file under `assets/` is not allowed today (AGENTS.md), and RR-0049 left first-party JavaScript out of scope", to: platform-owner }
-    - { when: "keeping the ↑/↓ buttons (no-JavaScript and keyboard users) or retiring the move routes", to: owner }
-    - { when: "the new order routes: their shape, the exact-set check, and what a stale order does", to: owner }
-    - { when: "a change to the CSP or the security headers (RR-0019)", to: security }
+    - { when: "vendoring Sortable.js: its version, source (the npm registry, byte-for-byte), license (MIT) and checksums (a new vendored file, RR-0015 constraint 1, AGENTS.md do-not-touch boundaries) (decided: RR-0053, Sortable 1.15.7, checksums in RR-0053)", to: platform-owner }
+    - { when: "first-party JavaScript: htmx's example connects Sortable with an inline `htmx.onLoad` script, which the CSP blocks; a first-party script file under `assets/` is not allowed today (AGENTS.md), and RR-0049 left first-party JavaScript out of scope (decided: RR-0053, `assets/app/sortable.js` on three pages, AGENTS.md rule)", to: platform-owner }
+    - { when: "keeping the ↑/↓ buttons (no-JavaScript and keyboard users) or retiring the move routes (decided: RR-0053, the buttons stay)", to: owner }
+    - { when: "the new order routes: their shape, the exact-set check, and what a stale order does (decided: RR-0053, `POST …/order`, exact set, a stale order snaps back)", to: owner }
+    - { when: "a change to the CSP or the security headers (RR-0019) (decided: RR-0053, no CSP change)", to: security }
   forbidden:
     - "inline scripts, `unsafe-inline`, `unsafe-eval`, nonces or hashes in the CSP"
     - "a vendored file without an approved RR"
@@ -69,7 +69,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0053]
 ---
 ```
 
@@ -105,7 +105,7 @@ What exists:
 
 1. **Clarify (S1).** One CRP: the vendored file and the connecting code
    (platform); the ↑/↓ buttons and the order routes (owner); no CSP
-   change (security).
+   change (security). Done: CRP-0053 answered, RR-0053 approved (all A).
 2. The order routes with their exact-set check (P2, P3).
 3. Vendored file and connecting code, pinned (P5); the templates (P1,
    P4).

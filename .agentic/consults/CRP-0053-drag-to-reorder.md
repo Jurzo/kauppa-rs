@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: medium
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0066 autonomy.escalate (vendoring Sortable.js, first-party JavaScript → platform-owner; the ↑/↓ buttons and the order routes → owner; any CSP change → security); a new vendored file under `assets/vendor/` (RR-0015 constraint 1, AGENTS.md do-not-touch boundaries); an AGENTS.md and templating.md change (AGENTS.md change procedure); feature.md escalation trigger `csp.rs` (only if Q5 changed the CSP; recommended: no change)"
 ---
 ```

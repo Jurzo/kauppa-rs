@@ -132,5 +132,7 @@ To be applied after this record is signed, with the owner's OK:
 
 ## Supersession and history
 
-Status: active once signed. Amends nothing; supersedes nothing. Refines
+Status: active. Amends nothing; supersedes nothing. Refines
 RR-0049's "first-party JavaScript out of scope" for this one file.
+
+- 2026-11-18: roll-back applied to MB-0066, CRP-0053, AGENTS.md and templating.md (PR #130).

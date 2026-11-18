@@ -33,7 +33,7 @@ no SPA.
 | Templates | `templates/*.hbs` | Handlebars partial-block layout. |
 | Translations | `locales/<tag>.json`, `crates/kauppa-web/src/i18n/` | Every user-facing string; the `{{t}}` helper and the `Ui` extractor (RR-0023). |
 | Deployment | `deploy/`, `scripts/deploy/` | Image, Compose stack, Terraform; `deploy/README.md` is the operator guide (RR-0014). |
-| Client interactivity | `assets/*` + `hx-*` attrs | htmx first (vendored at `assets/vendor/`, RR-0015); add JS only when htmx can't. |
+| Client interactivity | `assets/*` + `hx-*` attrs | htmx first (vendored at `assets/vendor/`, RR-0015); add JS only when htmx can't, under `assets/app/` (RR-0053). |
 | Schema | `migrations/*.sql` | Append-only. New file per change. |
 | Agentic artifacts | `.agentic/` | Human-owned governance. |
 
@@ -156,11 +156,16 @@ consult.
 - `Cargo.toml` dependency additions, removals, or version bumps route through
   the dependency-bump runbook.
 - `assets/` is served directly; nothing executable may be committed there
-  except under `assets/vendor/`: pinned third-party JS from a reviewed
+  except under `assets/vendor/` and `assets/app/`. Under `assets/vendor/`:
+  pinned third-party JS from a reviewed
   source, byte-for-byte, with its checksum checked in the test suite (htmx
   2.0.11, RR-0017, its response-targets extension 2.0.4, RR-0018, and its
   SSE extension 2.2.4, RR-0049, all from the npm registry). Adding, upgrading or modifying a vendored file is
-  a platform decision. SVG images under `assets/flags/` are not executable:
+  a platform decision. First-party scripts may live under `assets/app/`
+  only, one file per approving RR (`assets/app/sortable.js`, RR-0053); a
+  test lists them. They carry no `eval`, no `innerHTML` and no
+  event-handler attributes, and load through `<script defer>` with SRI on
+  the pages that need them. SVG images under `assets/flags/` are not executable:
   they are shown through `<img>`, pinned by checksum, and a test keeps them
   free of script, links and styles (RR-0031). The app icons under
   `assets/icons/` (PNG, ICO and one SVG) and the font files under
