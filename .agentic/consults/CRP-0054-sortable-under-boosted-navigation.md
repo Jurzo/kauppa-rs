@@ -142,3 +142,9 @@ Rollback plan: revert the layout change; with D nothing changes.
   order routes, the templates, the vendored file, the script, 108 + 3 +
   241 tests, the browser suite 15 of 15 (the drag flows use full page
   loads).
+
+## Owner's answer (2026-11-19)
+
+"Go with option A": Q1 A, both scripts on every page, from the layout.
+
+Recorded in RR-0054 (scaffold; the owner signs).
