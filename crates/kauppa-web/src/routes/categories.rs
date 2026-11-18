@@ -17,7 +17,7 @@ use kauppa_core::{CoreError, CoreResult};
 
 use crate::error::WebResult;
 use crate::i18n::{Ui, VARY};
-use crate::routes::request::{current_user, is_hx};
+use crate::routes::request::{current_user, is_hx, order_ids};
 use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -200,6 +200,30 @@ pub async fn move_category(
         state.live.owner_changed(user);
     }
 
+    respond(&state, &ui, &req, user, Ok(()), String::new()).await
+}
+
+/// Save a full new order from a drag (MB-0066, RR-0053 sub-answer 4): only
+/// if it is exactly the user's categories; otherwise nothing changes and
+/// the section comes back in its current order.
+#[post("/order")]
+pub async fn order(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    ui: Ui,
+    id: Identity,
+    form: web::Form<Vec<(String, String)>>,
+) -> WebResult<HttpResponse> {
+    let user = current_user(&id)?;
+    let saved = match order_ids(&form) {
+        Some(ids) => CategoryRepo::set_order(&state.pool, user, &ids).await?,
+        None => false,
+    };
+    if saved {
+        state.live.owner_changed(user);
+    } else {
+        tracing::debug!(user_id = %user, "category order stale or not the user's: nothing saved");
+    }
     respond(&state, &ui, &req, user, Ok(()), String::new()).await
 }
 
@@ -438,4 +462,134 @@ async fn case_duplicate_rejected() {
     assert!(body.contains(r#"value="ÄYRIÄISET" />"#));
 
     assert_eq!(category_names(&state, user).await, ["Hevi", "äyriäiset"]);
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::http::StatusCode;
+    use uuid::Uuid;
+
+    use super::category_names;
+
+    /// MB-0066 P2 (RR-0053 sub-answer 4): `POST /categories/order` saves a
+    /// full new order only if it is exactly the user's categories; a missing,
+    /// extra, repeated, foreign or malformed id saves nothing, and the
+    /// section comes back in its current order. Without htmx it redirects
+    /// back; signed out it is refused.
+    #[actix_web::test]
+    #[allow(clippy::expect_used, clippy::too_many_lines)]
+    async fn order_saves_exact_set() {
+        use actix_web::test::{TestRequest, call_service};
+
+        use crate::routes::test_support::{
+            body_string, login_request, make_category, make_user, session_cookie, test_app,
+            test_state,
+        };
+
+        let state = test_state().await;
+        let app = test_app!(state);
+        let user = make_user(&state, "u@example.com").await;
+        let other = make_user(&state, "other@example.com").await;
+        let (a, b, c) = (
+            make_category(&state, user, "A").await,
+            make_category(&state, user, "B").await,
+            make_category(&state, user, "C").await,
+        );
+        let theirs = make_category(&state, other, "X").await;
+        let form = |ids: &[String]| -> Vec<(&'static str, String)> {
+            ids.iter().map(|id| ("id", id.clone())).collect()
+        };
+        let ids = |list: &[Uuid]| -> Vec<String> { list.iter().map(Uuid::to_string).collect() };
+
+        let resp = call_service(
+            &app,
+            TestRequest::post()
+                .uri("/categories/order")
+                .set_form(form(&ids(&[c, a, b])))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+
+        let cookie =
+            session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+        let post = |fields: Vec<(&'static str, String)>, hx: bool| {
+            let req = TestRequest::post()
+                .uri("/categories/order")
+                .cookie(cookie.clone())
+                .set_form(fields);
+            if hx {
+                req.insert_header(("HX-Request", "true")).to_request()
+            } else {
+                req.to_request()
+            }
+        };
+
+        // A full new order: saved; htmx gets the section in that order.
+        let resp = call_service(&app, post(form(&ids(&[c, a, b])), true)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_string(resp).await;
+        assert!(body.starts_with(r#"<div id="categories""#), "the fragment");
+        let at = |id: Uuid| {
+            body.find(&format!(r#"name="id" value="{id}""#))
+                .expect("row")
+        };
+        assert!(at(c) < at(a) && at(a) < at(b));
+        assert_eq!(category_names(&state, user).await, ["C", "A", "B"]);
+
+        // Anything but exactly the user's set saves nothing.
+        let stale: Vec<Vec<(&'static str, String)>> = vec![
+            form(&ids(&[a, b])),
+            form(&ids(&[a, b, c, theirs])),
+            form(&ids(&[a, b, theirs])),
+            form(&ids(&[a, a, b])),
+            form(&[a.to_string(), b.to_string(), "not-an-id".to_owned()]),
+            vec![],
+        ];
+        for fields in stale {
+            let resp = call_service(&app, post(fields.clone(), true)).await;
+            assert_eq!(resp.status(), StatusCode::OK, "{fields:?}");
+            let body = body_string(resp).await;
+            let at = |id: Uuid| {
+                body.find(&format!(r#"name="id" value="{id}""#))
+                    .expect("row")
+            };
+            assert!(at(c) < at(a) && at(a) < at(b), "the current order shown");
+            assert_eq!(
+                category_names(&state, user).await,
+                ["C", "A", "B"],
+                "{fields:?}"
+            );
+        }
+        assert_eq!(category_names(&state, other).await, ["X"]);
+
+        // Without htmx: saved, then back to the page.
+        let resp = call_service(&app, post(form(&ids(&[a, b, c])), false)).await;
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            resp.headers().get("location").and_then(|v| v.to_str().ok()),
+            Some("/categories")
+        );
+        assert_eq!(category_names(&state, user).await, ["A", "B", "C"]);
+
+        // The page: each row's id joins the order form; a handle per row.
+        let page = body_string(
+            call_service(
+                &app,
+                TestRequest::get()
+                    .uri("/categories")
+                    .cookie(cookie.clone())
+                    .to_request(),
+            )
+            .await,
+        )
+        .await;
+        assert!(page.contains(r#"hx-trigger="end from:#category-list""#));
+        assert!(page.contains(r#"<ul id="category-list" class="category-list" data-sortable>"#));
+        assert!(page.contains(&format!(
+            r#"<input type="hidden" name="id" value="{a}" form="category-order" />"#
+        )));
+        assert!(page.contains(r#"aria-label="Drag to reorder A""#));
+        assert!(page.contains("/assets/app/sortable.js"), "page_sortable");
+    }
 }

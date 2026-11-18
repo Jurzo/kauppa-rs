@@ -150,6 +150,12 @@ pub trait CategoryRepo: Send + Sync {
     /// owned by `owner_id` are ignored.
     async fn reorder(&self, owner_id: Uuid, ordered_ids: &[Uuid]) -> CoreResult<()>;
 
+    /// Save a full new order of the owner's categories (MB-0066, RR-0053
+    /// sub-answer 4), atomically, only if `ordered_ids` is exactly their
+    /// current set ([`crate::domain::ordering::is_reordering`]). `false`
+    /// means nothing changed (stale or tampered).
+    async fn set_order(&self, owner_id: Uuid, ordered_ids: &[Uuid]) -> CoreResult<bool>;
+
     /// Delete a category the caller owns. `NotFound` if it isn't theirs.
     async fn delete(&self, owner_id: Uuid, id: Uuid) -> CoreResult<()>;
 }
@@ -220,6 +226,18 @@ pub trait ProductRepo: Send + Sync {
         id: Uuid,
         direction: Direction,
     ) -> CoreResult<()>;
+
+    /// Save a full new order of the favorites in one category (`None`:
+    /// uncategorized) (MB-0066, RR-0053 sub-answer 4), atomically, only if
+    /// `ordered_ids` is exactly that group's favorites; hidden products keep
+    /// their slots. `false` means nothing changed; a category that isn't
+    /// the owner's is `NotFound`.
+    async fn set_favorite_order(
+        &self,
+        owner_id: Uuid,
+        category_id: Option<Uuid>,
+        ordered_ids: &[Uuid],
+    ) -> CoreResult<bool>;
 
     /// Bring `items` into `owner_id`'s favorites, in one transaction on
     /// `products` only: a list's active items (MB-0060, RR-0047, read by the
@@ -521,6 +539,17 @@ pub trait RecipeRepo: Send + Sync {
         ingredient_id: Uuid,
         direction: Direction,
     ) -> CoreResult<()>;
+
+    /// Save a full new order of a recipe's ingredients (MB-0066, RR-0053
+    /// sub-answer 4), atomically, only if `ordered_ids` is exactly its
+    /// ingredients. `false` means nothing changed; a recipe that isn't the
+    /// owner's is `NotFound`.
+    async fn set_ingredient_order(
+        &self,
+        owner_id: Uuid,
+        recipe_id: Uuid,
+        ordered_ids: &[Uuid],
+    ) -> CoreResult<bool>;
 
     /// The owner's copy of recipe `source` (`imported_from`, MB-0061), if
     /// they have one.

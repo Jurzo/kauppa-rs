@@ -625,3 +625,89 @@ async fn uncategorized_product() {
         Vec::<String>::new()
     );
 }
+
+/// MB-0066 P3 (RR-0053 sub-answer 4): `POST /recipes/{id}/ingredients/order`
+/// saves a full new order only if it is exactly the recipe's ingredients;
+/// anything else saves nothing and the section comes back as it is; another
+/// user's recipe is 404.
+#[actix_web::test]
+#[allow(clippy::expect_used)]
+async fn order_ingredients_exact_set() {
+    use actix_web::test::{TestRequest, call_service};
+
+    use crate::routes::test_support::{
+        body_string, login_request, make_category, make_recipe_with, make_user, session_cookie,
+        test_app, test_state,
+    };
+
+    let state = test_state().await;
+    let app = test_app!(state);
+    let user = make_user(&state, "u@example.com").await;
+    let other = make_user(&state, "other@example.com").await;
+    let hevi = make_category(&state, user, "Hevi").await;
+    let recipe = make_recipe_with(
+        &state,
+        user,
+        "Salaatti",
+        hevi,
+        &[("Kurkku", None), ("Tomaatti", None), ("Sipuli", None)],
+    )
+    .await;
+    let their_hevi = make_category(&state, other, "Hevi").await;
+    let theirs = make_recipe_with(&state, other, "Keitto", their_hevi, &[("Peruna", None)]).await;
+    let ids: Vec<Uuid> = RecipeRepo::get(&state.pool, user, recipe)
+        .await
+        .expect("recipe")
+        .ingredients
+        .into_iter()
+        .map(|i| i.id)
+        .collect();
+    let (kurkku, tomaatti, sipuli) = (ids[0], ids[1], ids[2]);
+
+    let cookie =
+        session_cookie(&call_service(&app, login_request("u@example.com").to_request()).await);
+    let post = |recipe: Uuid, order: &[String]| {
+        TestRequest::post()
+            .uri(&format!("/recipes/{recipe}/ingredients/order"))
+            .cookie(cookie.clone())
+            .insert_header(("HX-Request", "true"))
+            .set_form(
+                order
+                    .iter()
+                    .map(|id| ("id", id.clone()))
+                    .collect::<Vec<_>>(),
+            )
+            .to_request()
+    };
+    let strings = |list: &[Uuid]| -> Vec<String> { list.iter().map(Uuid::to_string).collect() };
+
+    let resp = call_service(&app, post(recipe, &strings(&[sipuli, kurkku, tomaatti]))).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.starts_with(r#"<div id="ingredients""#), "the fragment");
+    let after = ["Sipuli", "Kurkku", "Tomaatti"];
+    assert_eq!(ingredient_names(&state, user, recipe).await, after);
+
+    for order in [
+        strings(&[sipuli, kurkku]),
+        strings(&[sipuli, kurkku, tomaatti, Uuid::new_v4()]),
+        strings(&[sipuli, sipuli, kurkku]),
+        vec![sipuli.to_string(), kurkku.to_string(), "x".to_owned()],
+    ] {
+        let resp = call_service(&app, post(recipe, &order)).await;
+        assert_eq!(resp.status(), StatusCode::OK, "{order:?}");
+        assert_eq!(
+            ingredient_names(&state, user, recipe).await,
+            after,
+            "{order:?}"
+        );
+    }
+
+    let resp = call_service(&app, post(theirs, &[])).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::NOT_FOUND,
+        "another user's recipe"
+    );
+    assert_eq!(ingredient_names(&state, other, theirs).await, ["Peruna"]);
+}

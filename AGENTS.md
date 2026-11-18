@@ -164,8 +164,8 @@ consult.
   a platform decision. First-party scripts may live under `assets/app/`
   only, one file per approving RR (`assets/app/sortable.js`, RR-0053); a
   test lists them. They carry no `eval`, no `innerHTML` and no
-  event-handler attributes, and load through `<script defer>` with SRI on
-  the pages that need them. SVG images under `assets/flags/` are not executable:
+  event-handler attributes, and load through `<script defer>` with SRI
+  from the layout (RR-0054). SVG images under `assets/flags/` are not executable:
   they are shown through `<img>`, pinned by checksum, and a test keeps them
   free of script, links and styles (RR-0031). The app icons under
   `assets/icons/` (PNG, ICO and one SVG) and the font files under

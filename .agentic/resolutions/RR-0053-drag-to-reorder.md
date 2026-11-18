@@ -39,6 +39,7 @@ Approve CRP-0053 Q1 A, Q2 A, Q3 A, Q4 A and Q5 A.
      document order.
    - A layout parameter `page_sortable=true` adds both `<script defer>`
      tags, with SRI, on the categories, favorites and recipe pages only.
+     Amended by RR-0054: both scripts load on every page, from the layout.
 3. **The ↑/↓ buttons (Q3 A, owner).** They stay, with the move routes and
    their tests unchanged. A drag handle ("⠿", accessible name "Drag to
    reorder ‹name›", in both catalogs) sits beside them, hidden without
@@ -105,7 +106,7 @@ Does not cover:
    no `eval` or `new Function`, no `innerHTML`, no event-handler
    attributes. This record approves `assets/app/sortable.js` only.
 3. **Three pages.** The scripts load only where `page_sortable` is set: the
-   categories, favorites and recipe pages.
+   categories, favorites and recipe pages. Amended by RR-0054: both scripts load on every page, from the layout.
 4. **The CSP stays.** The browser suite's CSP and console checks pass on
    every flow, with and without JavaScript.
 5. **Tests.** Route tests for each order route (exact set, stale, foreign,
@@ -132,7 +133,9 @@ To be applied after this record is signed, with the owner's OK:
 
 ## Supersession and history
 
-Status: active. Amends nothing; supersedes nothing. Refines
+Status: active. Amends nothing; supersedes nothing. Amended by RR-0054
+(sub-answer 2's loading, constraint 3). Refines
 RR-0049's "first-party JavaScript out of scope" for this one file.
 
 - 2026-11-18: roll-back applied to MB-0066, CRP-0053, AGENTS.md and templating.md (PR #130).
+- 2026-11-19: amended by RR-0054 (MB-0066).

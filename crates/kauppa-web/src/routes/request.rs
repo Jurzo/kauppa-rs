@@ -28,3 +28,18 @@ pub fn is_hx(req: &HttpRequest) -> bool {
 pub fn wants_fragment(req: &HttpRequest) -> bool {
     is_hx(req) && req.headers().get("HX-Boosted").is_none()
 }
+
+/// The `id` field of a drag-to-reorder form (MB-0066, RR-0053 sub-answer
+/// 4): the rows' ids, in their new order.
+pub const ORDER_FIELD: &str = "id";
+
+/// A full new order from a form's repeated [`ORDER_FIELD`]s, or `None` if
+/// any value isn't an id; the repos then check it is exactly the current
+/// set, so a stale or tampered order saves nothing.
+#[must_use]
+pub fn order_ids(form: &[(String, String)]) -> Option<Vec<Uuid>> {
+    form.iter()
+        .filter(|(name, _)| name == ORDER_FIELD)
+        .map(|(_, value)| Uuid::parse_str(value.trim()).ok())
+        .collect()
+}

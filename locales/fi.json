@@ -45,6 +45,7 @@
   "common.delete": "Poista",
   "common.delete_confirm": "Poistetaanko ”{name}”?",
   "common.delete_named": "Poista: {name}",
+  "common.drag_to_reorder": "Järjestä vetämällä: {name}",
   "common.edit": "Muokkaa",
   "common.first": " ensin.",
   "common.move_down": "Siirrä alas: {name}",

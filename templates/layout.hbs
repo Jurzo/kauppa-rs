@@ -40,6 +40,12 @@
     <body> declares it, like response-targets (RR-0025); only the list page
     and the shopping view connect (sse-connect). --}}
     <script src="/assets/vendor/sse-2.2.4.min.js" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" defer></script>
+    {{!-- MB-0066 (RR-0053, RR-0054): Sortable and the first-party file that
+    connects it to htmx, on every page: a boosted navigation keeps only the
+    response's <title>, so per-page scripts in <head> wouldn't load. The
+    script connects only `[data-sortable]` lists. --}}
+    <script src="/assets/vendor/Sortable-1.15.7.min.js" integrity="sha384-DgmC6Xe2bSN2WjTDXzWYbUbxyhNP+NNkGDR/g78pCXV7E7rcVTGxVg0uIVCUUcBc" defer></script>
+    <script src="/assets/app/sortable.js" integrity="sha384-fctvAgCcRfZzru22s3t6fVYSZNWbHwNa+Q9VTWG/JwoTt8LtcfeVt7gfj7ExOt90" defer></script>
   </head>
   <body hx-boost="true" hx-ext="response-targets,sse">
     <header class="topbar">

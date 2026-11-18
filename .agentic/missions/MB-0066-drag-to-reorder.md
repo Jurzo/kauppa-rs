@@ -69,7 +69,7 @@ mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: [RR-0053]
+resolutions: [RR-0053, RR-0054]
 ---
 ```
 
@@ -106,6 +106,8 @@ What exists:
 1. **Clarify (S1).** One CRP: the vendored file and the connecting code
    (platform); the ↑/↓ buttons and the order routes (owner); no CSP
    change (security). Done: CRP-0053 answered, RR-0053 approved (all A).
+   CRP-0054 (the scripts didn't load after boosted navigation): RR-0054
+   loads both on every page, from the layout.
 2. The order routes with their exact-set check (P2, P3).
 3. Vendored file and connecting code, pinned (P5); the templates (P1,
    P4).
