@@ -237,3 +237,9 @@ categories the user can rename or delete; no schema change.
   review (`export.on_list_unmatched`, `import.in_theirs_unmatched`,
   `import.in_recipe_unmatched`).
 - No migration; `idx_categories_owner_name_key` (0004) guards duplicates.
+
+## Owner's answer (2026-11-18)
+
+"as recommended": Q1 A, Q2 A, Q3 A, Q4 A, Q5 A.
+
+Recorded in RR-0052 (scaffold; the owner signs).
