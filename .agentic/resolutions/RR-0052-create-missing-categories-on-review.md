@@ -128,5 +128,7 @@ To be applied after this record is signed, with the owner's OK:
 
 ## Supersession and history
 
-Status: active once signed. Amends RR-0047 (sub-answer 2, constraint 1)
+Status: active. Amends RR-0047 (sub-answer 2, constraint 1)
 and RR-0048 (sub-answer 5); supersedes nothing.
+
+- 2026-11-18: roll-back applied to MB-0065, CRP-0052, RR-0047 and RR-0048 (PR #130).

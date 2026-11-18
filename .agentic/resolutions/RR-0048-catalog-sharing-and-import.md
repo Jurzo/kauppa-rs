@@ -83,6 +83,8 @@ Approve CRP-0048 as recommended: Q1–Q8 A.
    - with no match, the review asks for one of the recipient's categories,
      or to skip;
    - no category is created;
+     Amended by RR-0052: a category is created when the user chooses
+     'Create ‹name›' on the review.
    - the sharer's category or product ids never enter the recipient's
      catalog (RR-0001 constraint 9).
 6. **A recipe's ingredients (Q6 A, owner).**
@@ -190,4 +192,6 @@ To be applied after this record is signed, with the owner's OK:
 
 ## Supersession and history
 
-Status: active once signed. Supersedes nothing.
+Status: active. Supersedes nothing. Amended by RR-0052 (sub-answer 5).
+
+- 2026-11-18: amended by RR-0052 (MB-0065).

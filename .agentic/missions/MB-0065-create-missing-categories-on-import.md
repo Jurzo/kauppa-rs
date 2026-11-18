@@ -50,11 +50,11 @@ autonomy:
     - "wording of the new choice and the summary line, through catalog keys in both languages"
     - "test names inside the modules above"
   escalate:
-    - { when: "reversing 'no category is created' (RR-0047 sub-answer 2, RR-0048 sub-answer 5, both rejected creating categories): which flows get it (shared favorites, recipe ingredients, a grantee's list export)", to: owner }
-    - { when: "where a created category goes in the user's order (last, or after its neighbours in the source), and its name's spelling (the source's, or normalised)", to: owner }
-    - { when: "a review answer that creates rows outside `products` (the import and export transactions write `products` and `recipes` only today; RR-0047 constraint, RR-0048), and the race with a category of the same name made meanwhile", to: data-owner }
-    - { when: "what a recipient or grantee learns or keeps of the source's catalog (a category name only, never ids; RR-0001 constraint 9, RR-0048 sub-answer 5)", to: security }
-    - { when: "the review's behaviour changes for list export and both imports at once (RR-0048 constraint 5 asks for its own consult)", to: owner }
+    - { when: "reversing 'no category is created' (RR-0047 sub-answer 2, RR-0048 sub-answer 5, both rejected creating categories): which flows get it (shared favorites, recipe ingredients, a grantee's list export) (decided: RR-0052, all three flows)", to: owner }
+    - { when: "where a created category goes in the user's order (last, or after its neighbours in the source), and its name's spelling (the source's, or normalised) (decided: RR-0052, last in the user's order, the source's name trimmed)", to: owner }
+    - { when: "a review answer that creates rows outside `products` (the import and export transactions write `products` and `recipes` only today; RR-0047 constraint, RR-0048), and the race with a category of the same name made meanwhile (decided: RR-0052, inside the same transaction, one insert path; a category made meanwhile shows the review again)", to: data-owner }
+    - { when: "what a recipient or grantee learns or keeps of the source's catalog (a category name only, never ids; RR-0001 constraint 9, RR-0048 sub-answer 5) (decided: RR-0052, the name only, sent as an index)", to: security }
+    - { when: "the review's behaviour changes for list export and both imports at once (RR-0048 constraint 5 asks for its own consult) (decided: RR-0052, RR-0052 is that consult)", to: owner }
   forbidden:
     - "create a category the user didn't choose on the review"
     - "link the user's data to the source's category or product ids"
@@ -67,7 +67,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0052]
 ---
 ```
 
@@ -104,7 +104,8 @@ What exists:
 1. **Clarify (S1).** One CRP: the flows and placement (owner); writing
    categories inside the import and export transactions, and the name race
    (data); what is kept of the source (security); amending RR-0047
-   sub-answer 2 and RR-0048 sub-answer 5.
+   sub-answer 2 and RR-0048 sub-answer 5. Done: CRP-0052 answered,
+   RR-0052 approved (all A).
 2. Core: the plan offers creation for unmatched names; the apply step
    creates them first in the same transaction (P2, P3).
 3. Web: the review's new choice, the summary line, both flows (P1, P4,
