@@ -5,11 +5,11 @@
 id: RR-0054
 closes: CRP-0054
 mission: MB-0066
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: platform
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-19T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-18t18:57:00z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0066-drag-to-reorder.md
@@ -57,7 +57,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as platform.">
+@Jurzo as platform.
 
 ## Linked artifacts and evidence
 
