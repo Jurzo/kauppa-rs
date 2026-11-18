@@ -244,3 +244,9 @@ roll-back commit. No schema change.
 - **htmx 2.0.11** serializes a form with `new FormData(form)`, which
   includes inputs associated through the `form` attribute, in document
   order.
+
+## Owner's answer (2026-11-18)
+
+"as recommended": Q1 A, Q2 A, Q3 A, Q4 A, Q5 A.
+
+Recorded in RR-0053 (scaffold; the owner signs).
