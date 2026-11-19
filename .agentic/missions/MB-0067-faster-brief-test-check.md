@@ -40,7 +40,7 @@ autonomy:
     - "how the self-test feeds the script canned listings and fixture briefs (for example an environment variable naming a directory), so the self-test needs no Rust build"
     - "the wording of the script's output, as long as P1's lines stay the same"
   escalate:
-    - { when: "running the self-test in CI (a step in `agentic-gate.yml`'s `agentic scripts` job, where RR-0032 sub-answer 4 placed the other script tests), or any other workflow change", to: platform-owner }
+    - { when: "running the self-test in CI (a step in `agentic-gate.yml`'s `agentic scripts` job, where RR-0032 sub-answer 4 placed the other script tests), or any other workflow change (decided: the owner on accepting the brief, 2026-11-19: the self-test runs in the `agentic scripts` job)", to: platform-owner }
     - { when: "a check shape in a brief that the new matching can't treat exactly as cargo does (rewrite the brief's check, or accept the difference)", to: owner }
     - { when: "anything that changes what the check guarantees, or the kauppa-core step (RR-0005)", to: owner }
   forbidden:
@@ -98,7 +98,9 @@ Step times in the last three green CI runs on `main`:
    joins the `agentic scripts` job (recommended; it needs no Rust build if
    the script can be fed canned listings). If the owner answers it when
    accepting the brief, no consult is needed; otherwise a short CRP
-   (platform).
+   (platform). Done: the owner accepted the brief and answered it
+   (2026-11-19, "The brief is ok and the self-test should run as
+   recommended"); no consult.
 2. **Script.** Split listing from matching: list each package named by any
    check once per target kind it needs, keep each target's tests apart (for
    `--test`), then match each check; fail on an unknown shape or a failed
