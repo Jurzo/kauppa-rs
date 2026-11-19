@@ -15,6 +15,17 @@
 # shape this script doesn't know, or whose listing cargo fails to produce,
 # fails.
 #
+# One exception (the owner, 2026-11-19): `cargo test -p kauppa-web` builds
+# kauppa-web with other features than the workspace does, and no CI step
+# before this one builds it that way, so listing it costs a full second
+# build (about 60 s). Checks `cargo test -p <P> [<filter>]` and
+# `cargo test -p <P> --all-targets [<filter>]` for a package in
+# FROM_WORKSPACE are matched against P's tests in the workspace's test build
+# (`cargo test --workspace --all-targets`, built by the step before). The
+# test names are the same: neither crate declares features of its own. A
+# package listed there must have no library target, since a plain `-p` check
+# would also run its doc tests and the workspace's `--all-targets` doesn't.
+#
 # For the self-test (`test_check_brief_tests.sh`):
 # - BRIEF_CHECK_ROOT: the directory holding `.agentic/` (default: the repo).
 # - BRIEF_CHECK_LISTINGS: a directory of canned listings, one file per
@@ -28,6 +39,9 @@ repo="$(cd "$(dirname "$0")/../.." && pwd)"
 root="${BRIEF_CHECK_ROOT:-$repo}"
 listings="${BRIEF_CHECK_LISTINGS:-}"
 cd "$repo"
+
+FROM_WORKSPACE=(kauppa-web)
+WORKSPACE_BUILD="workspace build:"
 
 failures=0
 checked=0
@@ -49,7 +63,7 @@ parse() {
     key="cargo test"
     filter=""
     refusal=""
-    local have_filter=0 have_pkg=0 i=2
+    local have_filter=0 have_pkg=0 i=2 pkg="" other_flags=0
     while ((i < ${#words[@]})); do
         local w="${words[i]}"
         case "$w" in
@@ -58,12 +72,18 @@ parse() {
                     refusal="'$w' needs a value"
                     return
                 fi
-                [[ "$w" != --test ]] && have_pkg=1
+                if [[ "$w" == --test ]]; then
+                    other_flags=1
+                else
+                    have_pkg=$((have_pkg + 1))
+                    pkg="${words[i + 1]}"
+                fi
                 key+=" $w ${words[i + 1]}"
                 i=$((i + 2))
                 ;;
             --workspace)
-                have_pkg=1
+                have_pkg=2
+                other_flags=1
                 key+=" $w"
                 i=$((i + 1))
                 ;;
@@ -88,7 +108,46 @@ parse() {
     done
     if ((!have_pkg)); then
         refusal="names no package (-p or --workspace)"
+        return
     fi
+    # One package, no --test or --workspace: maybe from the workspace build.
+    if ((have_pkg == 1 && !other_flags)); then
+        local p
+        for p in "${FROM_WORKSPACE[@]}"; do
+            if [[ "$p" == "$pkg" ]]; then
+                key="$WORKSPACE_BUILD $pkg"
+            fi
+        done
+    fi
+}
+
+# workspace_lists: "<package>\t<test name>" for every test in the workspace's
+# `--all-targets` test build, by running its test executables with --list.
+# Fails if a FROM_WORKSPACE package has a library target (see above).
+workspace_lists() {
+    python3 - "${FROM_WORKSPACE[@]}" <<'PY'
+import json, os, subprocess, sys
+
+def cargo(*args):
+    return subprocess.run(["cargo", *args], check=True, capture_output=True, text=True).stdout
+
+meta = json.loads(cargo("metadata", "--no-deps", "--format-version", "1"))
+packages = {p["id"]: p for p in meta["packages"]}
+for p in packages.values():
+    if p["name"] in sys.argv[1:] and any("lib" in t["kind"] for t in p["targets"]):
+        sys.exit(f"{p['name']} has a library target; its doc tests aren't in the workspace's --all-targets build")
+built = cargo("test", "--workspace", "--all-targets", "--no-run", "--message-format=json")
+for line in built.splitlines():
+    msg = json.loads(line)
+    if msg.get("reason") != "compiler-artifact" or not msg.get("executable") or not msg["profile"]["test"]:
+        continue
+    package = packages[msg["package_id"]]
+    listing = subprocess.run([msg["executable"], "--list"], check=True, capture_output=True, text=True,
+                             cwd=os.path.dirname(package["manifest_path"])).stdout
+    for name in listing.splitlines():
+        if name.endswith(": test"):
+            print(f"{package['name']}\t{name[:-len(': test')]}")
+PY
 }
 
 for brief in "$root"/.agentic/missions/MB-*.md; do
@@ -119,6 +178,22 @@ for i in "${!keys[@]}"; do
     [[ -n "${refusals[i]}" ]] && continue
     k="${keys[i]}"
     [[ -n "${listed[$k]+set}" || -n "${listing_error[$k]+set}" ]] && continue
+    if [[ -z "$listings" && "$k" == "$WORKSPACE_BUILD "* ]]; then
+        # Every FROM_WORKSPACE package from one listing of the workspace build.
+        err=$(mktemp)
+        starts=$((starts + 2))
+        if ws=$(workspace_lists 2>"$err"); then
+            for p in "${FROM_WORKSPACE[@]}"; do
+                listed["$WORKSPACE_BUILD $p"]=$(awk -F'\t' -v p="$p" '$1 == p { print $2 }' <<<"$ws")
+            done
+        else
+            for p in "${FROM_WORKSPACE[@]}"; do
+                listing_error["$WORKSPACE_BUILD $p"]="$(tail -n 3 "$err" | tr '\n' ' ')"
+            done
+        fi
+        rm -f "$err"
+        continue
+    fi
     if [[ -n "$listings" ]]; then
         file="$listings/${k// /_}.list"
         if [[ -f "$file" ]]; then

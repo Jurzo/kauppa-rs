@@ -16,13 +16,13 @@ acceptance:
     property: "On `main`, the new script prints the same per-check lines (brief id, command, number of tests selected) and the same final line as the current script, and exits with the same code."
     check: "manual: both scripts' outputs diffed on the same commit, recorded in MB-0067's Continuity Pack"
   - id: P2
-    property: "A run starts cargo at most twice per package (its targets' list and its doc tests' list), whatever the number of checks; the CI step takes under 10 s."
+    property: "A run lists each distinct listing command once, whatever the number of checks, and needs no build the CI job hasn't already done; the CI step takes under 10 s. (Reworded 2026-11-19 with the owner's option 1: was 'starts cargo at most twice per package'.)"
     check: "manual: the step's time in a green CI run on the PR, recorded in MB-0067's Continuity Pack"
   - id: P3
     property: "It fails, naming the brief and the check, on: a filter that selects no test; a `--test <name>` check that selects nothing in that target; a check whose shape it doesn't recognise (an unknown flag or package); and a listing that cargo fails to produce (never read as zero tests or as a pass)."
     check: scripts/agentic/test_check_brief_tests.sh
   - id: P4
-    property: "Matching follows cargo: a check's filter selects the tests whose path contains it, in the packages and targets the command names; a check without a filter selects all of them; `--workspace` means every workspace package. Briefs whose pack says \"In flight: … not started\" are still skipped."
+    property: "Matching follows cargo: a check's filter selects the tests whose path contains it, in the packages and targets the command names; a check without a filter selects all of them; `--workspace` means every workspace package. A `-p kauppa-web` check, with or without `--all-targets`, is matched against kauppa-web's tests in the workspace's test build, which CI has already built (the owner, 2026-11-19, option 1: its own build cost about 60 s). Briefs whose pack says \"In flight: … not started\" are still skipped."
     check: scripts/agentic/test_check_brief_tests.sh
 context:
   - scripts/agentic/check_brief_tests.sh
@@ -109,6 +109,12 @@ Step times in the last three green CI runs on `main`:
    briefs and packs and canned listings covering each shape, each failure in
    P3 and the "not started" skip.
 4. **Prove it** on `main` against the old script (P1) and in CI (P2).
+
+Found in CI (2026-11-19): `cargo test -p kauppa-web` is a separate build
+from the workspace's (feature unification), and no CI step before the
+check builds it; about 60 s of the step was that build. The owner chose to
+match kauppa-web's checks against the workspace build (option 1; P2 and
+P4 reworded).
 
 Slow-mode triggers: a brief check the new matching treats differently from
 cargo; a listing that needs a build the CI job hasn't done.

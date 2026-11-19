@@ -98,6 +98,26 @@ expect "every shape, substring matching" 0 \
     "checked 8 brief checks, 0 selecting no tests" \
     "listed 5 commands"
 
+# P4: `-p kauppa-web` checks, with or without --all-targets, are matched
+# against kauppa-web's tests in the workspace build (one listing for both);
+# a `--test` check of it is still listed by its own command.
+reset
+listing "-p kauppa-web" "routes::stale::from_own_build: test"
+listing "-p kauppa-web --test smoke" "boots: test"
+printf '%s\n' "routes::x::tests::page: test" "routes::y::tests::form: test" \
+    >"$work/listings/workspace_build:_kauppa-web.list"
+brief MB-0001 started \
+    "cargo test -p kauppa-web routes::x" \
+    "cargo test -p kauppa-web --all-targets" \
+    "cargo test -p kauppa-web routes::stale" \
+    "cargo test -p kauppa-web --test smoke"
+expect "kauppa-web from the workspace build" 1 \
+    "ok   MB-0001: 'cargo test -p kauppa-web routes::x' (1)" \
+    "ok   MB-0001: 'cargo test -p kauppa-web --all-targets' (2)" \
+    "FAIL MB-0001: 'cargo test -p kauppa-web routes::stale' selects no tests" \
+    "ok   MB-0001: 'cargo test -p kauppa-web --test smoke' (1)" \
+    "listed 2 commands"
+
 # P2: a command is listed once however many checks share it.
 reset
 brief MB-0001 started "cargo test -p core repo::a" "cargo test -p core repo::b" "cargo test -p core domain"
