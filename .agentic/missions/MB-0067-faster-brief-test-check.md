@@ -8,7 +8,7 @@ goal: "`scripts/agentic/check_brief_tests.sh` gives the same verdict as today (e
 non_goals:
   - "Changing what the check guarantees (MB-0019 P4, RR-0009 constraint 2), which brief lines it reads, or which briefs it skips."
   - "Removing or changing the `cargo test -p kauppa-core --all-targets` step (RR-0005; its constraint 3 needs a consult)."
-  - "Changing any other CI step, the workspace `cargo test`, or the step order in `ci.yml`."
+  - "Changing any other CI step or the workspace `cargo test`. (The step order in `ci.yml` was a non-goal until the owner chose to move the sqlx cache check before the tests, 2026-11-19; see Context.)"
   - "Running doc tests, or changing the check format briefs use."
   - "Caching listings between runs."
 acceptance:
@@ -115,6 +115,13 @@ from the workspace's (feature unification), and no CI step before the
 check builds it; about 60 s of the step was that build. The owner chose to
 match kauppa-web's checks against the workspace build (option 1; P2 and
 P4 reworded).
+
+Then (same day, run 44583995918) the step took 38 s: `scripts/sqlx-prepare.sh
+--check`, run after the tests, touches kauppa-core's `lib.rs`, so the
+workspace test build was rebuilt in the brief check. The owner chose to
+reorder the steps ("go with the reorder of steps"): the sqlx check now runs
+before `cargo test`, so the brief check stays last (RR-0032 sub-answer 4)
+and finds every build fresh.
 
 Slow-mode triggers: a brief check the new matching treats differently from
 cargo; a listing that needs a build the CI job hasn't done.
