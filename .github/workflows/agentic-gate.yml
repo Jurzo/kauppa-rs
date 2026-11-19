@@ -99,6 +99,11 @@ jobs:
       - name: test_scaffold_mission.sh
         run: scripts/agentic/test_scaffold_mission.sh
 
+      # check_brief_tests.sh against fixture briefs and canned listings
+      # (MB-0067 P3, P4); needs no Rust build.
+      - name: test_check_brief_tests.sh
+        run: scripts/agentic/test_check_brief_tests.sh
+
       # Action pins, permissions, one Rust version (MB-0045 P1, P2).
       - name: check_workflows.sh
         run: scripts/agentic/check_workflows.sh
