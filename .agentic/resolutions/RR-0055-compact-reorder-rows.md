@@ -137,3 +137,5 @@ To be applied after this record is signed, with the owner's OK:
 ## Supersession and history
 
 Status: active. Supersedes nothing.
+
+- 2026-11-20: roll-back applied to MB-0068 and CRP-0055 (PR #138).

@@ -12,13 +12,13 @@ non_goals:
   - "Dragging a favorite into another category (a separate follow-up)."
 acceptance:
   - id: P1
-    property: "At a 360 px wide viewport, every row of the categories page shows on one line, with no horizontal scrolling: the drag handle (with JavaScript), the name field, ↑ above ↓, a pencil button that saves the name (today's 'Rename'), and a trash button that deletes the category with today's confirmation."
+    property: "At a 360 px wide viewport, every row of the categories page shows on one line, with no horizontal scrolling: the drag handle (with JavaScript), the name, ↑ above ↓ (each 44 × 30 px), a pencil button that opens the rename panel below the row (today's rename form), and a trash button that deletes the category with today's confirmation."
     check: "scripts/browser/run.sh (new flow: row layout at 360 px on the three lists)"
   - id: P2
-    property: "A favorites group's rows and a recipe's ingredient rows are laid out the same way: the name, ↑ above ↓, a pencil button that opens the row's edit panel (today's 'Edit'), and a trash button that deletes the row (moved out of the edit panel, as the consult decides) with a confirmation; the edit panel still opens below the row."
+    property: "A favorites group's rows and a recipe's ingredient rows are laid out the same way: the name, ↑ above ↓, a pencil button that opens the row's edit panel (today's 'Edit'), and a trash button that deletes the row (moved out of the edit panel) with a confirmation: today's for favorites, a new 'Remove ‹name›?' for ingredients; the edit panel still opens below the row."
     check: "scripts/browser/run.sh (the same flow)"
   - id: P3
-    property: "Each icon button has the accessible name its text gave it, with the row's name (for example 'Delete Voi'); the icons are hidden from assistive technology and not focusable; the keyboard order in a row is name, ↑, ↓, pencil, trash; every touch target is at least the size the consult decides."
+    property: "Each icon button has the accessible name its text gave it, with the row's name (for example 'Delete Voi'); the icons are hidden from assistive technology and not focusable; the keyboard order in a row is name, ↑, ↓, pencil, trash; every touch target is at least 44 × 44 px, except each stacked arrow, at least 44 × 30 px."
     check: cargo test -p kauppa-web templates::tests::icon_buttons
   - id: P4
     property: "Without JavaScript every action still works through the same forms; every string is in both catalogs; the templates stay CSP-compatible (no `style` attributes, no inline script); existing tests unchanged except where they find a button by its visible text (listed in the PR)."
@@ -45,11 +45,11 @@ autonomy:
     - "a template partial per icon, so each SVG is written once"
     - "test names inside the modules above"
   escalate:
-    - { when: "the touch-target size of the stacked arrows: each at least 44 px as `Button.md` and `app.css` require today (rows grow to about 88 px), or a smaller size such as 32 px (rows about 64 px, as in the mock-up) with the rule amended", to: owner }
-    - { when: "where the icons come from: drawn by hand as inline SVG in the templates (as the theme switch's three icons, MB-0055), or copied from an icon set (a licence and a pin, as RR-0034 did for the fonts)", to: platform-owner }
-    - { when: "moving delete out of the favorites and ingredients edit panels to the row, and whether an ingredient's delete (today 'Remove', without confirmation) gets one", to: owner }
-    - { when: "the pencil on the categories page: it saves the edited name (the mock-up) though a pencil usually means 'edit'; or a different icon (a tick) for saving", to: owner }
-    - { when: "a change to `design-system/` (an icon-button variant in `Button.md`, the row in `ListItem.md`)", to: owner }
+    - { when: "the touch-target size of the stacked arrows: each at least 44 px as `Button.md` and `app.css` require today (rows grow to about 88 px), or a smaller size such as 32 px (rows about 64 px, as in the mock-up) with the rule amended (RR-0055)", to: owner }
+    - { when: "where the icons come from: drawn by hand as inline SVG in the templates (as the theme switch's three icons, MB-0055), or copied from an icon set (a licence and a pin, as RR-0034 did for the fonts) (RR-0055)", to: platform-owner }
+    - { when: "moving delete out of the favorites and ingredients edit panels to the row, and whether an ingredient's delete (today 'Remove', without confirmation) gets one (RR-0055)", to: owner }
+    - { when: "the pencil on the categories page: it saves the edited name (the mock-up) though a pencil usually means 'edit'; or a different icon (a tick) for saving (RR-0055)", to: owner }
+    - { when: "a change to `design-system/` (an icon-button variant in `Button.md`, the row in `ListItem.md`) (RR-0055)", to: owner }
   forbidden:
     - "change a route, a form field or a handler"
     - "add JavaScript or `style` attributes"
@@ -59,7 +59,7 @@ runbook: .agentic/runbooks/feature.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/templating.md@v1
-resolutions: []
+resolutions: [RR-0055]
 ---
 ```
 

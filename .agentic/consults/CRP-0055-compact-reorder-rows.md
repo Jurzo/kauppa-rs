@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: product
 risk_tier: low
 urgency: low
-state: open
+state: answered
 runbook_trigger: "MB-0068 autonomy.escalate (the stacked arrows' target size, delete placement and ingredient confirmation, the categories pencil, design-system/ changes → owner; the icon source → platform-owner)"
 ---
 ```
@@ -268,4 +268,4 @@ prefer?
 
 "All as recommended": Q1 B, Q2 A, Q3 A, Q4 C, Q5 A.
 
-Recorded in RR-0055 (scaffold; the owner signs).
+Recorded in RR-0055 (signed 2026-11-20).
