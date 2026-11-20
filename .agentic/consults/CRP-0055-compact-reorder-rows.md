@@ -263,3 +263,9 @@ prefer?
 - Icon style: `design-system/README.md`, Iconography; precedent:
   `templates/layout.hbs` lines 85–95.
 - The ↑/↓ glyphs in the font subset: RR-0034, sub-answer 1.
+
+## Owner's answer (2026-11-20)
+
+"All as recommended": Q1 B, Q2 A, Q3 A, Q4 C, Q5 A.
+
+Recorded in RR-0055 (scaffold; the owner signs).
