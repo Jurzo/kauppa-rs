@@ -4,7 +4,8 @@
 //! selector, bodies in `tests/language.rs`); MB-0053 P1 (select chevron,
 //! body in `tests/select.rs`); MB-0054 P1–P3 (design tokens, contrast and
 //! components, bodies in `tests/design.rs`) and P4 (the name, body in
-//! `tests/brand.rs`).
+//! `tests/brand.rs`); MB-0068 P3 (the reorderable rows, body in
+//! `tests/rows.rs`).
 #![allow(clippy::expect_used, clippy::panic)]
 
 use std::collections::BTreeSet;
@@ -22,6 +23,7 @@ mod brand;
 mod design;
 mod language;
 mod navigation;
+mod rows;
 mod select;
 mod theme;
 
@@ -509,6 +511,13 @@ fn language_dropdown_names() {
 #[test]
 fn language_dropdown_accessible() {
     language::accessible();
+}
+
+/// MB-0068 P3 (RR-0055): the reorderable rows' order, accessible names,
+/// icons, forms and target sizes, in `tests/rows.rs`.
+#[test]
+fn icon_buttons() {
+    rows::icon_buttons();
 }
 
 /// MB-0053 P1: every `<select>` shows the app's chevron, in `tests/select.rs`.

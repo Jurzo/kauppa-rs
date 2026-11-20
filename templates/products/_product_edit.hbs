@@ -1,16 +1,6 @@
 <details class="product-edit">
   <summary>{{t "common.edit"}}<span class="visually-hidden"> {{name}}</span></summary>
-  {{!-- MB-0058 (RR-0043): one form saves the name and the category together. --}}
-  <form method="post" action="/favorites/{{id}}"
-        hx-post="/favorites/{{id}}" hx-target="closest .catalog-unit" hx-swap="outerHTML">
-    <label>{{t "common.name"}}
-      <input name="name" type="text" required value="{{name}}" />
-    </label>
-    <label>{{t "common.category"}}
-      {{> products/_category_picker picker }}
-    </label>
-    <button type="submit" class="button">{{t "common.save"}}</button>
-  </form>
+  {{> products/_product_form}}
   <form method="post" action="/favorites/{{id}}/delete"
         hx-post="/favorites/{{id}}/delete" hx-target="closest .catalog-unit" hx-swap="outerHTML"
         hx-confirm="{{t "common.delete_confirm" name=name}}{{#if recipe_count}} {{t "products.delete_warning" count=recipe_count}}{{/if}}">

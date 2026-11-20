@@ -1,0 +1,12 @@
+{{!-- The product edit form: in a favorites row's panel (MB-0068) and in a recipe product's "Edit" (`products/_product_edit`). --}}
+{{!-- MB-0058 (RR-0043): one form saves the name and the category together. --}}
+<form method="post" action="/favorites/{{id}}"
+      hx-post="/favorites/{{id}}" hx-target="closest .catalog-unit" hx-swap="outerHTML">
+  <label>{{t "common.name"}}
+    <input name="name" type="text" required value="{{name}}" />
+  </label>
+  <label>{{t "common.category"}}
+    {{> products/_category_picker picker }}
+  </label>
+  <button type="submit" class="button">{{t "common.save"}}</button>
+</form>

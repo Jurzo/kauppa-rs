@@ -47,7 +47,8 @@ fn owned(groups: &[(&str, &[&str])]) -> Vec<(Option<String>, Vec<String>)> {
 
 /// P1: one form with the name, the picker ("No category" plus the
 /// categories, the current choice selected) and one Save; the only other
-/// control is Delete.
+/// control is Delete: in the edit section of a recipe product, on the row
+/// of a favorite (MB-0068, RR-0055 sub-answer 3).
 #[actix_web::test]
 #[allow(clippy::expect_used)]
 async fn one_save_button() {
@@ -96,15 +97,30 @@ async fn one_save_button() {
         "old routes gone"
     );
 
-    for (id, selected) in [(omena, hevi.to_string()), (kurkku, hevi.to_string())] {
+    for (id, selected, on_row) in [
+        (omena, hevi.to_string(), true),
+        (kurkku, hevi.to_string(), false),
+    ] {
         let section = edit_section(&page, id);
+        let forms = if on_row { 1 } else { 2 };
         assert_eq!(
             section.matches("<form").count(),
-            2,
-            "Save and Delete: {section}"
+            forms,
+            "Save, and Delete unless it is on the row: {section}"
         );
-        assert_eq!(section.matches(r#"type="submit""#).count(), 2, "{section}");
-        assert!(section.contains(&format!(r#"action="/favorites/{id}/delete""#)));
+        assert_eq!(
+            section.matches(r#"type="submit""#).count(),
+            forms,
+            "{section}"
+        );
+        let delete = format!(r#"action="/favorites/{id}/delete""#);
+        assert_eq!(section.contains(&delete), !on_row, "{section}");
+        let form = page
+            .find(&format!(r#"action="/favorites/{id}""#))
+            .expect("its form");
+        let row_start = page[..form].rfind("<li").expect("its row");
+        let row = &page[row_start..row_start + page[row_start..].find("</li>").expect("row end")];
+        assert_eq!(row.matches(&delete).count(), 1, "one Delete per row: {row}");
         assert!(section.contains(r#"name="name""#) && section.contains(">Save</button>"));
         assert!(section.contains(&format!(
             r#"<option value="{NO_CATEGORY}">No category</option>"#
