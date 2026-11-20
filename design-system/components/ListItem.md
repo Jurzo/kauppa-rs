@@ -9,4 +9,5 @@ A shopping list row: checkbox, item name and quantity, the core of the app and t
 - Quantity: `quantity` style (JetBrains Mono, tabular figures) in `ink-muted`, right-aligned.
 - Groups: "To get · n" above, "In cart · n" below, as `overline` labels. Checking moves a row to "In cart" after a short delay, and the toast offers Undo.
 - Dividers between rows use `border`; the list sits in a `surface` card with `radius-lg` and `shadow-sm`.
+- Reorderable row (categories, a favorites group, a recipe's ingredients; RR-0055): one line on a phone, left to right: the drag handle (`ink-muted`, shown only with JavaScript), the name (it wraps), ↑ above ↓ (the one at the end disabled), a pencil and a trash icon button (`Button.md`, Icon). The pencil opens the row's edit panel on a line of its own below the row; the trash deletes after a confirmation (asked with JavaScript). The keyboard order is the visual order: ↑, ↓, pencil, trash.
 - Swipe to delete reveals `danger-subtle` with a `danger` label; always undoable.
