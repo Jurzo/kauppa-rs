@@ -18,26 +18,31 @@
         hx-trigger="end from:#category-list"></form>
   <ul id="category-list" class="category-list" data-sortable>
     {{#each categories}}
-      <li class="category-row">
+      {{!-- MB-0068 (RR-0055): one line on a phone: handle, name, ↑ above ↓, a pencil that opens the rename panel below, a trash button. --}}
+      <li class="category-row reorder-row">
         <input type="hidden" name="id" value="{{this.id}}" form="category-order" />
         <span class="drag-handle" role="img" aria-label="{{t "common.drag_to_reorder" name=this.name}}">⠿</span>
-        <form class="category-rename" method="post" action="/categories/{{this.id}}/rename"
-              hx-post="/categories/{{this.id}}/rename" hx-target="#categories" hx-swap="outerHTML">
-          <label class="visually-hidden" for="cat-{{this.id}}">{{t "categories.name_of" name=this.name}}</label>
-          <input id="cat-{{this.id}}" name="name" type="text" required value="{{this.name}}" />
-          <button type="submit" class="link">{{t "common.rename"}}</button>
-        </form>
-        <form class="row-actions" method="post" action="/categories/{{this.id}}/move"
+        <span class="row-name">{{this.name}}</span>
+        <form class="row-move" method="post" action="/categories/{{this.id}}/move"
               hx-post="/categories/{{this.id}}/move" hx-target="#categories" hx-swap="outerHTML">
           <button id="category-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
                   aria-label="{{t "common.move_up" name=this.name}}"{{#if @first}} disabled{{/if}}>↑</button>
           <button id="category-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
                   aria-label="{{t "common.move_down" name=this.name}}"{{#if @last}} disabled{{/if}}>↓</button>
         </form>
-        <form class="row-actions" method="post" action="/categories/{{this.id}}/delete"
+        <details class="row-edit">
+          <summary class="link icon-button" aria-label="{{t "common.rename_named" name=this.name}}">{{> icons/_pencil}}</summary>
+          <form class="category-rename" method="post" action="/categories/{{this.id}}/rename"
+                hx-post="/categories/{{this.id}}/rename" hx-target="#categories" hx-swap="outerHTML">
+            <label class="visually-hidden" for="cat-{{this.id}}">{{t "categories.name_of" name=this.name}}</label>
+            <input id="cat-{{this.id}}" name="name" type="text" required value="{{this.name}}" />
+            <button type="submit" class="button">{{t "common.rename"}}</button>
+          </form>
+        </details>
+        <form class="row-delete" method="post" action="/categories/{{this.id}}/delete"
               hx-post="/categories/{{this.id}}/delete" hx-target="#categories" hx-swap="outerHTML"
               hx-confirm="{{t "common.delete_confirm" name=this.name}}">
-          <button type="submit" class="link danger" aria-label="{{t "common.delete_named" name=this.name}}">{{t "common.delete"}}</button>
+          <button type="submit" class="link danger icon-button" aria-label="{{t "common.delete_named" name=this.name}}">{{> icons/_trash}}</button>
         </form>
       </li>
     {{else}}

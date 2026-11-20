@@ -9,22 +9,23 @@
         hx-trigger="end from:#ingredient-list"></form>
   <ul id="ingredient-list" class="product-list" data-sortable>
     {{#each items}}
-      <li class="product-row">
+      {{!-- MB-0068 (RR-0055): one line on a phone; the pencil opens the quantity panel below the row, the trash removes (with a confirmation). --}}
+      <li class="product-row reorder-row">
         <input type="hidden" name="id" value="{{this.id}}" form="ingredient-order" />
         <span class="drag-handle" role="img" aria-label="{{t "common.drag_to_reorder" name=this.name}}">⠿</span>
-        <span class="product-name">
+        <span class="product-name row-name">
           {{#if this.quantity}}<span class="ingredient-quantity">{{this.quantity}}</span> {{/if}}{{this.name}}
           {{#if this.category}}<span class="muted">· {{this.category}}</span>{{/if}}
         </span>
-        <form class="row-actions" method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/move"
+        <form class="row-move" method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/move"
               hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/move" hx-target="#ingredients" hx-swap="outerHTML">
           <button id="ingredient-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
                   aria-label="{{t "common.move_up" name=this.name}}"{{#if @first}} disabled{{/if}}>↑</button>
           <button id="ingredient-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
                   aria-label="{{t "common.move_down" name=this.name}}"{{#if @last}} disabled{{/if}}>↓</button>
         </form>
-        <details class="product-edit">
-          <summary>{{t "common.edit"}}<span class="visually-hidden"> {{this.name}}</span></summary>
+        <details class="row-edit">
+          <summary class="link icon-button" aria-label="{{t "common.edit_named" name=this.name}}">{{> icons/_pencil}}</summary>
           <form method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/quantity"
                 hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/quantity" hx-target="#ingredients" hx-swap="outerHTML">
             <label>{{t "common.quantity"}}
@@ -32,11 +33,12 @@
             </label>
             <button type="submit" class="button">{{t "common.save"}}</button>
           </form>
-          <form method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/delete"
-                hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/delete" hx-target="#ingredients" hx-swap="outerHTML">
-            <button type="submit" class="link danger">{{t "common.remove"}}</button>
-          </form>
         </details>
+        <form class="row-delete" method="post" action="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/delete"
+              hx-post="/recipes/{{../recipe_id}}/ingredients/{{this.id}}/delete" hx-target="#ingredients" hx-swap="outerHTML"
+              hx-confirm="{{t "common.remove_confirm" name=this.name}}">
+          <button type="submit" class="link danger icon-button" aria-label="{{t "common.remove_named" name=this.name}}">{{> icons/_trash}}</button>
+        </form>
       </li>
     {{else}}
       <li class="product-row empty">{{t "recipes.no_ingredients"}}</li>

@@ -503,11 +503,11 @@ p.error { padding: var(--space-3) var(--space-4); border-radius: var(--radius-md
 }
 
 /* Categories (MB-0001) and favorites (MB-0002) */
-.add-category, .add-product, .product-edit form {
+.add-category, .add-product, .product-edit form, .row-edit form {
   display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; margin: var(--space-4) 0;
 }
-.add-category label, .add-product label, .product-edit label { display: flex; flex-direction: column; flex: 1 1 10rem; }
-.add-category input, .add-product input, .product-edit input { margin-top: var(--space-1); }
+.add-category label, .add-product label, .product-edit label, .row-edit label { display: flex; flex-direction: column; flex: 1 1 10rem; }
+.add-category input, .add-product input, .product-edit input, .row-edit label input { margin-top: var(--space-1); }
 /* Selects (MB-0053): the box of the inputs above, with the browser's arrow
    hidden and the app's chevron in its place, so it sits the same distance
    from the edge in every browser. The chevron is two gradient squares, each
@@ -550,9 +550,8 @@ select {
 }
 .category-row + .category-row, .product-row + .product-row { border-top: 1px solid var(--border); }
 .product-name { flex: 1 1 8rem; overflow-wrap: anywhere; }
-.category-row .row-actions, .product-row .row-actions { display: flex; margin: 0; }
-/* Comfortable touch targets for the one-handed reorder buttons. */
-.category-row .row-actions .link, .product-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.1rem; }
+.product-row .row-actions { display: flex; margin: 0; }
+.product-row .row-actions .link { min-width: 2.75rem; min-height: 2.75rem; font-size: 1.1rem; }
 /* MB-0066 (RR-0053): drag handles, shown only once `assets/app/sortable.js`
    has run (it marks <html> with .sortable-ready); without JavaScript the
    ↑/↓ buttons remain. `touch-action: none` lets a touch on the handle drag
@@ -566,17 +565,66 @@ select {
 .sortable-order { display: none; }
 .sortable-ghost { opacity: 0.4; }
 .sortable-chosen { background: var(--surface); }
+/* MB-0068 (RR-0055): a reorderable row (the categories, a favorites group,
+   a recipe's ingredients) keeps one line at 360px: handle, name, ↑ above ↓,
+   pencil, trash. The pencil is a <details> summary whose panel opens on a
+   line of its own below the row. Where `::details-content` is supported,
+   the <details> box is dropped (`display: contents`) so the summary and
+   the panel are placed apart and the trash stays on the line; elsewhere
+   the open <details>, pencil and panel, moves below the row. */
+.reorder-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  grid-template-areas: "handle name move edit delete" "panel panel panel panel panel";
+  align-items: center; column-gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+}
+.reorder-row .drag-handle { grid-area: handle; }
+.reorder-row .row-name { grid-area: name; overflow-wrap: anywhere; hyphens: auto; }
+.row-move { grid-area: move; display: flex; flex-direction: column; margin: 0; }
+/* The stacked pair: 44px wide and 30px tall each, the one exception to
+   the 44px rule (RR-0055 sub-answer 1, components/Button.md). */
+.row-move .link {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.75rem; min-height: 1.875rem; font-size: 1.1rem; line-height: 1;
+}
+.row-edit { grid-area: edit; }
+.row-edit[open] { grid-area: panel; }
+.row-edit[open] > summary { background: var(--brand-subtle); }
+.row-edit form { margin: var(--space-1) 0 var(--space-3); }
+.row-edit p { margin: 0 0 var(--space-3); }
+.row-delete { grid-area: delete; margin: 0; }
+@supports selector(::details-content) {
+  .row-edit { display: contents; }
+  .row-edit > summary { grid-area: edit; }
+  .row-edit::details-content { grid-area: panel; }
+}
+/* Icon buttons (components/Button.md, Icon; RR-0055): a 44px square with
+   no visible label; the aria-label names the action and its object, and
+   the SVG (aria-hidden) is drawn at 24px in a 2px round stroke
+   (design-system/README.md, Iconography). `.link` colours it brand (edit),
+   `.link.danger` danger (delete). */
+.icon-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.75rem; min-height: 2.75rem; padding: 0; border-radius: var(--radius-md);
+}
+.icon-button:hover { background: var(--brand-subtle); }
+.icon-button.danger:hover { background: var(--danger-subtle); }
+summary.icon-button { list-style: none; }
+summary.icon-button::-webkit-details-marker { display: none; }
+.icon-button .icon {
+  flex: none; width: 1.5rem; height: 1.5rem;
+  fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
 .product-edit summary { cursor: pointer; color: var(--brand); padding: 0.625rem 0; border-radius: var(--radius-sm); }
 .product-edit[open] { flex-basis: 100%; }
 .product-edit form { margin: 0 0 var(--space-3); }
-.product-edit .link, .recipe-delete .link, .category-row .link, .lists .link, .grantees .link { min-height: 2.75rem; }
+.product-edit .link, .recipe-delete .link, .lists .link, .grantees .link { min-height: 2.75rem; }
 /* Recipe-created products, below the favorites (MB-0014) */
 .recipe-products { margin-top: var(--space-7); padding-top: var(--space-2); border-top: 1px solid var(--border); }
 .recipe-products .product-group h3 { margin: var(--space-5) 0 var(--space-2); }
 .product-usage { font-size: 0.875rem; line-height: 1.25rem; }
 .product-row .row-actions .link.make-favorite { font-size: 1rem; }
-.category-rename { display: flex; flex: 1 1 12rem; gap: var(--space-2); align-items: center; margin: 0; }
-.category-rename input { flex: 1 1 auto; }
+.category-rename input { flex: 1 1 10rem; }
 
 @media (max-width: 480px) {
   main { padding: var(--space-3); }

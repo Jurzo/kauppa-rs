@@ -9,18 +9,30 @@
   </form>
   <ul id="{{dom_id}}-list" class="product-list" data-sortable>
     {{#each products}}
-      <li class="product-row">
+      {{!-- MB-0068 (RR-0055): one line on a phone; the pencil opens the edit panel below the row, the trash deletes. --}}
+      <li class="product-row reorder-row">
         <input type="hidden" name="id" value="{{this.id}}" form="{{../dom_id}}-order" />
         <span class="drag-handle" role="img" aria-label="{{t "common.drag_to_reorder" name=this.name}}">⠿</span>
-        <span class="product-name">{{this.name}}</span>
-        <form class="row-actions" method="post" action="/favorites/{{this.id}}/move"
+        <span class="product-name row-name">{{this.name}}</span>
+        <form class="row-move" method="post" action="/favorites/{{this.id}}/move"
               hx-post="/favorites/{{this.id}}/move" hx-target="closest .catalog-unit" hx-swap="outerHTML">
           <button id="product-{{this.id}}-up" type="submit" class="link" name="dir" value="up"
                   aria-label="{{t "common.move_up" name=this.name}}"{{#if @first}} disabled{{/if}}>↑</button>
           <button id="product-{{this.id}}-down" type="submit" class="link" name="dir" value="down"
                   aria-label="{{t "common.move_down" name=this.name}}"{{#if @last}} disabled{{/if}}>↓</button>
         </form>
-        {{> products/_product_edit this }}
+        <details class="row-edit">
+          <summary class="link icon-button" aria-label="{{t "common.edit_named" name=this.name}}">{{> icons/_pencil}}</summary>
+          {{> products/_product_form this }}
+          {{#if this.recipe_count}}
+            <p class="muted">{{t "products.delete_warning" count=this.recipe_count}}</p>
+          {{/if}}
+        </details>
+        <form class="row-delete" method="post" action="/favorites/{{this.id}}/delete"
+              hx-post="/favorites/{{this.id}}/delete" hx-target="closest .catalog-unit" hx-swap="outerHTML"
+              hx-confirm="{{t "common.delete_confirm" name=this.name}}{{#if this.recipe_count}} {{t "products.delete_warning" count=this.recipe_count}}{{/if}}">
+          <button type="submit" class="link danger icon-button" aria-label="{{t "common.delete_named" name=this.name}}">{{> icons/_trash}}</button>
+        </form>
       </li>
     {{/each}}
   </ul>
