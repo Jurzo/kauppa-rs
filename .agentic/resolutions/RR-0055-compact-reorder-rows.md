@@ -5,11 +5,11 @@
 id: RR-0055
 closes: CRP-0055
 mission: MB-0068
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: product
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-20T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-20t10:39:00z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/missions/MB-0068-compact-reorder-rows.md
@@ -91,7 +91,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as owner (product: Q1, Q3, Q4, Q5) and platform (Q2).">
+@Jurzo as owner (product: Q1, Q3, Q4, Q5) and platform (Q2).
 
 ## Linked artifacts and evidence
 
