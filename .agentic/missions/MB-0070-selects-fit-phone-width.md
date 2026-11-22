@@ -45,7 +45,7 @@ autonomy:
     - "whether a cut-off name ends in an ellipsis where the browser supports one"
     - "test names inside the modules above"
   escalate:
-    - { when: "a note on selects' width in `design-system/components/TextField.md`, which doesn't mention selects today", to: owner }
+    - { when: "a note on selects' width in `design-system/components/TextField.md`, which doesn't mention selects today (decided by the owner on acceptance, 2026-11-22: add the note)", to: owner }
     - { when: "a form can't fit 360 px with its select at any width (its other fields need the room): a template change, a non-goal", to: owner }
   forbidden:
     - "change a template, a route, a handler or a catalog"
@@ -118,13 +118,23 @@ Playwright probe (not committed):
 1. **Red.** A browser flow at 360 px with 60-character names, failing on
    each form above (bugfix runbook, rule 2).
 2. **CSS (P2).**
-   - The labels that hold a select may shrink below their content
-     (`min-width: 0`).
-   - A select is never wider than its label (`max-width: 100%`), so it
+   - The labels that hold a select are capped at their form's width
+     (`max-width: 100%`). A flex item's automatic minimum is its content's
+     width, and the maximum caps that minimum, so the label still starts
+     at its select's width (desktop unchanged, P3) but can't exceed its
+     line. `min-width: 0` instead would let the label share a desktop line
+     and cut the name there too.
+   - The same for an open list item panel; the export review's `fieldset`
+     gets `min-width: 0` (its default minimum is its content).
+   - A select is never wider than its container (`max-width: 100%`), so it
      cuts the name off and keeps its padding and chevron.
 3. **Desktop check (P3).** The same flow at 1280 px: selects as wide as
    their longest option, as today.
-4. **The owner's phone check (P5).**
+4. **The design-system note.** `TextField.md` gains a bullet on selects:
+   the field's box, as wide as the longest option up to the form, a long
+   name cut off on a phone (the owner's decision on acceptance,
+   2026-11-22).
+5. **The owner's phone check (P5).**
 
 Slow-mode triggers:
 
