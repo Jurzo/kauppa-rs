@@ -526,6 +526,13 @@ fn select_chevron() {
     select::chevron();
 }
 
+/// MB-0070 P2: a select is never wider than the field around it, at any
+/// name length, in `tests/select.rs`.
+#[test]
+fn select_fits() {
+    select::fits();
+}
+
 /// MB-0054 P4 (RR-0034 sub-answer 5): the app is called `kauppalista.app`,
 /// in `tests/brand.rs`.
 #[test]
