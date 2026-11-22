@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: platform
 risk_tier: low
 urgency: high
-state: open
+state: answered
 runbook_trigger: "dependency-bump.md entry gate 2: a `Cargo.lock` change beyond what cargo writes for an in-scope task (an agent-made update; RR-0032's standing approval covers Dependabot's only)"
 ---
 ```
@@ -136,4 +136,4 @@ Crisp question to answer: approve updating `url` to 2.5.9 and
 ## Owner's answer (2026-11-22)
 
 A ("Brief accepted and CRP-0057 option A approved"). Recorded in RR-0057
-(scaffold; the owner signs).
+(signed 2026-11-22).

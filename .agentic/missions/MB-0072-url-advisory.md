@@ -34,7 +34,7 @@ autonomy:
   may_decide:
     - "nothing beyond the lockfile update the RR approves"
   escalate:
-    - { when: "the fix path: a lockfile-only update now, waiting for Dependabot's (RR-0032 class 1), or an interim ignore in `deny.toml`", to: platform-owner }
+    - { when: "the fix path: a lockfile-only update now, waiting for Dependabot's (RR-0032 class 1), or an interim ignore in `deny.toml` (RR-0057: the lockfile-only update now)", to: platform-owner }
     - { when: "the update needs more than `url` and what it requires, or a `Cargo.toml` change", to: platform-owner }
     - { when: "the exposure assessment, if code is found that calls `Url::origin()` on untrusted input", to: security }
   forbidden:
@@ -46,7 +46,7 @@ runbook: .agentic/runbooks/dependency-bump.md@v1
 mentorship:
   - AGENTS.md@v1
   - .agentic/mentorship/security.md@v1
-resolutions: []
+resolutions: [RR-0057]
 ---
 ```
 
@@ -90,8 +90,8 @@ lockfile-only update through this runbook over waiting for Dependabot
 
 ## Conceptual plan
 
-1. **Clarify (S1).** CRP-0057 for the fix path (platform); RR before the
-   PR (entry gate 3).
+1. **Clarify (S1).** Done: CRP-0057 answered A; RR-0057 signed
+   (2026-11-22) before the PR (entry gate 3).
 2. **The update.** `cargo update -p url`, one commit, `Cargo.lock` only
    (gates: a separate commit; no version string changes elsewhere).
 3. **Checks.** `cargo deny check`, clippy, the workspace tests, the image
