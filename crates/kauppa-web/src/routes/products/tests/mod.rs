@@ -3,6 +3,7 @@
 mod catalog;
 mod edit;
 mod hidden;
+mod move_between_groups;
 
 use uuid::Uuid;
 
