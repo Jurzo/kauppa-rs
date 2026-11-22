@@ -132,3 +132,8 @@ Crisp question to answer: approve updating `url` to 2.5.9 and
   actix-web 4.18.2, actix-session 0.10.1, actix-identity 0.8.0,
   tracing-actix-web 0.7.26, sqlx-core 0.8.6 and sqlx-sqlite 0.8.6: no
   match.
+
+## Owner's answer (2026-11-22)
+
+A ("Brief accepted and CRP-0057 option A approved"). Recorded in RR-0057
+(scaffold; the owner signs).
