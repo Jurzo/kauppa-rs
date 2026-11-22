@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE products SET category_id = ?1, updated_at = ?2 WHERE id = ?3 AND owner_id = ?4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "9e7758107156623f438795a4f069610d22077e998456a59dbcdbb4bbc1388a06"
+}

@@ -7,11 +7,13 @@
 //!
 //! Split by area (RR-0009): `catalog` (MB-0002), `names` (MB-0010),
 //! `hidden` (MB-0003's favorites rules and MB-0014) and `suggestions`
-//! (MB-0013), `update` (MB-0058). Fixtures shared by several areas live here.
+//! (MB-0013), `update` (MB-0058), `move_between_groups` (MB-0071). Fixtures
+//! shared by several areas live here.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 mod catalog;
 mod hidden;
+mod move_between_groups;
 mod names;
 mod suggestions;
 mod update;

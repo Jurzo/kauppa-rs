@@ -68,6 +68,97 @@ fn group_by_category<T>(
     Ok(groups)
 }
 
+/// `category`, if any, is the owner's (`NotFound` otherwise): the check
+/// both order writes start with.
+async fn check_group(
+    tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+    owner: &str,
+    category: Option<&String>,
+) -> CoreResult<()> {
+    if let Some(category) = category {
+        sqlx::query_scalar!(
+            r#"SELECT 1 AS "found!: i64" FROM categories WHERE id = ?1 AND owner_id = ?2"#,
+            category,
+            owner
+        )
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+    }
+    Ok(())
+}
+
+/// One favorites group's rows as stored (MB-0066): every product's id in
+/// order, and the indices of the favorites among them. Hidden products keep
+/// their indices when the favorites are reordered.
+struct GroupSlots {
+    ids: Vec<String>,
+    slots: Vec<usize>,
+}
+
+impl GroupSlots {
+    async fn load(
+        tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+        owner: &str,
+        category: Option<&String>,
+    ) -> CoreResult<Self> {
+        // `IS` so the uncategorized (NULL) group can be ordered too.
+        let siblings = sqlx::query!(
+            r#"SELECT id, is_favorite AS "is_favorite: bool" FROM products
+                WHERE owner_id = ?1 AND category_id IS ?2
+                ORDER BY position ASC, name ASC"#,
+            owner,
+            category
+        )
+        .fetch_all(&mut **tx)
+        .await?;
+        let mut ids = Vec::with_capacity(siblings.len());
+        let mut slots = Vec::new();
+        for (index, row) in siblings.into_iter().enumerate() {
+            if row.is_favorite {
+                slots.push(index);
+            }
+            ids.push(row.id);
+        }
+        Ok(Self { ids, slots })
+    }
+
+    /// Give the favorites' slots the `proposed` order, if it is exactly the
+    /// favorites in some order (`ordering::is_reordering`); `false` leaves the
+    /// group as it was.
+    fn reorder(&mut self, proposed: Vec<String>) -> bool {
+        let favorites: Vec<String> = self.slots.iter().map(|&i| self.ids[i].clone()).collect();
+        if !ordering::is_reordering(&favorites, &proposed) {
+            return false;
+        }
+        for (&slot, product_id) in self.slots.iter().zip(proposed) {
+            self.ids[slot] = product_id;
+        }
+        true
+    }
+
+    /// Rewrite the whole group densely, which also heals any ties or gaps.
+    async fn write(
+        &self,
+        tx: &mut sqlx::Transaction<'static, sqlx::Sqlite>,
+        owner: &str,
+    ) -> CoreResult<()> {
+        for (index, product_id) in self.ids.iter().enumerate() {
+            let position = i64::try_from(index)
+                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Product)))?;
+            sqlx::query!(
+                r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
+                position,
+                product_id,
+                owner
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ProductRepo for SqlitePool {
     async fn create(&self, owner_id: Uuid, name: &str, category_id: Uuid) -> CoreResult<Product> {
@@ -504,60 +595,66 @@ impl ProductRepo for SqlitePool {
         let category = category_id.map(|c| c.to_string());
         // IMMEDIATE: the set checked is the set written.
         let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
-        if let Some(category) = &category {
-            sqlx::query_scalar!(
-                r#"SELECT 1 AS "found!: i64" FROM categories WHERE id = ?1 AND owner_id = ?2"#,
-                category,
-                owner
-            )
-            .fetch_optional(&mut *tx)
-            .await?
-            .ok_or(CoreError::NotFound)?;
-        }
-
-        // `IS` so the uncategorized (NULL) group can be ordered too.
-        let siblings = sqlx::query!(
-            r#"SELECT id, is_favorite AS "is_favorite: bool" FROM products
-                WHERE owner_id = ?1 AND category_id IS ?2
-                ORDER BY position ASC, name ASC"#,
-            owner,
-            category
-        )
-        .fetch_all(&mut *tx)
-        .await?;
-        let mut ids = Vec::with_capacity(siblings.len());
-        let mut slots = Vec::new();
-        for (index, row) in siblings.into_iter().enumerate() {
-            if row.is_favorite {
-                slots.push(index);
-            }
-            ids.push(row.id);
-        }
-        // The favorites take the new order in their own slots; hidden
-        // products in between keep theirs, as `move_within_category` does.
-        let favorites: Vec<String> = slots.iter().map(|&i| ids[i].clone()).collect();
+        check_group(&mut tx, &owner, category.as_ref()).await?;
+        let mut group = GroupSlots::load(&mut tx, &owner, category.as_ref()).await?;
         let proposed: Vec<String> = ordered_ids.iter().map(Uuid::to_string).collect();
-        if !ordering::is_reordering(&favorites, &proposed) {
+        if !group.reorder(proposed) {
             return Ok(false);
         }
-        for (&slot, product_id) in slots.iter().zip(proposed) {
-            ids[slot] = product_id;
+        group.write(&mut tx, &owner).await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    async fn move_favorite_into_group(
+        &self,
+        owner_id: Uuid,
+        id: Uuid,
+        category_id: Option<Uuid>,
+        ordered_ids: &[Uuid],
+    ) -> CoreResult<bool> {
+        let owner = owner_id.to_string();
+        let id_str = id.to_string();
+        let category = category_id.map(|c| c.to_string());
+        // IMMEDIATE: the group and the product read are the ones written.
+        let mut tx = self.inner.begin_with("BEGIN IMMEDIATE").await?;
+        check_group(&mut tx, &owner, category.as_ref()).await?;
+        let moving = sqlx::query!(
+            r#"SELECT category_id, is_favorite AS "is_favorite: bool" FROM products
+                WHERE id = ?1 AND owner_id = ?2"#,
+            id_str,
+            owner
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CoreError::NotFound)?;
+        // Only a favorite from another group moves; recipe-created products
+        // stay in "From recipes" (MB-0071 P5).
+        if !moving.is_favorite || moving.category_id == category {
+            return Ok(false);
         }
 
-        // Rewrite the whole group densely, which also heals any ties or gaps.
-        for (index, product_id) in ids.iter().enumerate() {
-            let position = i64::try_from(index)
-                .map_err(|_| CoreError::Invalid(Invalid::TooMany(Entity::Product)))?;
-            sqlx::query!(
-                r"UPDATE products SET position = ?1 WHERE id = ?2 AND owner_id = ?3",
-                position,
-                product_id,
-                owner
-            )
-            .execute(&mut *tx)
-            .await?;
+        let mut group = GroupSlots::load(&mut tx, &owner, category.as_ref()).await?;
+        // The moved favorite takes a new slot at the group's end; the order
+        // then places every favorite, as a reorder does.
+        group.ids.push(id_str.clone());
+        group.slots.push(group.ids.len() - 1);
+        let proposed: Vec<String> = ordered_ids.iter().map(Uuid::to_string).collect();
+        if !group.reorder(proposed) {
+            return Ok(false);
         }
 
+        let now = Utc::now();
+        sqlx::query!(
+            r"UPDATE products SET category_id = ?1, updated_at = ?2 WHERE id = ?3 AND owner_id = ?4",
+            category,
+            now,
+            id_str,
+            owner
+        )
+        .execute(&mut *tx)
+        .await?;
+        group.write(&mut tx, &owner).await?;
         tx.commit().await?;
         Ok(true)
     }

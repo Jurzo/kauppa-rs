@@ -239,6 +239,23 @@ pub trait ProductRepo: Send + Sync {
         ordered_ids: &[Uuid],
     ) -> CoreResult<bool>;
 
+    /// Move favorite `id` from another group into this one (`None`:
+    /// uncategorized, which clears its category, RR-0046) and save this
+    /// group's full new order, in one transaction (MB-0071): its category and
+    /// the group's order change together or not at all. `ordered_ids` must
+    /// be exactly the group's favorites plus `id`; hidden products keep
+    /// their slots, as in [`Self::set_favorite_order`]. `false` means nothing
+    /// changed: the order isn't that set, `id` is already in the group, or
+    /// `id` is a recipe-created product (not a favorite). A category or a
+    /// product that isn't the owner's is `NotFound`.
+    async fn move_favorite_into_group(
+        &self,
+        owner_id: Uuid,
+        id: Uuid,
+        category_id: Option<Uuid>,
+        ordered_ids: &[Uuid],
+    ) -> CoreResult<bool>;
+
     /// Bring `items` into `owner_id`'s favorites, in one transaction on
     /// `products` only: a list's active items (MB-0060, RR-0047, read by the
     /// caller through `ShoppingListRepo::items`) or favorites shared with
