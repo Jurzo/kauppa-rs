@@ -303,3 +303,76 @@ pub fn chevron() {
         }
     }
 }
+
+/// MB-0070 P2: what keeps a select inside the page however long its
+/// options' names are, in `app.css`. Each select ([`SELECT_NAMES`], which
+/// [`chevron`] ties to the templates) sits in a label, and the label in a
+/// form row, a list item's open edit panel or an export review card; each
+/// of those is a box that would otherwise grow to its select's longest
+/// option. The browser flow (`tests/browser/flows/selects.spec.js`) checks
+/// the layout itself, at 360 and 1280 px.
+///
+/// - `label`s in the add and edit forms are flex items, whose automatic
+///   minimum is their content's width; `max-width: 100%` caps it.
+/// - An open list item panel is a flex item in its row: the same.
+/// - The export review card is a `fieldset`, whose default minimum is its
+///   content's width; `min-width: 0` undoes it.
+const FIT_RULES: [(&str, &str, &str); 3] = [
+    (
+        ".add-category label, .add-product label, .product-edit label, .row-edit label",
+        "max-width",
+        "100%",
+    ),
+    (".product-edit[open]", "max-width", "100%"),
+    (".export-row", "min-width", "0"),
+];
+
+/// The widest `min-width` a rule may give a select: 10 rem fits any form
+/// at 360 px (the add forms' `.add-product select`).
+const MAX_SELECT_MIN_WIDTH: u32 = 10_000;
+
+/// MB-0070 P2: a select is never wider than the field around it.
+pub fn fits() {
+    let css = without_comments(&app_css());
+    let rules = rules(&css);
+
+    // The `select` rule caps the select at its container.
+    let select = rules
+        .iter()
+        .find(|rule| rule.selectors == ["select"])
+        .expect("the `select` rule");
+    assert_eq!(select.value("max-width"), "100%", "`select` max-width");
+
+    // No other rule undoes that: no `width` or `max-width` on a select, and
+    // no `min-width` wider than 10 rem.
+    for other in rules.iter().filter(|r| r.styles_a_select()) {
+        if std::ptr::eq(other, select) {
+            continue;
+        }
+        let name = other.selectors.join(", ");
+        for (property, value) in &other.declarations {
+            assert!(
+                !matches!(
+                    *property,
+                    "width" | "max-width" | "inline-size" | "max-inline-size"
+                ),
+                "`{name}` sets {property}: {value}"
+            );
+            if *property == "min-width" && *value != "0" {
+                assert!(
+                    millirem(value) <= MAX_SELECT_MIN_WIDTH,
+                    "`{name}`: min-width {value} fits 360 px"
+                );
+            }
+        }
+    }
+
+    // The boxes around a select can't grow past theirs.
+    for (selectors, property, value) in FIT_RULES {
+        let rule = rules
+            .iter()
+            .find(|rule| rule.selectors.join(", ") == selectors)
+            .unwrap_or_else(|| panic!("a rule for `{selectors}`"));
+        assert_eq!(rule.value(property), value, "`{selectors}` {property}");
+    }
+}

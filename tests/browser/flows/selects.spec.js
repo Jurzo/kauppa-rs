@@ -42,7 +42,9 @@ function shownSelects(page) {
     await document.fonts.ready;
     const ctx = document.createElement('canvas').getContext('2d');
     return [...document.querySelectorAll('select')]
-      .filter((s) => s.getClientRects().length > 0)
+      // Not `getClientRects()`: a closed <details> hides its content with
+      // `content-visibility: hidden`, whose boxes are still measured.
+      .filter((s) => s.checkVisibility())
       .map((s) => {
         const box = s.getBoundingClientRect();
         const form = (s.closest('form') ?? s.parentElement).getBoundingClientRect();
@@ -52,8 +54,10 @@ function shownSelects(page) {
         const sides = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
           .map((p) => parseFloat(cs[p]))
           .reduce((a, b) => a + b, 0);
+        const holder = s.closest('[id]');
         return {
           name: s.name,
+          where: `${holder ? `#${holder.id}` : 'page'} ${s.closest('form')?.className ?? ''}`.trim(),
           addForm: s.closest('form.add-product') !== null,
           left: box.left,
           right: box.right,
@@ -75,7 +79,7 @@ async function expectNoSideScroll(page, what) {
   const [scroll, client, wide] = await page.evaluate(() => {
     const width = document.documentElement.clientWidth;
     const past = [...document.body.querySelectorAll('*')].filter(
-      (el) => el.getBoundingClientRect().right > width + 0.5 && el.getClientRects().length > 0,
+      (el) => el.getBoundingClientRect().right > width + 0.5 && el.checkVisibility(),
     );
     const innermost = past.filter((el) => !past.some((other) => other !== el && el.contains(other)));
     const describe = (el) =>
@@ -91,7 +95,7 @@ async function expectFits(page, what, names) {
   expect(selects.map((s) => s.name), `${what}: the selects shown`).toEqual(expect.arrayContaining(names));
   for (const s of selects) {
     const at = `${Math.round(s.left)}–${Math.round(s.right)} in ${Math.round(s.formLeft)}–${Math.round(s.formRight)}`;
-    expect.soft(s.left >= s.formLeft - 0.5 && s.right <= s.formRight + 0.5, `${what}: ${s.name} inside its form (${at})`).toBe(true);
+    expect.soft(s.left >= s.formLeft - 0.5 && s.right <= s.formRight + 0.5, `${what}: ${s.name} in ${s.where}, inside its form (${at})`).toBe(true);
   }
   await expectNoSideScroll(page, what);
 }
