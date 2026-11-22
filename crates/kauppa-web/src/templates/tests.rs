@@ -111,7 +111,7 @@ const FIRST_PARTY_SCRIPTS: [&str; 1] = ["/assets/app/sortable.js"];
 /// The SRI of [`FIRST_PARTY_SCRIPTS`]'s file, as `layout.hbs` carries it;
 /// [`sortable_scripts_pinned`] checks it against the file.
 const SORTABLE_JS_SRI_SHA384: &str =
-    "sha384-fctvAgCcRfZzru22s3t6fVYSZNWbHwNa+Q9VTWG/JwoTt8LtcfeVt7gfj7ExOt90";
+    "sha384-gdf8vC4XIgOrMY8bhwGvROpJv39AGiDKWFH8dkqITcE/k3lR3EYGP51jz7tmFJ0s";
 
 /// The workspace's `templates/` folder, for comparison only.
 fn source_dir() -> &'static Path {

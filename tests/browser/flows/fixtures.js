@@ -193,4 +193,69 @@ export const test = base.extend({
   },
 });
 
+/** The name a row shows, for messages. */
+function rowName(locator) {
+  return locator.evaluate((el) => {
+    const row = el.closest('li') ?? el;
+    return (row.querySelector('.row-name') ?? row).textContent.trim().replace(/\s+/g, ' ');
+  });
+}
+
+/**
+ * Scroll `locators` into view and return their boxes; if they can't all be
+ * shown, fail at once, naming their rows (MB-0069: the mouse works in
+ * viewport coordinates, and on a repeated run the rows sit below earlier
+ * runs' rows).
+ */
+export async function inView(page, ...locators) {
+  for (const locator of locators) {
+    await locator.scrollIntoViewIfNeeded();
+  }
+  const boxes = [];
+  for (const locator of locators) {
+    boxes.push(await locator.boundingBox());
+  }
+  const { width, height } = page.viewportSize();
+  const shown = (box) =>
+    box !== null && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height;
+  if (!boxes.every(shown)) {
+    const where = (box) => (box === null ? 'not shown' : `at y ${Math.round(box.y)}–${Math.round(box.y + box.height)}`);
+    const parts = [];
+    for (const [i, locator] of locators.entries()) {
+      parts.push(`"${await rowName(locator)}" (${where(boxes[i])})`);
+    }
+    throw new Error(`drag: ${parts.join(' and ')} can't both be shown in the ${width} × ${height} viewport`);
+  }
+  return boxes;
+}
+
+/** Move the held mouse from `[x0, y0]` to `[x1, y1]` at a pointer's pace. */
+export async function glide(page, [x0, y0], [x1, y1], steps = 30) {
+  for (let i = 1; i <= steps; i += 1) {
+    await page.mouse.move(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps);
+    await page.waitForTimeout(20);
+  }
+}
+
+/** Drop at `[x, y]` after a pause: Sortable ignores drag-overs while a row it just moved is still animating. */
+export async function release(page, [x, y]) {
+  await page.waitForTimeout(200);
+  await page.mouse.move(x, y + 1);
+  await page.mouse.up();
+}
+
+/**
+ * Drag `from` (a handle) onto the upper edge of `to` (a row), by mouse, at a
+ * pointer's pace (MB-0066). Both are brought into view first (MB-0069).
+ */
+export async function drag(page, from, to) {
+  const [a, b] = await inView(page, from, to);
+  const start = [a.x + a.width / 2, a.y + a.height / 2];
+  const end = [b.x + b.width / 2, b.y + 3];
+  await page.mouse.move(...start);
+  await page.mouse.down();
+  await glide(page, start, end);
+  await release(page, end);
+}
+
 export { expect };

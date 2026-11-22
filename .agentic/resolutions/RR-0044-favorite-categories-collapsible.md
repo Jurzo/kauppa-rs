@@ -96,3 +96,11 @@ To be applied after this record is signed, with the owner's OK:
 ## Supersession and history
 
 Status: active once signed. Supersedes nothing.
+
+- 2026-11-22: constraint 1 amended by RR-0056 (closes CRP-0056), for
+  MB-0071. It now reads: "No JavaScript decides which groups are open: the
+  server's answers open them through `HX-Retarget` and `<details open>`.
+  The one exception is a drag (MB-0071, RR-0056): while a favorite's row is
+  held, `assets/app/sortable.js` may open a closed group whose heading the
+  pointer rests on, so that the group can take the drop. It never closes a
+  group, and the answer to the drop decides the groups' state as before."

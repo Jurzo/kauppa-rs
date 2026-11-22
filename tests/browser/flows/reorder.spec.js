@@ -12,7 +12,7 @@
 // Every page runs under the fixtures' watch (CSP, console errors, htmx
 // errors, other origins), so Sortable and `assets/app/sortable.js` run
 // under the unchanged CSP (RR-0053 constraint 4).
-import { test, expect, t, markDocument, expectSameDocument } from './fixtures.js';
+import { test, expect, t, markDocument, expectSameDocument, drag } from './fixtures.js';
 
 /** A run-unique suffix, since the flows share one account. */
 function unique() {
@@ -41,54 +41,6 @@ async function categories(page, baseURL, names) {
     ids[name] = (await input.getAttribute('id')).replace(/^cat-/, '');
   }
   return ids;
-}
-
-/** The name a row shows, for messages. */
-function rowName(locator) {
-  return locator.evaluate((el) => {
-    const row = el.closest('li') ?? el;
-    return (row.querySelector('.row-name') ?? row).textContent.trim().replace(/\s+/g, ' ');
-  });
-}
-
-/**
- * Drag `from` (a handle) onto the upper edge of `to` (a row), by mouse, at a
- * pointer's pace: Sortable ignores drag-overs while a row it just moved is
- * still animating.
- *
- * MB-0069: the mouse works in viewport coordinates, and on a repeated run
- * (`--repeat-each`) the rows sit below earlier runs' rows, so both are
- * scrolled into view first. If they can't both be shown, the drag fails at
- * once, naming them, rather than pressing outside the page and waiting for
- * a request that never comes.
- */
-async function drag(page, from, to) {
-  await from.scrollIntoViewIfNeeded();
-  await to.scrollIntoViewIfNeeded();
-  const a = await from.boundingBox();
-  const b = await to.boundingBox();
-  const { width, height } = page.viewportSize();
-  const inView = (box) =>
-    box !== null && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height;
-  if (!inView(a) || !inView(b)) {
-    const where = (box) => (box === null ? 'not shown' : `at y ${Math.round(box.y)}–${Math.round(box.y + box.height)}`);
-    throw new Error(
-      `drag: "${await rowName(from)}" (${where(a)}) and "${await rowName(to)}" (${where(b)}) ` +
-        `can't both be shown in the ${width} × ${height} viewport`,
-    );
-  }
-  const [x0, y0] = [a.x + a.width / 2, a.y + a.height / 2];
-  const [x1, y1] = [b.x + b.width / 2, b.y + 3];
-  await page.mouse.move(x0, y0);
-  await page.mouse.down();
-  const steps = 30;
-  for (let i = 1; i <= steps; i += 1) {
-    await page.mouse.move(x0 + ((x1 - x0) * i) / steps, y0 + ((y1 - y0) * i) / steps);
-    await page.waitForTimeout(20);
-  }
-  await page.waitForTimeout(200);
-  await page.mouse.move(x1, y1 + 1);
-  await page.mouse.up();
 }
 
 /** Which of `names` the `rows` show, in row order. */

@@ -1,13 +1,17 @@
 {{!-- MB-0059 (RR-0044): one favorites group, closed unless an action touched it. Actions inside target the group; the server retargets to #favorites when they leave it. --}}
 <details id="{{dom_id}}" class="product-group catalog-unit"{{#if open}} open{{/if}}>
   <summary><span class="group-name">{{#if name}}{{name}}{{else}}{{t "common.uncategorized"}}{{/if}}</span> <span class="group-count">{{t "products.group_count" count=count}}</span></summary>
-  {{!-- MB-0066 (RR-0053): dragging a row's handle posts the group's new order. --}}
+  {{!-- MB-0066 (RR-0053): dragging a row's handle posts the group's new order.
+  MB-0071: a row dragged in from another group joins this form, and
+  `assets/app/sortable.js` enables `moved` with its id before posting. --}}
   <form id="{{dom_id}}-order" class="sortable-order" method="post" action="/favorites/order"
         hx-post="/favorites/order" hx-target="closest .catalog-unit" hx-swap="outerHTML"
         hx-trigger="end from:#{{dom_id}}-list">
     <input type="hidden" name="category" value="{{order_key}}" />
+    <input type="hidden" name="moved" value="" disabled />
   </form>
-  <ul id="{{dom_id}}-list" class="product-list" data-sortable>
+  <ul id="{{dom_id}}-list" class="product-list" data-sortable data-sortable-group="favorites"
+      data-order-form="{{dom_id}}-order">
     {{#each products}}
       {{!-- MB-0068 (RR-0055): one line on a phone; the pencil opens the edit panel below the row, the trash deletes. --}}
       <li class="product-row reorder-row">

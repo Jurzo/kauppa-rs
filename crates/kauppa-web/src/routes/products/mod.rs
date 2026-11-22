@@ -131,6 +131,9 @@ enum Touch {
     /// A new order for one group (MB-0066): its category (`None`:
     /// Uncategorized).
     Group(Option<Uuid>),
+    /// A favorite dragged into another group (MB-0071): where it was, if it
+    /// was the user's favorite, and the group it was dropped in.
+    Move { from: Option<Unit>, to: Unit },
 }
 
 /// How an action is answered (RR-0044).
@@ -205,6 +208,13 @@ fn choose_swap(after: &Catalog, touch: Touch, failed: bool) -> Swap {
             } else {
                 Swap::Catalog(vec![unit])
             }
+        }
+        // A move between groups always touches two (RR-0044 item 1): both
+        // open, whether it was saved or snapped back.
+        Touch::Move { from, to } => {
+            let mut open: Vec<Unit> = from.into_iter().filter(|f| *f != to).collect();
+            open.push(to);
+            Swap::Catalog(open)
         }
         Touch::Product { before, .. } if failed => Swap::Catalog(before.into_iter().collect()),
         Touch::Product { id, before } => match (before, after.locate(id)) {
@@ -696,6 +706,15 @@ pub async fn move_product(
 /// [`NO_CATEGORY`] for Uncategorized; anything else, or another user's
 /// category, is 404. The order is saved only if it is exactly the group's
 /// favorites; otherwise nothing changes and the group comes back as it is.
+///
+/// MB-0071: with `moved` (a favorite dragged in from another group), the
+/// order must be exactly the group's favorites plus that one, which then
+/// takes the group's category (Uncategorized clears it), all in one
+/// transaction. A `moved` that isn't one of the user's products is 404; any
+/// other mismatch saves nothing. Either way the catalog comes back with the
+/// group it left and this group open (RR-0044 item 1). Without `moved` the
+/// route is as before, so an order holding another group's favorite is
+/// still refused.
 #[post("/order")]
 pub async fn order(
     req: HttpRequest,
@@ -714,23 +733,42 @@ pub async fn order(
         Some(raw) => Some(Uuid::parse_str(raw).map_err(|_| CoreError::NotFound)?),
         None => return Err(CoreError::NotFound.into()),
     };
-    let saved = match order_ids(&form) {
-        Some(ids) => ProductRepo::set_favorite_order(&state.pool, user, group, &ids).await?,
-        None => false,
+    let moved = match form
+        .iter()
+        .find(|(name, _)| name == "moved")
+        .map(|(_, value)| value.trim())
+    {
+        None | Some("") => None,
+        Some(raw) => Some(Uuid::parse_str(raw).map_err(|_| CoreError::NotFound)?),
     };
-    if !saved {
-        tracing::debug!(user_id = %user, "favorites order stale or not the user's: nothing saved");
-    }
-    respond(
-        &state,
-        &ui,
-        &req,
-        user,
-        Touch::Group(group),
-        Ok(()),
-        Draft::default(),
-    )
-    .await
+    let ids = order_ids(&form);
+    let touch = if let Some(product) = moved {
+        let from = Catalog::locate_now(&state, user, product).await?;
+        let saved = match &ids {
+            Some(ids) => {
+                ProductRepo::move_favorite_into_group(&state.pool, user, product, group, ids)
+                    .await?
+            }
+            None => false,
+        };
+        if !saved {
+            tracing::debug!(user_id = %user, "favorite move stale or not a move: nothing saved");
+        }
+        Touch::Move {
+            from,
+            to: Unit::Group(group),
+        }
+    } else {
+        let saved = match &ids {
+            Some(ids) => ProductRepo::set_favorite_order(&state.pool, user, group, ids).await?,
+            None => false,
+        };
+        if !saved {
+            tracing::debug!(user_id = %user, "favorites order stale or not the user's: nothing saved");
+        }
+        Touch::Group(group)
+    };
+    respond(&state, &ui, &req, user, touch, Ok(()), Draft::default()).await
 }
 
 /// Make a recipe-created product a favorite, in its own category (MB-0014).
