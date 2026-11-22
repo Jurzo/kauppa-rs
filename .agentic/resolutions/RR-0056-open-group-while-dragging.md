@@ -94,3 +94,5 @@ To be applied after this record is signed, with the owner's OK:
 
 Status: active once signed. Supersedes nothing; amends RR-0044
 constraint 1.
+
+- 2026-11-22: roll-back applied to RR-0044, MB-0071 and CRP-0056 (PR #146).

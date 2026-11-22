@@ -55,7 +55,7 @@ autonomy:
     - "drag styling (the drop place, the dragged row), in `assets/app.css`'s reorder section"
     - "test names inside the modules above"
   escalate:
-    - { when: "dropping into a closed group (groups are closed on a full page load, RR-0044): only open groups take a drop; a drop on a closed group's heading adds the favorite at its end; or a closed group opens while a row is held over its heading (decided by the owner on acceptance, 2026-11-22: it opens while a held row rests on its heading)", to: owner }
+    - { when: "dropping into a closed group (groups are closed on a full page load, RR-0044): only open groups take a drop; a drop on a closed group's heading adds the favorite at its end; or a closed group opens while a row is held over its heading (decided by the owner on acceptance, 2026-11-22: it opens while a held row rests on its heading) (RR-0056)", to: owner }
     - { when: "the route: extend `POST /favorites/order` with the moved favorite, or a new route; what it carries (the favorite, the target category, the target order, the source order or not); and what a stale move does (the owner, 2026-11-22: decided in implementation; chosen: `POST /favorites/order` gains an optional `moved`, recorded in the Continuity Pack and the PR)", to: owner }
     - { when: "dropping into Uncategorized, which clears the category (RR-0046 lets the owner clear it), or not offering Uncategorized as a target (decided by the owner on acceptance, 2026-11-22: allowed)", to: owner }
     - { when: "changing `assets/app/sortable.js` so rows can move between lists (Sortable's `group` option) and the drop posts the move: RR-0053 approved the file for reordering within one list (decided by the owner on acceptance, 2026-11-22: updated as necessary)", to: platform-owner }
@@ -71,7 +71,7 @@ mentorship:
   - .agentic/mentorship/templating.md@v1
   - .agentic/mentorship/security.md@v1
   - .agentic/mentorship/persistence.md@v1
-resolutions: []
+resolutions: [RR-0056]
 ---
 ```
 
@@ -139,12 +139,12 @@ the edge is a known unknown, for P7 and the flow.
 
 ## Conceptual plan
 
-1. **Clarify (S1).** Done on acceptance (2026-11-22), without a CRP: a
-   closed group opens while a held row rests on its heading; the route is
-   decided in implementation; Uncategorized takes a drop; no
-   confirmation; `sortable.js` changes as needed. Opening a group from
-   script departs from RR-0044 constraint 1 ("No JavaScript"); raised with
-   the owner for a Resolution Record before merge.
+1. **Clarify (S1).** Done on acceptance (2026-11-22): a closed group
+   opens while a held row rests on its heading; the route is decided in
+   implementation; Uncategorized takes a drop; no confirmation;
+   `sortable.js` changes as needed. Opening a group from script departed
+   from RR-0044 constraint 1 ("No JavaScript"); CRP-0056 → RR-0056 (signed
+   2026-11-22) amends it for a held row.
 2. **Repo (P3).** One transaction: check the favorite and the target are
    the user's, set the category, then save the target group's order with
    the exact-set check.

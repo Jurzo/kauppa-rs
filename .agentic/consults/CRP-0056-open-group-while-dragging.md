@@ -8,7 +8,7 @@ owner: "@juuso-kalliomaki"
 target_role: product
 risk_tier: low
 urgency: medium
-state: open
+state: answered
 runbook_trigger: "conflict between an approved RR and the owner's decision, found at MB-0071's implementation: RR-0044 constraint 1 ('No JavaScript; `HX-Retarget` and `<details open>` are the only mechanisms') vs the owner's answer on MB-0071's acceptance (2026-11-22: 'open a closed category when hovering over it'); feature.md escalation trigger `.agentic/resolutions/**`"
 ---
 ```
@@ -83,5 +83,4 @@ Crisp question to answer: amend RR-0044 constraint 1 as worded in A?
 
 A, as decided on MB-0071's acceptance ("open a closed category when
 hovering over it"); the owner asked for this record ("Draft a short RR for
-the amendment to RR-0044"). Recorded in RR-0056 (scaffold; the owner
-signs).
+the amendment to RR-0044"). Recorded in RR-0056 (signed 2026-11-22).
