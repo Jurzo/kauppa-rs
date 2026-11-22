@@ -5,11 +5,11 @@
 id: RR-0056
 closes: CRP-0056
 mission: MB-0071
-decided_by: "<resolver's GitHub handle, e.g. @Jurzo>"
+decided_by: "@Jurzo"
 role: product
 risk_tier: low
-decided_at: <RFC 3339 UTC time of signing, e.g. 2026-11-22T00:00:00Z>
-status: <approved | rejected>
+decided_at: 2026-11-22t09:50:00z
+status: approved
 superseded_by: null
 rolls_back_into:
   - .agentic/resolutions/RR-0044-favorite-categories-collapsible.md
@@ -57,7 +57,7 @@ Does not cover:
 
 ## Approvals and authority
 
-<resolver: e.g. "@Jurzo as owner (product).">
+@Jurzo as owner (product).
 
 ## Linked artifacts and evidence
 
