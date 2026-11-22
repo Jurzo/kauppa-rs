@@ -12,7 +12,7 @@ non_goals:
   - "Changing the other flows, which pass on a repeated run today."
 acceptance:
   - id: P1
-    property: "`scripts/browser/run.sh --repeat-each=3` passes every flow (today 18 flows, so 54 runs). Today the second run of both drag flows in `reorder.spec.js` fails."
+    property: "`scripts/browser/run.sh --repeat-each=3` passes every flow (today 16 flows after the 2 setup steps, which run once: 50 runs). Today the second run of both drag flows in `reorder.spec.js` fails."
     check: "scripts/browser/run.sh --repeat-each=3"
   - id: P2
     property: "Before pressing the mouse, the drag helper scrolls the dragged handle and its target row into view and checks that both lie inside the viewport. If they can't both be shown, the flow fails within the 5 s expect timeout with a message naming the two rows, not after the 30 s test timeout."
@@ -35,12 +35,12 @@ autonomy:
     - "the flows' test data (names, how many rows they create), keeping what each flow checks"
     - "test names inside `tests/browser/flows/`"
   escalate:
-    - { when: "running the CI browser job with `--repeat-each=2` or more, so a flow that stops being repeatable fails in CI: the job takes about 1.5 minutes longer per run (RR-0041 sub-answer 3 set when and how it runs)", to: platform-owner }
+    - { when: "running the CI browser job with `--repeat-each=2` or more, so a flow that stops being repeatable fails in CI: the job takes about 1.5 minutes longer per run (RR-0041 sub-answer 3 set when and how it runs) (decided by the owner on acceptance, 2026-11-22: CI runs the suite once)", to: platform-owner }
     - { when: "a flow can be made repeatable only by changing the app or a template (a non-goal)", to: owner }
   forbidden:
     - "remove or weaken an assertion"
     - "add retries or raise a timeout to make a flow pass"
-    - "change a file outside `tests/browser/` (`.github/workflows/browser.yml` only if the platform owner approves the CI repeat)"
+    - "change a file outside `tests/browser/` (CI keeps running the suite once)"
 runbook: .agentic/runbooks/bugfix.md@v1
 mentorship:
   - AGENTS.md@v1
@@ -98,9 +98,9 @@ as a follow-up. The owner asked for a brief on 2026-11-22.
 3. **Check the rest (P1, P3).** Look for other leftover-data assumptions
    with `--repeat-each=3`: a lookup that matches an earlier run's row, or a
    list the test expects to be short.
-4. **Clarify.** Whether CI should repeat the flows is the platform owner's
-   call. Ask it on the brief's acceptance; it needs no consult unless the
-   owner wants one.
+4. **Clarify.** Whether CI should repeat the flows was the platform
+   owner's call. Decided on the brief's acceptance (2026-11-22): CI runs
+   the suite once; a repeated run stays a local check. No consult.
 
 Slow-mode triggers:
 
@@ -112,7 +112,7 @@ Slow-mode triggers:
 ## Validation plan
 
 - **P1:** `scripts/browser/run.sh --repeat-each=3`, before the fix (red,
-  the two drag flows) and after it (green, 54 of 54). Output summarised in
+  the two drag flows) and after it (green, 50 of 50). Output summarised in
   the PR.
 - **P2:**
   - the drag flows pass on a single run and on a repeated run;
